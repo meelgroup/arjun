@@ -2,7 +2,7 @@
  Arjun - repair-chain shape analyzer
 
  Loads a --dumprestartaig dump and prints per-def and aggregate stats on the
- Manthan repair-chain structure (decision-list runs, cube widths, two-level
+ Cegr repair-chain structure (decision-list runs, cube widths, two-level
  minimization opportunities). Used to design AIGRewriter rules.
 
  Copyright (c) 2026, Mate Soos. MIT License.
@@ -757,7 +757,7 @@ int main(int argc, char** argv) {
             argparse::default_arguments::help);
     program.add_description(
         "Repair-chain shape analyzer: loads a --dumprestartaig dump and prints "
-        "per-def and aggregate stats on the Manthan repair-chain structure.");
+        "per-def and aggregate stats on the Cegr repair-chain structure.");
     program.add_argument("-r", "--rewrite")
         .flag()
         .help("run AIGRewriter::rewrite_all on the defs first");
@@ -776,7 +776,7 @@ int main(int argc, char** argv) {
     program.add_argument("-t", "--top-filter")
         .default_value(0).scan<'i', int>()
         .help("keep only the K biggest defs (approximates the in-run to_define "
-              "population at a Manthan restart)");
+              "population at a Cegr restart)");
     program.add_argument("-T", "--drop-top")
         .default_value(0).scan<'i', int>()
         .help("drop the K biggest defs, keep the rest");
@@ -831,7 +831,7 @@ int main(int argc, char** argv) {
     cnf.read_aig_defs_from_file(fname);
 
     // Local def list (var, aig) so we can filter to the top K defs; the
-    // in-run Manthan restart compaction only rewrites the to_define chain
+    // in-run Cegr restart compaction only rewrites the to_define chain
     // AIGs, which -t approximates.
     vector<uint32_t> def_vars;
     vector<aig_lit> defs_local;

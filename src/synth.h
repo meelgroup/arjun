@@ -49,9 +49,9 @@ public:
 
     // Run strategies in sequence on cnf. Skips finished strategies if cnf.synth_done().
     // Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited.
-    void run_manthan_strategies(
+    void run_cegr_strategies(
         ArjunNS::SimplifiedCNF& cnf,
-        const ArjunNS::Arjun::ManthanConf& mconf_orig,
+        const ArjunNS::Arjun::CegrConf& mconf_orig,
         const std::vector<SynthStrategy>& strategies);
 
 private:
@@ -62,7 +62,7 @@ private:
     static std::vector<std::string> split_top_level(const std::string& s);
     static bool validate_param_value(ParamType type, const std::string& v);
     SynthStrategy parse_one_strategy(const std::string& raw);
-    ArjunNS::Arjun::ManthanConf apply_strategy(
-        const ArjunNS::Arjun::ManthanConf& base,
+    ArjunNS::Arjun::CegrConf apply_strategy(
+        const ArjunNS::Arjun::CegrConf& base,
         const SynthStrategy& strat);
 };

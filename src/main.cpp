@@ -59,14 +59,14 @@ string output_file;
 
 ArjunNS::SimpConf simp_conf;
 ArjunNS::Arjun::ElimToFileConf etof_conf;
-ArjunNS::Arjun::ManthanConf mconf;
+ArjunNS::Arjun::CegrConf mconf;
 ArjunNS::Arjun::InterpConf iconf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
-string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
+string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),bve";
 
 int synthesis = false;
 int use_brute_force_synth = 1;
@@ -146,7 +146,9 @@ void add_arjun_options() {
         .help("Print version and exit");
 
     myopt("--mode", mode , fc_int, "0=counting, 1=weightd counting");
-    myopt("--allindep", etof_conf.all_indep , fc_int, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
+    myopt("--allindep", etof_conf.all_indep, fc_int,
+          "All variables can be made part of the indepedent support. Indep "
+          "support is given ONLY to help the solver.");
     myopt("--maxc", conf.backw_max_confl, fc_int,"Maximum conflicts per variable in backward mode");
     myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout in K steps. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");
@@ -155,13 +157,7 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--synthmore", synthesis, "Run synthesis, with more aggressive BVE options");
-    myopt("--bruteforcesynth", use_brute_force_synth, fc_int,
-          "Try brute-force synthesis for the final synthesis "
-          "step before Manthan. Viable when |orig_sampl_cnf| ≤ "
-          "--bruteforcesynththresh (after the minim pre-pass); above that it "
-          "declines and Manthan takes over. 0=Manthan only, 1=try brute-force "
-          "first (default).");
-    myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Manthan");
+    myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
@@ -170,11 +166,14 @@ void add_arjun_options() {
     myopt("--unatedefeq", conf.unate_def_eq, fc_int,"In unate_def, also detect equiv defs of the form t = L or t = ~L for some literal L");
     myopt("--unatedefeqmax", conf.unate_def_eq_max_per_var, fc_int,"Max equiv candidates to test per to-define variable in unate_def");
     myopt("--unatedefeqconfl", conf.unate_def_eq_max_confl, fc_int,"Conflict budget per SAT call inside the equiv unate_def search");
-    myopt("--unatedefeqdry", conf.unate_def_eq_dry_streak, fc_int,"Disable equiv unate_def probe after this many consecutive misses with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
-    myopt("--unatedefeqnoninp", conf.unate_def_eq_noninput, fc_int,"Allow non-input vars (to-define + already-tested) as the candidate L in t = L. Inputs are still tried first; non-inputs only after the input list is exhausted. 0 = inputs only");
+    myopt("--unatedefeqdry", conf.unate_def_eq_dry_streak, fc_int,
+          "Disable equiv unate_def probe after this many consecutive misses "
+          "with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
+    myopt("--unatedefeqnoninp", conf.unate_def_eq_noninput, fc_int,
+          "Allow non-input vars (to-define + already-tested) as the candidate "
+          "L in t = L. Inputs are still tried first; non-inputs only after the "
+          "input list is exhausted. 0 = inputs only");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
-    myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
-    myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
 
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
@@ -184,31 +183,38 @@ void add_arjun_options() {
         "\"learn(samples=1,max_repairs=100),learn(max_repairs=800),bve\". "
         "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
         "Params: max_repairs, samples, min_gain_split, "
-        "max_depth, sampler_fixed_conflicts, and other ManthanConf fields.");
+        "max_depth, sampler_fixed_conflicts, and other CegrConf fields.");
+
+    // Restarting
     myopt("--mrestart", mconf.restart, fc_int,
-        "Exit Manthan every N repairs, compact ALL per-var AIGs via the AIG rewriter, "
-        "and re-enter Manthan with the compacted AIGs as the initial guess. 0 = never");
+        "Exit Cegr every N repairs, compact ALL per-var AIGs via the AIG rewriter, "
+        "and re-enter Cegr with the compacted AIGs as the initial guess. 0 = never");
     myopt("--dumprestartaig", conf.dump_restart_aig, fc_string,
-        "Dump the pre-compaction guess AIGs at every Manthan restart to "
+        "Dump the pre-compaction guess AIGs at every Cegr restart to "
         "<prefix>-restart<N>.aig (binary defs) and .v (verilog), for offline "
         "rewrite experiments");
+
     // Order
-    myopt("--morder", mconf.manthan_order, fc_int,"Order vars: incidence (0), BVE (2)");
+    myopt("--morder", mconf.cegr_order, fc_int,"Order vars: incidence (0), BVE (2)");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repaircache", mconf.repair_cache_size, fc_int,"Repair cache size. 0 = no cache");
-    // synth -- sampling
+
+    // Cegr learn synth -- sampling
     myopt("--samples", mconf.samples, fc_int,"Number of samples");
     myopt("--uniqsamp", mconf.do_unique_input_samples, fc_int, "Unique samples on input vars");
     myopt("--filtersamples", mconf.filter_samples, fc_int,"Filter samples from useless ones");
     myopt("--fixedconf", mconf.sampler_fixed_conflicts, fc_int,"Restart conflict limit in CMSGen");
+
     // synth -- decision tree
     myopt("--maxdepth", mconf.max_depth, fc_int,"Maximum depth of decision tree");
     myopt("--minleaf", mconf.min_leaf_size, fc_int,"Minimum leaf size in decision tree");
     myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
     myopt("--learnuseall", mconf.use_all_vars_as_feats, fc_int,"Use all variables as features in decision tree learning. 0 = only inputs");
     // synth -- cutoff/tuning constants
+    myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
+    myopt("--minvertguessed", mconf.inv_guess, fc_int,"Invert guessed functions");
     myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
     myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");
@@ -222,24 +228,40 @@ void add_arjun_options() {
     myopt("--czthreshmid", mconf.cz_threshold_mid, fc_int, "Consecutive cost-zero break count when medium cz ratio");
     myopt("--czthreshlow", mconf.cz_threshold_low, fc_int, "Consecutive cost-zero break count when low cz ratio");
     // synth -- debug
-    myopt("--manthancnf", mconf.write_manthan_cnf, fc_string, "Write Manthan CNF to this file");
+    myopt("--cegrcnf", mconf.write_cegr_cnf, fc_string, "Write Cegr CNF to this file");
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
     myopt("--interprebuildevery", iconf.interp_rebuild_every, fc_int,
-          "Rebuild the doubled-CNF interpolation solver every N interpolants (bounds tracer maps; smaller = exercise the rebuild path more).");
+          "Rebuild the doubled-CNF interpolation solver every N interpolants "
+          "(bounds tracer maps; smaller = exercise the rebuild path more).");
     myopt("--interpmaxconfl", iconf.interp_max_confl, fc_int,
           "Per-interpolant conflict budget; over this, skip the var. 0 = unlimited.");
     myopt("--interprebuildmaxconfl", iconf.interp_rebuild_max_confl, fc_int,
-          "Rebuild the interpolation solver once it burns this many conflicts since the last rebuild (bounds tracer maps after skipped/conflict-heavy solves). 0 = off.");
-    myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
+          "Rebuild the interpolation solver once it burns this many conflicts "
+          "since the last rebuild (bounds tracer maps after "
+          "skipped/conflict-heavy solves). 0 = off.");
+    myflag("--checkrepair", mconf.check_repair,
+           "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
     myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
 
-    // === Brute-force synthesis (--bruteforcesynth 1) knobs ===
+    // Brute-force synthesis
+    myopt("--bruteforcesynth", use_brute_force_synth, fc_int,
+          "Try brute-force synthesis for the final synthesis "
+          "step before Cegr. Viable when |orig_sampl_cnf| ≤ "
+          "--bruteforcesynththresh (after the minim pre-pass); above that it "
+          "declines and Cegr takes over. 0=Cegr only, 1=try brute-force "
+          "first (default).");
     myopt("--bruteforcesynththresh", mconf.brute_force_synth_threshold, fc_int,
-          "Cap: brute_force_synth runs only when |orig_sampl_cnf| ≤ this (after the minim pre-pass); above it it declines to Manthan. Each y allocates 2^N truth-table entries, so raising past ~20 OOMs.");
+          "Cap: brute_force_synth runs only when |orig_sampl_cnf| ≤ this "
+          "(after the minim pre-pass); above it it declines to Cegr. Each y "
+          "allocates 2^N truth-table entries, so raising past ~20 OOMs.");
     myopt("--bruteforcesynthminim", mconf.brute_force_synth_minim, fc_int,
-          "Dry-run backward minim on orig_sampl_cnf before enumeration: prunes sampling vars that the post-preproc CNF defines from the rest, shrinking the 2^N truth tables. 0=off, 1=on (default).");
+          "Dry-run backward minim on orig_sampl_cnf before enumeration: prunes "
+          "sampling vars that the post-preproc CNF defines from the rest, "
+          "shrinking the 2^N truth tables. 0=off, 1=on (default).");
     myopt("--bruteforcesynthminimmax", mconf.brute_force_synth_minim_max, fc_int,
-          "Only attempt the minim pre-pass when |orig_sampl_cnf| ≤ this (default 40). Above it the doubled-CNF minim is too expensive and unlikely to shrink below --bruteforcesynththresh, so it is skipped.");
+        "Only attempt the minim pre-pass when |orig_sampl_cnf| ≤ this (default "
+        "40). Above it the doubled-CNF minim is too expensive and unlikely to "
+        "shrink below --bruteforcesynththresh, so it is skipped.");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
@@ -426,7 +448,7 @@ void do_synthesis() {
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force: enumerate consistent X assignments, build per-y
         // decision trees. Declines (CNF unchanged) if the enum set is too
-        // large; Manthan below then finishes the job.
+        // large; Cegr below then finishes the job.
         verb_print(1, "[arjun] Synthesis: brute-force decision trees");
         cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
@@ -435,11 +457,11 @@ void do_synthesis() {
     if (!cnf.synth_done()) {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);
-        synth_runner.run_manthan_strategies(cnf, mconf, strategies);
+        synth_runner.run_cegr_strategies(cnf, mconf, strategies);
 
         release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
-        SLOW_DEBUG_DO(check_stage("manthan"));
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cegr.aig");
+        SLOW_DEBUG_DO(check_stage("cegr"));
     }
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.

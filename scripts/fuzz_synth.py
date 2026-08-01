@@ -366,13 +366,13 @@ def gen_mstrategy():
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
                    "cz_high_ratio", "cz_low_ratio",
                    "cz_threshold_high", "cz_threshold_mid", "cz_threshold_low"]
-    # manthan_order is handled separately (only 0/2 valid, gen_int would emit 1).
+    # cegr_order is handled separately (only 0/2 valid, gen_int would emit 1).
     int_params  = ["filter_samples", "minimize_conflict",
                    # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
                    "use_all_vars_as_feats",
                    "repair_cache_size",
                    "one_repair_per_loop", "force_bw_equal",
-                   "inv_learnt"]
+                   "inv_guess"]
     #  "ctx_solver_type", "repair_solver_type",
     double_params = ["min_gain_split"]
 
@@ -396,9 +396,9 @@ def gen_mstrategy():
             params.setdefault(p, gen_int())
         for p in random.sample(double_params, random.randint(0, 1)):
             params.setdefault(p, gen_double())
-        # manthan_order accepts only 0 (learn) and 2 (bve); 1 aborts.
+        # cegr_order accepts only 0 (learn) and 2 (bve); 1 aborts.
         if random.choice([True, False]):
-            params.setdefault("manthan_order", str(random.choice([0, 2])))
+            params.setdefault("cegr_order", str(random.choice([0, 2])))
         if not params:
             return stype
         param_str = ",".join("%s=%s" % (k, v) for k, v in params.items())
@@ -461,9 +461,9 @@ if __name__ == "__main__":
 
         # --bruteforcesynth is default-on in the binary, so explicitly
         # toggle 50/50 to cover both paths: 1 = try brute-force synthesis
-        # first (it declines to Manthan when the enum set exceeds
-        # --bruteforcesynththresh), 0 = Manthan only. brute_force_synth mostly
-        # ignores the Manthan flag matrix this fuzzer randomizes, but
+        # first (it declines to Cegr when the enum set exceeds
+        # --bruteforcesynththresh), 0 = Cegr only. brute_force_synth mostly
+        # ignores the Cegr flag matrix this fuzzer randomizes, but
         # the flags shape the pre-synth pipeline (BVE, autarky, extend,
         # unate_def variants), so the CNF varies widely across iters.
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
@@ -500,7 +500,7 @@ if __name__ == "__main__":
         # it otherwise).
         solver += " --interprebuildevery %d" % random.randint(1, 5)
 
-        # manthan_order: 0 = incidence/learn, 2 = BVE. 1 is not a valid value.
+        # cegr_order: 0 = incidence/learn, 2 = BVE. 1 is not a valid value.
         solver += " --morder " + str(random.choice([0, 2]))
         solver += " --fixedconf " + random.choice(["1", "10", "100", "1000"])
         solver += " --unatedefmaxconfl " + random.choice(["1", "100", "1000", "15000", "100000"])

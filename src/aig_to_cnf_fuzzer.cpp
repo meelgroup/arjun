@@ -46,7 +46,7 @@ static AIGManager aig_mng;
 // distribution). Local using-declarations below keep the old call sites.
 
 using fuzz::gen_random_aig;
-using fuzz::gen_manthan_aig;
+using fuzz::gen_cegr_aig;
 using fuzz::gen_deep_ite_chain_aig;
 using fuzz::gen_dnf_cover_aig;
 using fuzz::gen_pure_and_chain;
@@ -356,7 +356,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
             uint32_t bw = 2 + rng() % 6;
             aig = gen_dnf_cover_aig(aig_mng, rng, num_vars, nb, bw);
         } else if (shape < 7) {
-            aig = gen_manthan_aig(aig_mng, rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
+            aig = gen_cegr_aig(aig_mng, rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
         } else if (shape < 8) {
             aig = gen_random_aig(aig_mng, rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {
@@ -444,7 +444,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
 
 // -----------------------------------------------------------------------------
 // Benchmark AIGRewriter::rewrite_all on a batch of deep-chain AIGs -- the
-// path that was measured at ~15s on the manthan genbuf8b4n rebuild step.
+// path that was measured at ~15s on the cegr genbuf8b4n rebuild step.
 // -----------------------------------------------------------------------------
 static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
                                     uint32_t max_vars, uint32_t chain_depth)
@@ -576,11 +576,11 @@ int main(int argc, char** argv) {
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
 
         aig_lit aig;
-        // Weight shapes toward the deep linear ITE chain (the real manthan
+        // Weight shapes toward the deep linear ITE chain (the real cegr
         // Skolem shape), while still covering pure k-ary AND/OR chains.
         uint32_t shape = rng() % 16;
         if (shape < 4) {
-            // Deep linear ITE chain (primary manthan workload).
+            // Deep linear ITE chain (primary cegr workload).
             uint32_t d = 50 + rng() % 450;
             if (rng() % 20 == 0) d = 500 + rng() % 500; // very deep
             uint32_t bw = 2 + rng() % 8;
@@ -591,10 +591,10 @@ int main(int argc, char** argv) {
             uint32_t bw = 2 + rng() % 6;
             aig = gen_dnf_cover_aig(aig_mng, rng, num_vars, nb, bw);
         } else if (shape < 7) {
-            // Shallow manthan-style tree (exponential, keep depth tiny).
+            // Shallow cegr-style tree (exponential, keep depth tiny).
             uint32_t d = 2 + rng() % 4;
             uint32_t bw = 2 + rng() % 6;
-            aig = gen_manthan_aig(aig_mng, rng, num_vars, d, bw);
+            aig = gen_cegr_aig(aig_mng, rng, num_vars, d, bw);
         } else if (shape < 8) {
             aig = gen_random_aig(aig_mng, rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {

@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "manthan.h"
+#include "cegr.h"
 
 
 // These ask mlpack to give more info & warnings
@@ -34,10 +34,10 @@
 
 namespace ArjunInt {
 
-class ManthanLearn {
+class CegrLearn {
 public:
-    ManthanLearn(Manthan& _manthan, const Config& _conf, const ArjunNS::Arjun::ManthanConf& _mconf) :
-        m(_manthan), conf(_conf), mconf(_mconf) {
+    CegrLearn(Cegr& _cegr, const Config& _conf, const ArjunNS::Arjun::CegrConf& _mconf) :
+        m(_cegr), conf(_conf), mconf(_mconf) {
             point_0.zeros(m.cnf.nVars());
             point_1.ones(m.cnf.nVars());
         }
@@ -51,8 +51,8 @@ private:
     arma::vec point_0;
     arma::vec point_1;
 
-    Manthan& m;
+    Cegr& m;
     const Config& conf;
-    const ArjunNS::Arjun::ManthanConf& mconf;
+    const ArjunNS::Arjun::CegrConf& mconf;
 };
 }

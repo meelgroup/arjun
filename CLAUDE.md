@@ -3,7 +3,7 @@
 Minimal-independent-set calculator and CNF minimizer. Preprocessor for
 [GANAK](https://github.com/meelgroup/ganak) and
 [ApproxMC](https://github.com/meelgroup/ApproxMC). Also performs
-Boolean-function **synthesis** (Manthan-style counterexample-guided repair)
+Boolean-function **synthesis** (cegr-style counterexample-guided repair)
 for defining relationships between variables.
 
 ## Building
@@ -28,9 +28,9 @@ From `build/`:
 ```
 
 Useful top-level flags:
-- `--synth` — enable synthesis (Manthan)
+- `--synth` — enable synthesis (cegr)
 - `--debugsynth` — emit intermediate AIGs (`*-simplified_cnf.aig`,
-  `*-autarky.aig`, `*-manthan.aig`, `*-final.aig`) for debugging
+  `*-autarky.aig`, `*-cegr.aig`, `*-final.aig`) for debugging
 - `--verb N` — verbosity (0–2)
 
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
@@ -69,10 +69,10 @@ All must pass before reporting a change as complete.
   node carries a monotonic `uint64_t nid` assigned at construction; use
   `nid` for ordering/hashing, never the raw pointer (ASLR makes pointers
   non-deterministic across runs).
-- `manthan.{h,cpp}`, `manthan_learn.{h,cpp}` — counterexample-guided
+- `cegr.{h,cpp}`, `cegr_learn.{h,cpp}` — counterexample-guided
   synthesis / repair loop. Hot path for large benchmarks.
 - `aig_rewrite.{h,cpp}` — structural hashing, CSE, absorption, ITE
-  flattening. Runs before Manthan and between repair rounds.
+  flattening. Runs before cegr and between repair rounds.
 - `interpolant.{h,cpp}` — definition extraction by Craig interpolation
   over a doubled CNF (used by the `--backward` and `--extend` passes),
   plus the `InterpTracerMcMillan` McMillan-interpolant tracer that
@@ -84,7 +84,7 @@ All must pass before reporting a change as complete.
 - `autarky.cpp`, `backward.cpp`, `extend.cpp`, `minimize.cpp`,
   `unate_def.cpp` — independent-set extraction passes.
 - `metasolver.h`, `metasolver2.h`, `cachedsolver.h` — SAT-solver wrappers
-  used by Manthan.
+  used by cegr.
 - `test_aig_rewrite.cpp`, `test_aig_to_cnf.cpp`, `test-synth.cpp` —
   correctness checkers.
 - `aig_fuzzer.cpp`, `aig_to_cnf_fuzzer.cpp` — fuzzers.
@@ -101,7 +101,7 @@ For AIG nodes, order/hash on `AIG::nid` via the `aig_nid_less` comparator
 
 When `--debugsynth` is passed, intermediate AIGs are written next to the
 input CNF with suffixes `-simplified_cnf.aig`, `-autarky.aig`,
-`-minim_idep_synt.aig`, `-manthan.aig`, `-final.aig`. `test-synth` verifies
+`-minim_idep_synt.aig`, `-cegr.aig`, `-final.aig`. `test-synth` verifies
 each stage's AIG against the original CNF and is invoked automatically by
 `fuzz_synth.py`.
 

@@ -35,7 +35,7 @@ using CMSat::Lit;
 namespace ArjunInt {
 
 BruteForceSynth::BruteForceSynth(const ArjunInt::Config& _conf,
-                           const ArjunNS::Arjun::ManthanConf& _mconf,
+                           const ArjunNS::Arjun::CegrConf& _mconf,
                            const ArjunNS::Arjun::InterpConf& _iconf,
                            ArjunNS::SimplifiedCNF&& _cnf)
     : conf(_conf), mconf(_mconf), iconf(_iconf), cnf(std::move(_cnf))
@@ -200,11 +200,11 @@ SimplifiedCNF BruteForceSynth::do_synth() {
 
     maybe_minimize_enum_set();
 
-    // Decline (don't abort) above the threshold: caller falls back to Manthan.
+    // Decline (don't abort) above the threshold: caller falls back to Cegr.
     if (orig_sampl_cnf.size() > mconf.brute_force_synth_threshold) {
         verb_print(1, "[brute_force_synth] enum set " << orig_sampl_cnf.size()
             << " > threshold " << mconf.brute_force_synth_threshold
-            << "; declining — Manthan will synthesize");
+            << "; declining — Cegr will synthesize");
         return std::move(cnf);
     }
 

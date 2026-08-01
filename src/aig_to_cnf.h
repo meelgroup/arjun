@@ -93,7 +93,7 @@ private:
     bool detect_ite = true;
     bool detect_xor = true;
     bool use_cut_cnf = true;        // min-CNF encoding for k≤4-input cones
-    // Content-hashed CSE across AND / ITE groups. Off by default: on manthan
+    // Content-hashed CSE across AND / ITE groups. Off by default: on cegr
     // workloads its maintenance cost outweighs the CNF-size win, and the
     // deduped helpers can hurt SAT propagation. Opt in via set_group_cse(true).
     bool group_cse = false;
@@ -103,7 +103,7 @@ private:
     uint32_t max_kary_width = 1u << 30;
 
     // Max MUX-chain fusion depth. Bounds the longest emitted clause (level+3
-    // lits) so deep manthan ITE chains stay SAT-friendly while cutting helpers ~4×.
+    // lits) so deep cegr ITE chains stay SAT-friendly while cutting helpers ~4×.
     static constexpr uint32_t kMaxMuxChain = 8;
 
     // Fanout counted by node identity. Leaf nodes are never helpers and
@@ -808,7 +808,7 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
 
     // k-way MUX-chain fusion: while the else-branch is a consumable ITE-shaped
     // AND (fanout ≤ 1, uncached), fold it in. 1 helper + 2(k+1) clauses vs the
-    // k-1 helpers chained MUX3 spends (4× cut on manthan's deep chains). Capped
+    // k-1 helpers chained MUX3 spends (4× cut on cegr's deep chains). Capped
     // at kMaxMuxChain to keep the longest clause (level+3) SAT-friendly.
     {
         std::vector<std::pair<CMSat::Lit, aig_lit>> levels;  // (selector, then)

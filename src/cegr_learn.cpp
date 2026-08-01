@@ -22,7 +22,7 @@
  THE SOFTWARE.
  */
 
-#include "manthan_learn.h"
+#include "cegr_learn.h"
 #include "constants.h"
 #include <iomanip>
 #include <algorithm>
@@ -38,9 +38,9 @@ using namespace ArjunInt;
 using namespace ArjunNS;
 using namespace CMSat;
 
-void ManthanLearn::full_train() {
+void CegrLearn::full_train() {
     // Sampling
-    verb_print(1, "[manthan] Starting training. Manthan Config. "
+    verb_print(1, "[cegr] Starting training. Cegr Config. "
         << "do_filter_samples=" << mconf.filter_samples
         << ", samples=" << mconf.samples
         << ", minimumLeafSize=" << mconf.min_leaf_size
@@ -49,7 +49,7 @@ void ManthanLearn::full_train() {
     double samp_start_time = cpuTime();
     vector<sample> samples = get_cmsgen_samples(mconf.samples);
     m.stats.sampl_time = cpuTime() - samp_start_time;
-    verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
+    verb_print(1, COLYEL "[cegr] Got " << setw(8) << samples.size() << " samples."
         << " samp/var: " << setw(8) << setprecision(2) << std::fixed << m.stats.sampl_time/(double)m.to_define.size()
         << " T: " << setprecision(2) << std::fixed << m.stats.sampl_time);
     m.sort_all_samples(samples);
@@ -61,7 +61,7 @@ void ManthanLearn::full_train() {
         train(samples, v);
     }
     m.stats.train_time = cpuTime() - train_start_time;
-    verb_print(1, COLYEL "[manthan] Training done."
+    verb_print(1, COLYEL "[cegr] Training done."
             << " funs: " << setw(6) << m.to_define.size()
             << " fun/s: " << setw(6) << setprecision(2) << std::fixed << safe_div(m.to_define.size(), cpuTime() - train_start_time)
             << " T: " << setw(6) << setprecision(2) << std::fixed << m.stats.train_time
@@ -69,7 +69,7 @@ void ManthanLearn::full_train() {
     assert(m.check_map_dependency_cycles());
 }
 
-double ManthanLearn::train(const vector<sample>& orig_samples, const uint32_t v) {
+double CegrLearn::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
 
     vector<uint32_t> used_vars(m.input.begin(), m.input.end());
@@ -108,7 +108,7 @@ double ManthanLearn::train(const vector<sample>& orig_samples, const uint32_t v)
             << setw(6) << (samples.size() - num_ones) << " zeros");
     double train_error;
     if (samples.empty()) {
-        m.var_to_formula[v] = m.fh->constant_formula(!mconf.inv_learnt);
+        m.var_to_formula[v] = m.fh->constant_formula(!mconf.inv_guess);
         train_error = 0.0;
     } else {
         // Create the RandomForest object and train it on the training data.
@@ -128,7 +128,7 @@ double ManthanLearn::train(const vector<sample>& orig_samples, const uint32_t v)
         uint32_t max_depth = 0;
         m.var_to_formula[v] = recur(&r, v, used_vars, 0, max_depth);
         SLOW_DEBUG_DO(verify_aig_error_rate(samples, v, train_error));
-        if (mconf.inv_learnt)
+        if (mconf.inv_guess)
             m.var_to_formula[v] = m.fh->neg(m.var_to_formula[v]);
         verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%."
                 << " depth: " << setw(6) << max_depth
@@ -154,7 +154,7 @@ double ManthanLearn::train(const vector<sample>& orig_samples, const uint32_t v)
     return train_error;
 }
 
-void ManthanLearn::verify_aig_error_rate(
+void CegrLearn::verify_aig_error_rate(
         const vector<const sample*>& samples, const uint32_t v, const double train_error) {
     const auto& aig = m.var_to_formula.at(v).aig;
 
@@ -183,7 +183,7 @@ void ManthanLearn::verify_aig_error_rate(
     assert(std::abs(aig_error - train_error) <= 0.01);
 }
 
-FHolder<MetaSolver>::Formula ManthanLearn::recur(mlpack::tree::DecisionTree<>* node,
+FHolder<MetaSolver>::Formula CegrLearn::recur(mlpack::tree::DecisionTree<>* node,
         const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {
     max_depth = std::max(max_depth, depth);
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
@@ -228,9 +228,9 @@ FHolder<MetaSolver>::Formula ManthanLearn::recur(mlpack::tree::DecisionTree<>* n
     assert(false);
 }
 
-vector<sample> ManthanLearn::get_cmsgen_samples(uint32_t num) {
+vector<sample> CegrLearn::get_cmsgen_samples(uint32_t num) {
     // Sampling costs one SAT solve each; halve it on large to-define sets.
-    verb_print(1, "[manthan] Getting " << num << " CMSGen samples...");
+    verb_print(1, "[cegr] Getting " << num << " CMSGen samples...");
 
     const double my_time = cpuTime();
     SATSolver solver_samp;
@@ -245,7 +245,7 @@ vector<sample> ManthanLearn::get_cmsgen_samples(uint32_t num) {
         assert(solver_samp.get_model().size() == m.cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
-    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples."
+    verb_print(1, "[cegr] CMSGen got " << samples.size() << " samples."
             << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }

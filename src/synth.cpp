@@ -37,7 +37,7 @@ using std::cout;
 using std::endl;
 
 namespace {
-using MC = ArjunNS::Arjun::ManthanConf;
+using MC = ArjunNS::Arjun::CegrConf;
 
 template<typename T> T parse_val(const string& s) {
     T v{}; std::from_chars(s.data(), s.data() + s.size(), v); return v;
@@ -73,10 +73,10 @@ const std::map<string, ParamDef> param_table = {
     {"ctx_solver_type",          {PT::Int,    [](MC& c, const string& v) { c.ctx_solver_type          = parse_val<int>(v); }}},
     {"repair_solver_type",       {PT::Int,    [](MC& c, const string& v) { c.repair_solver_type       = parse_val<int>(v); }}},
     {"repair_cache_size",        {PT::Int,    [](MC& c, const string& v) { c.repair_cache_size        = parse_val<int>(v); }}},
-    {"manthan_order",            {PT::Int,    [](MC& c, const string& v) { c.manthan_order            = parse_val<int>(v); }}},
+    {"cegr_order",            {PT::Int,    [](MC& c, const string& v) { c.cegr_order            = parse_val<int>(v); }}},
     {"one_repair_per_loop",      {PT::Int,    [](MC& c, const string& v) { c.one_repair_per_loop      = parse_val<int>(v); }}},
     {"force_bw_equal",           {PT::Int,    [](MC& c, const string& v) { c.force_bw_equal           = parse_val<int>(v); }}},
-    {"inv_learnt",               {PT::Int,    [](MC& c, const string& v) { c.inv_learnt               = parse_val<int>(v); }}},
+    {"inv_guess",                {PT::Int,    [](MC& c, const string& v) { c.inv_guess               = parse_val<int>(v); }}},
     {"stats_every",              {PT::UInt,   [](MC& c, const string& v) { c.stats_every              = parse_val<uint32_t>(v); }}},
     {"detailed_stats_every",     {PT::UInt,   [](MC& c, const string& v) { c.detailed_stats_every     = parse_val<uint32_t>(v); }}},
     {"conflict_drop_y_max",      {PT::UInt,   [](MC& c, const string& v) { c.conflict_drop_y_max      = parse_val<uint32_t>(v); }}},
@@ -215,7 +215,7 @@ vector<SynthStrategy> SynthRunner::parse_mstrategy(const string& s) {
     return strategies;
 }
 
-ArjunNS::Arjun::ManthanConf SynthRunner::apply_strategy(const ArjunNS::Arjun::ManthanConf& base,
+ArjunNS::Arjun::CegrConf SynthRunner::apply_strategy(const ArjunNS::Arjun::CegrConf& base,
         const SynthStrategy& strat) {
     auto mconf = base;
     if (strat.type == "learn") {
@@ -223,11 +223,11 @@ ArjunNS::Arjun::ManthanConf SynthRunner::apply_strategy(const ArjunNS::Arjun::Ma
         cout << "ERROR: strategy type 'learn' is only supported in EXTRA_SYNTH mode!" << endl;
         exit(EXIT_FAILURE);
 #endif
-        mconf.manthan_base = 0;
+        mconf.cegr_base = 0;
     } else if (strat.type == "const") {
-        mconf.manthan_base = 1;
+        mconf.cegr_base = 1;
     } else if (strat.type == "bve") {
-        mconf.manthan_base = 2;
+        mconf.cegr_base = 2;
     } else {
         cout << "ERROR: unknown strategy type '" << strat.type << "'" << endl;
         exit(EXIT_FAILURE);
@@ -238,9 +238,9 @@ ArjunNS::Arjun::ManthanConf SynthRunner::apply_strategy(const ArjunNS::Arjun::Ma
     return mconf;
 }
 
-void SynthRunner::run_manthan_strategies(
+void SynthRunner::run_cegr_strategies(
         ArjunNS::SimplifiedCNF& cnf,
-        const ArjunNS::Arjun::ManthanConf& mconf_orig,
+        const ArjunNS::Arjun::CegrConf& mconf_orig,
         const vector<SynthStrategy>& strategies)
 {
     if (strategies.empty()) {
@@ -279,12 +279,12 @@ void SynthRunner::run_manthan_strategies(
                     << " (previous strategy hit limit without finishing)");
         }
 
-        verb_print(1, "Running Manthan strategy " << i+1 << "/" << strategies.size()
+        verb_print(1, "Running Cegr strategy " << i+1 << "/" << strategies.size()
             << " -- " << strat.raw << " with max_repairs="
             << (mconf.max_repairs == std::numeric_limits<int32_t>::max() ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
-        cnf = arjun->standalone_manthan(std::move(cnf), mconf);
+        cnf = arjun->standalone_cegr(std::move(cnf), mconf);
         if (cnf.synth_done()) {
-            verb_print(1,"Manthan finished with strategy " << i+1 << "/" << strategies.size()
+            verb_print(1,"Cegr finished with strategy " << i+1 << "/" << strategies.size()
                     << " -- " << strat.raw);
             break;
         }

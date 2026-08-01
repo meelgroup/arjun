@@ -21,7 +21,7 @@
  THE SOFTWARE.
  */
 
-#include "manthan.h"
+#include "cegr.h"
 #include "aig_to_cnf.h"
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
@@ -56,7 +56,7 @@
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <armadillo>
 #include "EvalMaxSAT.h"
-#include "manthan_learn.h"
+#include "cegr_learn.h"
 #endif
 
 using std::min;
@@ -85,20 +85,20 @@ using namespace CMSat;
 // interesting, does not finish, but fast: benchmarks-qdimacs/query48_exquery_1344n.qdimacs.cnf
 
 template<typename S>
-void Manthan::inject_cnf(S& s) const {
+void Cegr::inject_cnf(S& s) const {
     s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-string Manthan::pr(const lbool val) const {
+string Cegr::pr(const lbool val) const {
     if (val == l_True) return "1";
     if (val == l_False) return "0";
     release_assert(false && "pr() called with l_Undef");
     return "?"; // unreachable, silences compiler warning
 }
 
-void Manthan::rebuild_var_bytemaps() {
+void Cegr::rebuild_var_bytemaps() {
     const uint32_t nv = cnf.nVars();
     is_input.assign(nv, 0);
     is_backward_defined.assign(nv, 0);
@@ -106,7 +106,7 @@ void Manthan::rebuild_var_bytemaps() {
     for (const auto& v : backward_defined) is_backward_defined[v] = 1;
 }
 
-void Manthan::fill_dependency_mat_with_backward() {
+void Cegr::fill_dependency_mat_with_backward() {
     dependency_mat.clear();
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
@@ -129,7 +129,7 @@ void Manthan::fill_dependency_mat_with_backward() {
     assert(check_map_dependency_cycles());
 }
 
-bool Manthan::check_transitive_closure_correctness() const {
+bool Cegr::check_transitive_closure_correctness() const {
     // If A depends on B and B depends on C, then A must already depend on C.
     verb_print(3, "[fill-dep] Checking transitive closure");
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -152,7 +152,7 @@ bool Manthan::check_transitive_closure_correctness() const {
     return true;
 }
 
-void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
+void Cegr::fill_var_to_formula_with(set<uint32_t>& vars) {
     const auto new_to_orig = cnf.get_new_to_orig_var();
 
     // Routes AIGToCNF clauses into the per-formula clause list while allocating
@@ -202,7 +202,7 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
 
 // This adds (and re-numbers) the deep-copied AIGs to a fresh copy of the CNF, then checks if the CNF
 // has any AIG cycles
-bool Manthan::check_aig_dependency_cycles() const {
+bool Cegr::check_aig_dependency_cycles() const {
     // Deep-copy together in one go (preserves cycles, doesn't mutate originals).
     vector<aig_lit> aigs(cnf.nVars(), nullptr);
     for(const auto& y: to_define) {
@@ -217,7 +217,7 @@ bool Manthan::check_aig_dependency_cycles() const {
     return true;
 }
 
-void Manthan::print_y_order_occur() const {
+void Cegr::print_y_order_occur() const {
     vector<uint32_t> occur_lit(cnf.nVars()*2, 0);
     for(const auto& cl: cnf.get_clauses()) {
         for(const auto& l: cl) occur_lit[l.toInt()]++;
@@ -225,14 +225,14 @@ void Manthan::print_y_order_occur() const {
     for(const auto& y: y_order) {
         const uint32_t pos = occur_lit[Lit(y, false).toInt()];
         const uint32_t neg = occur_lit[Lit(y, true).toInt()];
-        verb_print(2, "[manthan] y-order var " << setw(4) << y+1
+        verb_print(2, "[cegr] y-order var " << setw(4) << y+1
             << " BW: " << backward_defined.count(y)
             << "   pos occur " << setw(6) << pos
             << "   --  neg occur " << setw(6) << neg);
     }
 }
 
-void Manthan::print_cnf_debug_info(const sample& ctx) const {
+void Cegr::print_cnf_debug_info(const sample& ctx) const {
     if (conf.verb >= 3) {
         for(const auto& y: to_define_full) {
             const auto y_hat = y_to_y_hat.at(y);
@@ -247,9 +247,9 @@ void Manthan::print_cnf_debug_info(const sample& ctx) const {
     }
 }
 
-void Manthan::print_needs_repair_vars() const {
+void Cegr::print_needs_repair_vars() const {
     if (conf.verb >= 2) {
-        cout << "c o [manthan] needs repair vars: ";
+        cout << "c o [cegr] needs repair vars: ";
         for(const auto& y: y_order) {
             if (needs_repair.count(y) == 0) continue;
             cout << y+1 << (backward_defined.count(y) ? "[BW]" : "") << " ";
@@ -259,7 +259,7 @@ void Manthan::print_needs_repair_vars() const {
 }
 
 // debug
-bool Manthan::ctx_is_sat(const sample& ctx) const {
+bool Cegr::ctx_is_sat(const sample& ctx) const {
     assert(ctx.size() > cnf.nVars());
     for(const auto& val: ctx) assert(val != l_Undef);
 
@@ -276,7 +276,7 @@ bool Manthan::ctx_is_sat(const sample& ctx) const {
 }
 
 // debug
-bool Manthan::ctx_y_hat_correct(const sample& ctx) const {
+bool Cegr::ctx_y_hat_correct(const sample& ctx) const {
     SATSolver s;
     while (s.nVars() < cex_solver.nVars()) s.new_var();
 
@@ -336,7 +336,7 @@ bool Manthan::ctx_y_hat_correct(const sample& ctx) const {
     return true;
 }
 
-bool Manthan::check_functions_for_y_vars() const {
+bool Cegr::check_functions_for_y_vars() const {
     verb_print(4, "[check] START nVars=" << cex_solver.nVars() << " helpers.size=" << helpers.size());
     for(const auto& cl: shared_helper_cls) {
         for(const auto& l: cl) {
@@ -377,7 +377,7 @@ bool Manthan::check_functions_for_y_vars() const {
 
 // SLOW_DEBUG: fresh SAT miter from .clauses+.out (cex_solver's encoding minus
 // indicator gating). UNSAT = correct; SAT = encoding bug cex_solver missed.
-bool Manthan::check_synth_via_clauses(const string& where) const {
+bool Cegr::check_synth_via_clauses(const string& where) const {
     SATSolver s;
     while (s.nVars() < cex_solver.nVars()) s.new_var();
     s.add_clause({fh->get_true_lit()});
@@ -462,11 +462,11 @@ bool Manthan::check_synth_via_clauses(const string& where) const {
 // SLOW_DEBUG: same miter as check_synth_via_clauses, but encoded from .aig
 // (what becomes cnf.defs[y]). Disagreement with the .clauses check pinpoints
 // an AIG-vs-CNF rep divergence; failure here alone suggests a leaf-sub issue.
-bool Manthan::check_synth_via_aig(const string& where) const {
+bool Cegr::check_synth_via_aig(const string& where) const {
     SATSolver s;
     while (s.nVars() < cnf.nVars()) s.new_var();
 
-    // Shadow y_hat vars (distinct from Manthan's to avoid any interference).
+    // Shadow y_hat vars (distinct from Cegr's to avoid any interference).
     map<uint32_t, Lit> shadow_y_hat;
     for (uint32_t y : to_define_full) {
         s.new_var();
@@ -482,7 +482,7 @@ bool Manthan::check_synth_via_aig(const string& where) const {
     for (const auto& c : cnf.get_clauses()) s.add_clause(c);
 
     // Tseitin-encode each .aig onto shadow_y_hats. Leaves: to_define_full ->
-    // shadow_y_hat[v]; Manthan-internal y_hat leaf -> shadow via y_hat_to_y;
+    // shadow_y_hat[v]; Cegr-internal y_hat leaf -> shadow via y_hat_to_y;
     // else raw.
     std::unordered_map<const AIG*, Lit> cache;
     std::function<Lit(const aig_lit&)> enc_edge = [&](const aig_lit& n) -> Lit {
@@ -494,7 +494,7 @@ bool Manthan::check_synth_via_aig(const string& where) const {
             if (to_define_full.count(v)) {
                 base = shadow_y_hat.at(v);
             } else if (y_hat_to_y.count(v)) {
-                // Manthan y_hat leaf. Inputs map to themselves, so reaching
+                // Cegr y_hat leaf. Inputs map to themselves, so reaching
                 // here means backward_defined -> use shadow.
                 uint32_t y = y_hat_to_y.at(v).var();
                 if (to_define_full.count(y)) base = shadow_y_hat.at(y);
@@ -574,7 +574,7 @@ bool Manthan::check_synth_via_aig(const string& where) const {
 
 // SLOW_DEBUG: per-y pairwise miter proving f.aig == f.out under f.clauses.
 // Fires on the exact y whose AIG and CNF reps diverge.
-bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
+bool Cegr::check_aig_matches_clauses_per_formula(const string& where) const {
     for (const auto& y : to_define_full) {
         auto it = var_to_formula.find(y);
         if (it == var_to_formula.end()) continue;
@@ -728,7 +728,7 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
 
 // Prefer FALSE, i.e. it should be false unless we have evidence otherwise
 // Hence, we only care about clauses where v appears positively
-void Manthan::bve_and_substitute() {
+void Cegr::bve_and_substitute() {
     const double start_time = cpuTime();
     map<Lit, aig_lit> lit_to_aig;
 
@@ -766,7 +766,7 @@ void Manthan::bve_and_substitute() {
                 }
             }
         }
-        verb_print(2, "[manthan] bve var " << setw(5) << y+1
+        verb_print(2, "[cegr] bve var " << setw(5) << y+1
             << " pos occur: " << setw(6) << num_pos
             << " neg occur: " << setw(6) << num_neg);
 
@@ -813,7 +813,7 @@ void Manthan::bve_and_substitute() {
     rw.rewrite_all(aigs, conf.verb);
     encode_aigs_to_formulas(aigs, start_time);
 
-    verb_print(1, COLYEL "[manthan] BVE and substitute done."
+    verb_print(1, COLYEL "[cegr] BVE and substitute done."
         << " funs: " << setw(6) << to_define.size()
         << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(to_define.size(),(cpuTime()-start_time))
         << " T: " << setw(5) << (cpuTime()-start_time)
@@ -822,7 +822,7 @@ void Manthan::bve_and_substitute() {
 
 // Encode per-y AIGs (one per to_define var, y_order sequence, orig var space)
 // into var_to_formula.
-void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double start_time) {
+void Cegr::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double start_time) {
     assert(aigs.size() == to_define.size());
 
     // One AIGToCNF encoder per formula. A shared encoder is unsound: cached
@@ -870,7 +870,7 @@ void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double 
 
         num_done++;
         if (num_done % 50 == 0 && num_done > 0) {
-            verb_print(1, "[manthan] done encoding AIGs"
+            verb_print(1, "[cegr] done encoding AIGs"
                 << " funs: " << setw(6) << num_done
                 << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
                 << " T: " << setw(5) << (cpuTime()-start_time)
@@ -883,8 +883,8 @@ void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double 
 }
 
 // Seed var_to_formula from the previous round's AIGs: compact, refill
-// dependency_mat, re-Tseitin. Replaces the manthan_base init.
-void Manthan::init_from_guess() {
+// dependency_mat, re-Tseitin. Replaces the cegr_base init.
+void Cegr::init_from_guess() {
     const double start_time = cpuTime();
     assert(!guess.empty());
 
@@ -901,7 +901,7 @@ void Manthan::init_from_guess() {
     AIGRewriter rw;
     rw.rewrite_all(aigs, conf.verb);
     const size_t nodes_after = AIG::count_aig_nodes_fast(aigs);
-    verb_print(1, COLYEL "[manthan-restart] guess AIGs compacted: "
+    verb_print(1, COLYEL "[cegr-restart] guess AIGs compacted: "
         << nodes_before << " -> " << nodes_after << " nodes ("
         << fixed << setprecision(1)
         << (nodes_before ? 100.0 * ((double)nodes_before - (double)nodes_after) / (double)nodes_before : 0.0)
@@ -927,7 +927,7 @@ void Manthan::init_from_guess() {
     assert(check_aig_dependency_cycles());
 
     guess.clear();
-    verb_print(1, COLYEL "[manthan-restart] guess encoded (shared)."
+    verb_print(1, COLYEL "[cegr-restart] guess encoded (shared)."
         << " funs: " << setw(6) << to_define.size()
         << " shared cls: " << shared_helper_cls.size()
         << " T: " << setw(5) << fixed << setprecision(2) << (cpuTime()-start_time)
@@ -938,7 +938,7 @@ void Manthan::init_from_guess() {
 // shared. Needs (1) one transform cache across all roots for the y->y_hat leaf
 // translation; (2) helper defs in shared_helper_cls (inserted once), not in
 // any formula's .clauses which a repair may drop.
-void Manthan::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
+void Cegr::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
     assert(aigs.size() == to_define.size());
     vector<aig_lit> aig_yhats;
     aig_yhats.reserve(aigs.size());
@@ -989,7 +989,7 @@ void Manthan::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
 
 // AIG snapshot of every to_define formula (orig var space); feeds the next
 // round's guess.
-std::map<uint32_t, aig_lit> Manthan::export_formula_aigs() const {
+std::map<uint32_t, aig_lit> Cegr::export_formula_aigs() const {
     std::map<uint32_t, aig_lit> ret;
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
@@ -999,9 +999,9 @@ std::map<uint32_t, aig_lit> Manthan::export_formula_aigs() const {
     return ret;
 }
 
-void ManthanStats::print_stats(const string& txt, const string& color, const string& extra) const {
+void CegrStats::print_stats(const string& txt, const string& color, const string& extra) const {
     const double repair_time = cpuTime() - repair_start_time;
-    col_print(color << "[manthan]" << txt
+    col_print(color << "[cegr]" << txt
             << " rep: " << setw(6) << tot_repaired
             << "   loops: "<< setw(6) << num_loops_repair
             << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
@@ -1013,16 +1013,16 @@ void ManthanStats::print_stats(const string& txt, const string& color, const str
             << extra);
 }
 
-void Manthan::print_detailed_stats(const ManthanStats& stats) const {
-    verb_print(1, COLCYN "[manthan-stats] === CONFLICT STATS ===");
-    verb_print(1, COLCYN "[manthan-stats]   input-only conflicts: " << stats.input_only_conflict_count
+void Cegr::print_detailed_stats(const CegrStats& stats) const {
+    verb_print(1, COLCYN "[cegr-stats] === CONFLICT STATS ===");
+    verb_print(1, COLCYN "[cegr-stats]   input-only conflicts: " << stats.input_only_conflict_count
         << "  avg sz: " << fixed << setprecision(1) << safe_div(stats.input_only_conflict_sizes_sum, stats.input_only_conflict_count));
-    verb_print(1, COLCYN "[manthan-stats]   full conflicts:       " << stats.full_conflict_count
+    verb_print(1, COLCYN "[cegr-stats]   full conflicts:       " << stats.full_conflict_count
         << "  avg sz: " << fixed << setprecision(1) << safe_div(stats.full_conflict_sizes_sum, stats.full_conflict_count));
-    verb_print(1, COLCYN "[manthan-stats]   cost-zero repairs:    " << stats.cost_zero_repairs);
-    verb_print(1, COLCYN "[manthan-stats]   repair_failed:        " << stats.repair_failed);
-    verb_print(1, COLCYN "[manthan-stats]   cex_solver calls:     " << stats.cex_solver_calls);
-    verb_print(1, COLCYN "[manthan-stats]   repair_solver calls:  " << stats.repair_solver_calls);
+    verb_print(1, COLCYN "[cegr-stats]   cost-zero repairs:    " << stats.cost_zero_repairs);
+    verb_print(1, COLCYN "[cegr-stats]   repair_failed:        " << stats.repair_failed);
+    verb_print(1, COLCYN "[cegr-stats]   cex_solver calls:     " << stats.cex_solver_calls);
+    verb_print(1, COLCYN "[cegr-stats]   repair_solver calls:  " << stats.repair_solver_calls);
     // Repair recurrence: a single var repaired hundreds/thousands of
     // times means the repairs of that var are not generalising at all.
     {
@@ -1034,7 +1034,7 @@ void Manthan::print_detailed_stats(const ManthanStats& stats) const {
             if (r > 100) vars_over_100++;
             if (r > 1000) vars_over_1000++;
         }
-        verb_print(1, COLCYN "[manthan-stats]   repair recurrence:    max "
+        verb_print(1, COLCYN "[cegr-stats]   repair recurrence:    max "
             << max_rep << " on var " << max_rep_var+1
             << "  (vars >100x: " << vars_over_100
             << ", >1000x: " << vars_over_1000 << ")");
@@ -1053,7 +1053,7 @@ void Manthan::print_detailed_stats(const ManthanStats& stats) const {
         if (sa != sb) return sa > sb;
         return repaired_vars_count[a] > repaired_vars_count[b];
     });
-    verb_print(1, COLCYN "[manthan-stats] === TOP SUCCESSFULLY REPAIRED VARS ===");
+    verb_print(1, COLCYN "[cegr-stats] === TOP SUCCESSFULLY REPAIRED VARS ===");
     for(size_t i = 0; i < min((size_t)20, (size_t)rep.size()); i++) {
         const auto& v = rep[i];
         if (n_succ_of(v) == 0) break;
@@ -1101,8 +1101,8 @@ void Manthan::print_detailed_stats(const ManthanStats& stats) const {
     verb_print(1, COLCYN "[m-stats]   c   : # repairs that succeeded via the conflict-clause branch");
     verb_print(1, COLCYN "[m-stats]   z   : # cost-zero outcomes: solver found the bug is fixable by flipping later y-vars instead; y_rep needs no repair, so no repair is performed");
     verb_print(1, COLCYN "[m-stats]   acl : avg #literals in the conflict clause, over the 'c' successes only ('-' if c=0)");
-    verb_print(1, COLCYN "[m-stats]   cl  : #clauses currently in this var's Manthan formula (var_to_formula[v].clauses)");
-    verb_print(1, COLCYN "[m-stats]   an  : #AIG nodes in this var's current Manthan formula");
+    verb_print(1, COLCYN "[m-stats]   cl  : #clauses currently in this var's Cegr formula (var_to_formula[v].clauses)");
+    verb_print(1, COLCYN "[m-stats]   an  : #AIG nodes in this var's current Cegr formula");
     verb_print(1, COLCYN "[m-stats]   ad  : longest AND-gate path from the formula's AIG root");
     verb_print(1, COLCYN "[m-stats]   cf  : total appearances of this var (any polarity) across all repair-conflict clauses ever seen (per literal, per clause)");
 
@@ -1121,71 +1121,71 @@ void Manthan::print_detailed_stats(const ManthanStats& stats) const {
         }
         total_aig_nodes = union_count;
     }
-    verb_print(1, COLCYN "[manthan-stats] === AIG STATS ===");
-    verb_print(1, COLCYN "[manthan-stats]   total unique AIG nodes: " << total_aig_nodes);
-    verb_print(1, COLCYN "[manthan-stats]   max AIG nodes (single var): " << max_aig_nodes);
-    verb_print(1, COLCYN "[manthan-stats]   total formula clauses: " << total_clauses
+    verb_print(1, COLCYN "[cegr-stats] === AIG STATS ===");
+    verb_print(1, COLCYN "[cegr-stats]   total unique AIG nodes: " << total_aig_nodes);
+    verb_print(1, COLCYN "[cegr-stats]   max AIG nodes (single var): " << max_aig_nodes);
+    verb_print(1, COLCYN "[cegr-stats]   total formula clauses: " << total_clauses
         << " (+ " << shared_helper_cls.size() << " shared helper cls)");
-    verb_print(1, COLCYN "[manthan-stats]   cex_solver nVars: " << cex_solver.nVars());
+    verb_print(1, COLCYN "[cegr-stats]   cex_solver nVars: " << cex_solver.nVars());
 
     const double loop_t = cpuTime() - stats.repair_start_time;
     const double accounted = t_cex_solve + t_better_ctx + t_find_conflict
         + t_perform_repair + t_inject + recompute.t_total;
-    verb_print(1, COLCYN "[manthan-stats] === TIME BREAKDOWN (cpu s) ===" << fixed << setprecision(2));
-    verb_print(1, COLCYN "[manthan-stats]   cex_solver solve:     " << setw(8) << t_cex_solve
+    verb_print(1, COLCYN "[cegr-stats] === TIME BREAKDOWN (cpu s) ===" << fixed << setprecision(2));
+    verb_print(1, COLCYN "[cegr-stats]   cex_solver solve:     " << setw(8) << t_cex_solve
         << "  (" << setw(4) << setprecision(1) << safe_div(t_cex_solve*100.0, loop_t) << "%)" << setprecision(2));
-    verb_print(1, COLCYN "[manthan-stats]   better_ctx:           " << setw(8) << t_better_ctx
+    verb_print(1, COLCYN "[cegr-stats]   better_ctx:           " << setw(8) << t_better_ctx
         << "  (" << setw(4) << setprecision(1) << safe_div(t_better_ctx*100.0, loop_t) << "%)" << setprecision(2));
-    verb_print(1, COLCYN "[manthan-stats]   find_conflict+minim:  " << setw(8) << t_find_conflict
+    verb_print(1, COLCYN "[cegr-stats]   find_conflict+minim:  " << setw(8) << t_find_conflict
         << "  (" << setw(4) << setprecision(1) << safe_div(t_find_conflict*100.0, loop_t) << "%)" << setprecision(2));
-    verb_print(1, COLCYN "[manthan-stats]   perform_repair:       " << setw(8) << t_perform_repair
+    verb_print(1, COLCYN "[cegr-stats]   perform_repair:       " << setw(8) << t_perform_repair
         << "  (" << setw(4) << setprecision(1) << safe_div(t_perform_repair*100.0, loop_t) << "%)" << setprecision(2));
-    verb_print(1, COLCYN "[manthan-stats]   inject_formulas:      " << setw(8) << t_inject
+    verb_print(1, COLCYN "[cegr-stats]   inject_formulas:      " << setw(8) << t_inject
         << "  (" << setw(4) << setprecision(1) << safe_div(t_inject*100.0, loop_t) << "%)" << setprecision(2));
-    verb_print(1, COLCYN "[manthan-stats]   recompute_y_hat:      " << setw(8) << recompute.t_total
+    verb_print(1, COLCYN "[cegr-stats]   recompute_y_hat:      " << setw(8) << recompute.t_total
         << "  (" << setw(4) << setprecision(1) << safe_div(recompute.t_total*100.0, loop_t) << "%)" << setprecision(2));
-    verb_print(1, COLCYN "[manthan-stats]   accounted/loop total: " << setw(8) << accounted
+    verb_print(1, COLCYN "[cegr-stats]   accounted/loop total: " << setw(8) << accounted
         << " / " << loop_t);
 }
 
-void Manthan::const_functions() {
+void Cegr::const_functions() {
     // Initial constant per to_define var: the more frequent CNF literal polarity.
     vector<uint32_t> pos(cnf.nVars(), 0), neg(cnf.nVars(), 0);
     for (const auto& cl : cnf.get_clauses())
         for (const auto& l : cl) (l.sign() ? neg : pos)[l.var()]++;
-    for(const auto& y: Manthan::y_order) {
+    for(const auto& y: Cegr::y_order) {
         if (!to_define.count(y)) continue;
         assert(var_to_formula.count(y) == 0);
         bool val = pos[y] >= neg[y];
-        if (mconf.inv_learnt) val = !val;
-        verb_print(3, "[manthan] const function for var " << y+1 << " is " << val);
+        if (mconf.inv_guess) val = !val;
+        verb_print(3, "[cegr] const function for var " << y+1 << " is " << val);
         var_to_formula[y] = fh->constant_formula(val);
     }
 }
 
-void Manthan::print_cache_hit_rate() const {
+void Cegr::print_cache_hit_rate() const {
     verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
 }
 
-SimplifiedCNF Manthan::do_manthan() {
+SimplifiedCNF Cegr::do_cegr() {
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     const double my_time = cpuTime();
     const auto ret = cnf.find_disconnected();
-    verb_print(1, "[manthan] Found " << ret.size() << " components");
+    verb_print(1, "[cegr] Found " << ret.size() << " components");
     repaired_vars_count.resize(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
     conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
     conflict_branch_repairs_per_var.assign(cnf.nVars(), 0);
 
-    if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
+    if (!mconf.write_cegr_cnf.empty()) cnf.write_simpcnf(mconf.write_cegr_cnf);
 
     // CNF is divided into:
     // input vars -- original sampling vars
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
-    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_manthan").unpack_to(input, to_define, backward_defined);
+    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_cegr").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
-        verb_print(1, "[manthan] No variables to-define, returning original CNF");
+        verb_print(1, "[cegr] No variables to-define, returning original CNF");
         return cnf;
     }
     // Extend to_define_full to to_define + backward_defined
@@ -1204,12 +1204,12 @@ SimplifiedCNF Manthan::do_manthan() {
     }
     fh = std::make_unique<FHolder<MetaSolver>>(&cex_solver);
     create_vars_for_y_hats();
-    // Manthan only ever reads cex models up to the y_hats (created just
+    // Cegr only ever reads cex models up to the y_hats (created just
     // above); skip materializing the tens of thousands of helper vars.
     cex_solver.set_model_prefix(cex_solver.nVars());
     add_not_f_x_yhat();
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
-    verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
+    verb_print(2, "[cegr] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
 
     // Order & train
     pre_order_vars();
@@ -1218,17 +1218,17 @@ SimplifiedCNF Manthan::do_manthan() {
     if (!guess.empty()) {
         // Restart round: seed from the previous round's AIGs.
         init_from_guess();
-    } else if (mconf.manthan_base == 0) {
+    } else if (mconf.cegr_base == 0) {
 #ifdef EXTRA_SYNTH
-        ManthanLearn learn(*this, conf, mconf);
+        CegrLearn learn(*this, conf, mconf);
         learn.full_train();
 #else
-        cout << "ERROR: manthan_base is set to 0 but we are not in EXTRA_SYNTH mode!" << endl;
+        cout << "ERROR: cegr_base is set to 0 but we are not in EXTRA_SYNTH mode!" << endl;
         exit(EXIT_FAILURE);
 #endif
-    } else if (mconf.manthan_base == 1) {
+    } else if (mconf.cegr_base == 1) {
         const_functions();
-    } else if (mconf.manthan_base == 2) {
+    } else if (mconf.cegr_base == 2) {
         bve_and_substitute();
     }
     verb_print(4, "[trace] post bve_and_substitute nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
@@ -1315,7 +1315,7 @@ SimplifiedCNF Manthan::do_manthan() {
             SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
             SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
             compute_needs_repair(ctx);
-            verb_print(2, "[manthan] finding better ctx done, needs_repair size before vs now: "
+            verb_print(2, "[cegr] finding better ctx done, needs_repair size before vs now: "
                   << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
             print_needs_repair_vars();
         }
@@ -1341,7 +1341,7 @@ SimplifiedCNF Manthan::do_manthan() {
                 const uint32_t cz_threshold = (stats.cost_zero_repairs > stats.tot_repaired * mconf.cz_high_ratio) ? mconf.cz_threshold_high :
                     (stats.cost_zero_repairs > stats.tot_repaired * mconf.cz_low_ratio) ? mconf.cz_threshold_mid : mconf.cz_threshold_low;
                 if (consecutive_cost_zero >= cz_threshold && num_repaired > 0) {
-                    verb_print(2, "[manthan] Breaking repair loop after " << consecutive_cost_zero
+                    verb_print(2, "[cegr] Breaking repair loop after " << consecutive_cost_zero
                         << " consecutive cost-zero repairs (threshold " << cz_threshold
                         << ", cost-zero repairs " << stats.cost_zero_repairs
                         << ", tot repaired " << stats.tot_repaired << ")");
@@ -1357,9 +1357,9 @@ SimplifiedCNF Manthan::do_manthan() {
                     assert(false && "perform_repair introduced a diverging aig/clauses");
                 }
             });
-            verb_print(3, "[manthan] finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
+            verb_print(3, "[cegr] finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
         }
-        verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << stats.tot_repaired << " num_loops_repair: " << stats.num_loops_repair);
+        verb_print(2, "[cegr] Num repaired: " << num_repaired << " tot repaired: " << stats.tot_repaired << " num_loops_repair: " << stats.num_loops_repair);
 
         if (mconf.check_repair) check_repair_monotonic();
     }
@@ -1379,12 +1379,12 @@ SimplifiedCNF Manthan::do_manthan() {
     SimplifiedCNF fcnf = std::move(cnf);
     fcnf.map_aigs_to_orig(aigs, cnf_nvars, y_hat_to_y);
     assert(verify_final_cnf(fcnf));
-    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "end do_manthan");
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "end do_cegr");
     stats.print_stats("", COLYEL, " Round done");
     return fcnf;
 }
 
-bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
+bool Cegr::verify_final_cnf(const SimplifiedCNF& fcnf) const {
     assert(fcnf.check_aig_cycles());
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "verify_final_cnf");
     for(const auto& v: to_define2) {
@@ -1395,7 +1395,7 @@ bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
     return true;
 }
 
-uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
+uint32_t Cegr::find_next_repair_var(const sample& ctx) const {
     assert(!needs_repair.empty());
     uint32_t y_rep = std::numeric_limits<uint32_t>::max();
     for(const auto& y: y_order) {
@@ -1413,7 +1413,7 @@ uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
 
 // (l1 ∨..∨ ln ∨ to_repair) is valid under the CNF; add as redundant to speed
 // up the repair solver.
-void Manthan::add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx,
+void Cegr::add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx,
         const vector<Lit>& conflict) {
     if (conflict.empty()) return;
     const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
@@ -1424,7 +1424,7 @@ void Manthan::add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx
     repair_solver.add_red_clause(learned_cl);
 }
 
-bool Manthan::is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample& ctx) const {
+bool Cegr::is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample& ctx) const {
     SATSolver s;
     s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
@@ -1435,7 +1435,7 @@ bool Manthan::is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample
     return ret == l_False;
 }
 
-bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
+bool Cegr::repair(const uint32_t y_rep, sample& ctx) {
     verb_print(2, "[DEBUG] Starting repair for var " << y_rep+1
             << (backward_defined.count(y_rep) ? "[BW]" : ""));
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
@@ -1495,7 +1495,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 // by the AIG's raw pointer; a mismatch (formula rewritten) triggers recompute.
 // Uses the aig_dep_* scratch internally — callers needing the scratch bitmap
 // must repopulate it from the returned list afterwards.
-const std::vector<uint32_t>& Manthan::formula_dep_list(const uint32_t y) {
+const std::vector<uint32_t>& Cegr::formula_dep_list(const uint32_t y) {
     const auto& aig = var_to_formula.at(y).aig;
     assert(aig != nullptr);
     const ArjunNS::AIG* aig_raw = aig.get();
@@ -1515,7 +1515,7 @@ const std::vector<uint32_t>& Manthan::formula_dep_list(const uint32_t y) {
     return dep_cache.emplace(y, DepCacheEntry{aig_raw, aig_dep_list}).first->second.dep_list;
 }
 
-bool Manthan::compute_aig_dep_set(const uint32_t y_rep) {
+bool Cegr::compute_aig_dep_set(const uint32_t y_rep) {
     if (!mconf.minimize_conflict) {
         // Reset marks left by the previous call before reusing the scratch.
         for (const uint32_t prev_v : aig_dep_list) is_aig_dep[prev_v] = 0;
@@ -1533,7 +1533,7 @@ bool Manthan::compute_aig_dep_set(const uint32_t y_rep) {
     return !aig_dep_list.empty();
 }
 
-bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
+bool Cegr::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
         const Lit to_repair, const bool have_aig_deps,
         vector<Lit>& conflict, vector<Lit>& assumps) {
     vector<Lit> input_assumps;
@@ -1547,7 +1547,7 @@ bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
     if (input_ret == l_False) {
         conflict = repair_solver.get_conflict();
         if (std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end()) {
-            verb_print(2, "[manthan] Found INPUT-ONLY conflict sz " << conflict.size()
+            verb_print(2, "[cegr] Found INPUT-ONLY conflict sz " << conflict.size()
                 << " for y_rep=" << y_rep+1);
             stats.input_only_rep++;
             assumps = std::move(input_assumps);
@@ -1559,7 +1559,7 @@ bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
 
 // Cost-zero repair: y_rep is satisfiable without a formula change, so copy the
 // repair_solver model into ctx for y_rep and all later y-vars.
-void Manthan::apply_cost_zero_model(const uint32_t y_rep, sample& ctx) {
+void Cegr::apply_cost_zero_model(const uint32_t y_rep, sample& ctx) {
     bool found_yrep = false;
     const auto& model = repair_solver.get_model();
     for(const auto& y: y_order) {
@@ -1572,7 +1572,7 @@ void Manthan::apply_cost_zero_model(const uint32_t y_rep, sample& ctx) {
 // Solve over (dependent inputs + earlier y-vars + ~to_repair). Returns true
 // with `conflict` on UNSAT; false on a cost-zero repair (SAT, ctx updated). If
 // don't-care inputs were skipped and the reduced solve is SAT, retries with all.
-bool Manthan::solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
+bool Cegr::solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
         const Lit to_repair, const bool have_aig_deps,
         vector<Lit>& conflict, vector<Lit>& assumps,
         const double repair_solver_start_time) {
@@ -1587,7 +1587,7 @@ bool Manthan::solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
         }
         assumps.push_back(Lit(x, ctx[x] == l_False));
     }
-    verb_print(2, "[manthan] skipped " << skipped_inputs << " / " << input.size()
+    verb_print(2, "[cegr] skipped " << skipped_inputs << " / " << input.size()
             << " inputs for y_rep=" << y_rep+1);
 
     // Assume earlier (already-correct) y-variables; y_rep does not depend on them.
@@ -1642,7 +1642,7 @@ bool Manthan::solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
 
 // Drop ALL y-vars from the conflict; if the input-only remainder is still
 // UNSAT the repair generalises (independent of intermediate values).
-void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
+void Cegr::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
         const Lit to_repair) {
     bool has_y_vars = false;
     for (const auto& l : conflict) {
@@ -1660,7 +1660,7 @@ void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
     if (ret3 != l_False) return;
     auto conflict3 = repair_solver.get_conflict();
     if (std::find(conflict3.begin(), conflict3.end(), to_repair) == conflict3.end()) return;
-    verb_print(2, "[manthan] Dropped y-vars from conflict: "
+    verb_print(2, "[cegr] Dropped y-vars from conflict: "
         << conflict.size() << " -> " << conflict3.size());
     conflict = conflict3;
     stats.input_only_rep++;
@@ -1668,7 +1668,7 @@ void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
 
 // Minimize the conflict, then generalise it (drop y-vars) and strip the
 // to_repair literal so only the must-flip region's input/y literals remain.
-void Manthan::minimize_and_generalize_conflict(vector<Lit>& conflict,
+void Cegr::minimize_and_generalize_conflict(vector<Lit>& conflict,
         vector<Lit>& assumps, const Lit to_repair) {
     verb_print(2, "find_conflict sz: " << setw(5) << conflict.size() << " conflict: " << conflict);
     const uint32_t orig_size = conflict.size();
@@ -1685,14 +1685,14 @@ void Manthan::minimize_and_generalize_conflict(vector<Lit>& conflict,
     auto now_end = std::remove_if(conflict.begin(), conflict.end(),
                 [&](const Lit l){ return l == to_repair; });
     conflict.erase(now_end, conflict.end());
-    verb_print(2, "[manthan] minim. Removed: " << setw(3) << (orig_size - conflict.size())
+    verb_print(2, "[cegr] minim. Removed: " << setw(3) << (orig_size - conflict.size())
             << " from conflict, now size: " << setw(3) << conflict.size()
             << " repair cache size: " << setw(8) << repair_solver.cache_size()/1000 << "K"
             << " repair cache hit rate: " << setw(5) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
             << " T: " << setw(5) << setprecision(2) << cpuTime()-minimize_start_time);
 }
 
-bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
+bool Cegr::find_conflict(const uint32_t y_rep, sample& ctx,
         vector<Lit>& conflict) {
     const double repair_solver_start_time = cpuTime();
     const bool have_aig_deps = compute_aig_dep_set(y_rep);
@@ -1717,7 +1717,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
     return true;
 }
 
-void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit to_repair) {
+void Cegr::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit to_repair) {
     // Quick batch removal: keep to_repair + a shrinking prefix; if UNSAT we cut
     // the conflict in one SAT call instead of O(n) individual ones.
     if (conflict.size() > mconf.batch_minim_min) {
@@ -1735,7 +1735,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
             if (ret == l_False) {
                 auto conflict2 = repair_solver.get_conflict();
                 if (std::find(conflict2.begin(), conflict2.end(), to_repair) != conflict2.end()) {
-                    verb_print(3, "[manthan] batch minim: " << conflict.size() << " -> " << conflict2.size());
+                    verb_print(3, "[cegr] batch minim: " << conflict.size() << " -> " << conflict2.size());
                     conflict = conflict2;
                     break;
                 }
@@ -1779,7 +1779,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
             auto ret2 = repair_solver.solve(&assumps);
             if (ret2 == l_True) {
                 dont_remove.insert(try_rem);
-                verb_print(3, "[manthan] conf minim. Cannot remove conflict literal (it leads to SAT): "
+                verb_print(3, "[cegr] conf minim. Cannot remove conflict literal (it leads to SAT): "
                         << try_rem
                         << " -- BW: " << backward_defined.count(try_rem.var())
                         << " -- input: " << input.count(try_rem.var()));
@@ -1792,7 +1792,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
             auto it = std::find(conflict2.begin(), conflict2.end(), to_repair);
             if (it == conflict2.end()) {
                 // leads to conflict without literal to repair
-                verb_print(3, "[manthan] conf minim. Cannot remove conflict literal (it leads to conflict without to_repair): "
+                verb_print(3, "[cegr] conf minim. Cannot remove conflict literal (it leads to conflict without to_repair): "
                         << try_rem
                         << " -- BW: " << backward_defined.count(try_rem.var())
                         << " -- input: " << input.count(try_rem.var()));
@@ -1802,7 +1802,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
 
             // OK, sane. Remove and restart
             removed_any = true;
-            verb_print(3, "[manthan] conf minim. Removed conflict literal: " << setw(5) << try_rem
+            verb_print(3, "[cegr] conf minim. Removed conflict literal: " << setw(5) << try_rem
                 << " sz ch: " << sz_before - conflict2.size());
             conflict = conflict2;
             break;
@@ -1810,7 +1810,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     }
 }
 
-Lit Manthan::map_y_to_y_hat(const Lit& l) const {
+Lit Cegr::map_y_to_y_hat(const Lit& l) const {
     const uint32_t var = l.var();
     if (is_input[var]) return l;
     assert(to_define_full.count(var));
@@ -1818,7 +1818,7 @@ Lit Manthan::map_y_to_y_hat(const Lit& l) const {
 }
 
 // Update dependency matrix to say that a depends on b
-void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
+void Cegr::set_depends_on(const uint32_t a, const uint32_t b) {
     assert(!input.count(a) && "we are not interested in what input vars depend on");
     if (input.count(b)) {
        //We are not interested if a var depends on the input
@@ -1846,7 +1846,7 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 // old ∪ conflict — extend the cached list instead of invalidating it (which
 // would force a full O(AIG-nodes) walk on the next formula_dep_list call).
 // Any structurally different result (constant folds) falls back to erase.
-void Manthan::update_dep_cache_after_repair(const uint32_t y_rep,
+void Cegr::update_dep_cache_after_repair(const uint32_t y_rep,
         const ArjunNS::AIG* old_root, const vector<Lit>& conflict) {
     const auto& new_aig = var_to_formula[y_rep].aig;
     if (new_aig.get() == old_root) return; // constant-folded to the old formula
@@ -1874,7 +1874,7 @@ void Manthan::update_dep_cache_after_repair(const uint32_t y_rep,
     });
 }
 
-void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
+void Cegr::perform_repair(const uint32_t y_rep, const sample& ctx,
         const vector<Lit>& conflict) {
     for(const auto& l: conflict) assert(l.var() < cnf.nVars());
 
@@ -1884,14 +1884,14 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     }
 
     if (conflict.empty()) {
-        verb_print(2, "[manthan] conflict empty for " << setw(5) << y_rep+1 << ", unconditionally fixing it to " << ctx[y_rep]);
+        verb_print(2, "[cegr] conflict empty for " << setw(5) << y_rep+1 << ", unconditionally fixing it to " << ctx[y_rep]);
         var_to_formula[y_rep] = fh->constant_formula(ctx[y_rep] == l_True);
         dep_cache.erase(y_rep);
         updated_y_funcs.push_back(y_rep);
         return;
     }
 
-    verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
+    verb_print(2, "[cegr] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     stats.conflict_sizes_sum += conflict.size();
@@ -1948,9 +1948,9 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
 }
 
-void Manthan::learn_order() {
+void Cegr::learn_order() {
     assert(y_order.empty());
-    verb_print(2, "[manthan] Fixing LEARN order...");
+    verb_print(2, "[cegr] Fixing LEARN order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     auto mysorter = [&](const uint32_t a, const uint32_t b) -> bool {
         if (incidence[a] != incidence[b]) return incidence[a] > incidence[b];
@@ -1988,26 +1988,26 @@ void Manthan::learn_order() {
 
 // Will order 1st the variables that NOTHING depends on
 // Will order LAST the variables that depends on EVERYTHING
-void Manthan::pre_order_vars() {
+void Cegr::pre_order_vars() {
     assert(order_val.empty());
     assert(y_order.empty());
     const double my_time = cpuTime();
-    verb_print(2, "[manthan] Fixing order " << (mconf.manthan_base == 0 ? "[LEARN]" : (mconf.manthan_base == 1 ? "[CONST]" : "[BVE]")) << "...");
+    verb_print(2, "[cegr] Fixing order " << (mconf.cegr_base == 0 ? "[LEARN]" : (mconf.cegr_base == 1 ? "[CONST]" : "[BVE]")) << "...");
 
-    switch(mconf.manthan_order) {
+    switch(mconf.cegr_order) {
         case 0: learn_order(); break;
         case 2: bve_order(); break;
-        default: release_assert(false && "Invalid manthan_order");
+        default: release_assert(false && "Invalid cegr_order");
     }
 
     rebuild_order_index();
 
-    verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
+    verb_print(1, "[cegr] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
             << " Final order size: " << y_order.size());
     print_y_order_occur();
 }
 
-void Manthan::rebuild_order_index() {
+void Cegr::rebuild_order_index() {
     order_val.assign(cnf.nVars(), -2);
     for(const auto& x: input) order_val[x] = -1;
     for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
@@ -2021,7 +2021,7 @@ void Manthan::rebuild_order_index() {
 }
 
 // Finds the order that minimizes dependencies that need to be broken by BVE system
-void Manthan::bve_order() {
+void Cegr::bve_order() {
     const double my_time = cpuTime();
     assert(y_order.empty());
     auto depends_on = dependency_mat;
@@ -2093,11 +2093,11 @@ void Manthan::bve_order() {
         already_fixed.insert(smallest_var);
         y_order.push_back(smallest_var);
     }
-    verb_print(2, "[manthan] BVE order total breaks: " << total_break << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
+    verb_print(2, "[cegr] BVE order total breaks: " << total_break << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
     assert(y_order.size() == to_define_full.size());
 }
 
-void Manthan::find_better_ctx_maxsat(sample& ctx) {
+void Cegr::find_better_ctx_maxsat(sample& ctx) {
 #ifndef EXTRA_SYNTH
     cout << "ERROR: maxsat_better_ctx is set to 1 but we are not in EXTRA_SYNTH mode!" << endl;
     exit(EXIT_FAILURE);
@@ -2144,7 +2144,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 }
 
 // Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
-void Manthan::find_better_ctx_normal(sample& ctx) {
+void Cegr::find_better_ctx_normal(sample& ctx) {
     if (!better_ctx_solver) {
         // Persistent solver: the CNF never changes, so inject it once and fix
         // per-call values via assumptions
@@ -2233,7 +2233,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
     }
 }
 
-void Manthan::create_vars_for_y_hats() {
+void Cegr::create_vars_for_y_hats() {
     constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
     y_to_yhat_flat.assign(cnf.nVars(), none);
     for(const auto& y: to_define_full) {
@@ -2250,7 +2250,7 @@ void Manthan::create_vars_for_y_hats() {
 }
 
 // Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
-void Manthan::add_not_f_x_yhat() {
+void Cegr::add_not_f_x_yhat() {
     vector<Lit> tmp;
 
     // Adds ~F(x, y_hat)
@@ -2285,7 +2285,7 @@ void Manthan::add_not_f_x_yhat() {
     cex_solver.add_clause(tmp);
 }
 
-void Manthan::inject_formulas_into_solver() {
+void Cegr::inject_formulas_into_solver() {
     const double t_inj0 = cpuTime();
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
@@ -2357,11 +2357,11 @@ void Manthan::inject_formulas_into_solver() {
     t_inject += cpuTime() - t_inj0;
 }
 
-bool Manthan::get_counterexample(sample& ctx) {
+bool Cegr::get_counterexample(sample& ctx) {
     const double my_time_start = cpuTime();
     needs_repair.clear();
     if (stats.num_loops_repair == 1)
-        verb_print(1, "[manthan] Getting counterexample for the first time...");
+        verb_print(1, "[cegr] Getting counterexample for the first time...");
 
     vector<Lit> assumps;
     assumps.reserve(y_hat_to_indic.size());
@@ -2381,12 +2381,12 @@ bool Manthan::get_counterexample(sample& ctx) {
     /* solver.set_up_for_sample_counter(1000); */
     auto ret = cex_solver.solve(&assumps);
     if (stats.num_loops_repair == 1)
-        verb_print(1, "[manthan] First cex_solver ran in T: " << setprecision(2) << cpuTime() - my_time_start);
+        verb_print(1, "[cegr] First cex_solver ran in T: " << setprecision(2) << cpuTime() - my_time_start);
     else
-        verb_print(2, "[manthan] cex_solver ran in T: " << setprecision(2) << cpuTime() - my_time_start);
+        verb_print(2, "[cegr] cex_solver ran in T: " << setprecision(2) << cpuTime() - my_time_start);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
+        verb_print(2, COLYEL "[cegr] *** Counterexample found ***");
         ctx = cex_solver.get_model();
         compute_needs_repair(ctx);
         assert(!needs_repair.empty() && "If we found a counterexample, there must be something to repair!");
@@ -2398,7 +2398,7 @@ bool Manthan::get_counterexample(sample& ctx) {
 }
 
 // Checks if flipping variable v in sample s satisfies all clauses
-vector<const sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& samples) {
+vector<const sample*> Cegr::filter_samples(const uint32_t v, const vector<sample>& samples) {
     auto check_satisfied_all_cls_with_flip = [](const sample& s, const uint32_t v2, const vector<const vector<Lit>*>& clause_ptrs) -> bool {
         // Check all clauses
         for(const auto& cl: clause_ptrs) {
@@ -2448,7 +2448,7 @@ vector<const sample*> Manthan::filter_samples(const uint32_t v, const vector<sam
     return filtered_samples;
 }
 
-void Manthan::sort_all_samples(vector<sample>& samples) {
+void Cegr::sort_all_samples(vector<sample>& samples) {
     if (samples.size() <= 1) return;
     std::sort(samples.begin(), samples.end(),
         [this](const sample& a, const sample& b) {
@@ -2475,7 +2475,7 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
     }
 }
 
-bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const {
+bool Cegr::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const {
     color[node] = 1; // Mark as being processed (gray)
     path.push_back(node);
 
@@ -2499,7 +2499,7 @@ bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& col
     return false;
 }
 
-bool Manthan::check_map_dependency_cycles() const {
+bool Cegr::check_map_dependency_cycles() const {
     if (dependency_mat.empty()) return true;
 
     const uint32_t n = dependency_mat.size();
@@ -2532,7 +2532,7 @@ bool Manthan::check_map_dependency_cycles() const {
     return true;
 }
 
-void Manthan::get_incidence() {
+void Cegr::get_incidence() {
     incidence.clear();
     incidence.resize(cnf.nVars(), 0);
     for(const auto& cl: cnf.get_clauses()) {
@@ -2545,7 +2545,7 @@ void Manthan::get_incidence() {
 // NOTE: Formula dependencies may cross y_order because backward defs under
 // bve_order reference later-in-order vars. So we must evaluate along a
 // topological order of the actual AIG dependencies.
-void Manthan::RecomputeYHat::run(Manthan& m, sample& ctx, const uint32_t y_rep) {
+void Cegr::RecomputeYHat::run(Cegr& m, sample& ctx, const uint32_t y_rep) {
     const double t_topo0 = cpuTime();
     // Topological DFS over the y-vars' formula dependency graph.
     // state: 0=unvisited, 1=being expanded (on stack), 2=done.
@@ -2624,7 +2624,7 @@ void Manthan::RecomputeYHat::run(Manthan& m, sample& ctx, const uint32_t y_rep) 
     t_total += cpuTime() - t_topo0;
 }
 
-void Manthan::compute_needs_repair(const sample& ctx) {
+void Cegr::compute_needs_repair(const sample& ctx) {
     assert(ctx[fh->get_true_lit().var()] == l_True);
     needs_repair.clear();
     for(const auto& y: to_define_full) {
@@ -2632,24 +2632,24 @@ void Manthan::compute_needs_repair(const sample& ctx) {
     }
 }
 
-void Manthan::check_repair_monotonic() {
+void Cegr::check_repair_monotonic() {
     mpz_class cnt;
     if (!count_error_formula(cnt)) return;
 
     if (prev_error_count >= 0) {
         if (cnt >= prev_error_count) {
-            cout << "c o ERROR [manthan-checkrepair] Error count did NOT strictly decrease: "
+            cout << "c o ERROR [cegr-checkrepair] Error count did NOT strictly decrease: "
                  << prev_error_count << " -> " << cnt << endl;
         }
         assert(cnt < prev_error_count &&
             "Error formula count must strictly decrease after each repair iteration");
-        verb_print(1, "[manthan-checkrepair] Error count decreased: "
+        verb_print(1, "[cegr-checkrepair] Error count decreased: "
             << prev_error_count << " -> " << cnt << " (good)");
     }
     prev_error_count = cnt;
 }
 
-Lit Manthan::tseitin_encode_aig(
+Lit Cegr::tseitin_encode_aig(
     const aig_lit& aig,
     const map<uint32_t, uint32_t>& count_y_to_y_hat,
     vector<vector<Lit>>& clauses,
@@ -2694,7 +2694,7 @@ Lit Manthan::tseitin_encode_aig(
     return result;
 }
 
-bool Manthan::count_error_formula(mpz_class& out_count) {
+bool Cegr::count_error_formula(mpz_class& out_count) {
     const double count_start = cpuTime();
 
     // Build variable mapping: y -> y_hat for counting formula
@@ -2787,14 +2787,14 @@ bool Manthan::count_error_formula(mpz_class& out_count) {
         }
     }
 
-    verb_print(2, "[manthan-checkrepair] Wrote error formula: "
+    verb_print(2, "[cegr-checkrepair] Wrote error formula: "
         << next_var << " vars, " << clauses.size() << " clauses to " << tmp_fname);
 
     // Run ganak with minimal verbosity
     string cmd = mconf.ganak_binary + " --verb 0 " + tmp_fname + " 2>&1";
     FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) {
-        cout << "c o ERROR [manthan-checkrepair] Failed to run ganak: " << cmd << endl;
+        cout << "c o ERROR [cegr-checkrepair] Failed to run ganak: " << cmd << endl;
         std::filesystem::remove(tmp_path);
         return false;
     }
@@ -2816,7 +2816,7 @@ bool Manthan::count_error_formula(mpz_class& out_count) {
                     out_count = mpz_class(count_str);
                     found_count = true;
                 } catch (...) {
-                    cout << "c o ERROR [manthan-checkrepair] Failed to parse count: '" << count_str << "'" << endl;
+                    cout << "c o ERROR [cegr-checkrepair] Failed to parse count: '" << count_str << "'" << endl;
                 }
             }
         }
@@ -2825,11 +2825,11 @@ bool Manthan::count_error_formula(mpz_class& out_count) {
     std::filesystem::remove(tmp_path);
 
     if (ret != 0 || !found_count) {
-        cout << "c o ERROR [manthan-checkrepair] ganak failed (ret=" << ret << ")" << endl;
+        cout << "c o ERROR [cegr-checkrepair] ganak failed (ret=" << ret << ")" << endl;
         return false;
     }
 
-    verb_print(1, "[manthan-checkrepair] Error formula count: " << out_count
+    verb_print(1, "[cegr-checkrepair] Error formula count: " << out_count
         << "  vars: " << next_var << "  clauses: " << clauses.size()
         << "  T: " << fixed << setprecision(2) << (cpuTime() - count_start));
 

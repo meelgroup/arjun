@@ -153,7 +153,7 @@ def run_arjun_checkrepair(fname, seed, timeout):
         "--checkrepair",
         "--verb", "1",
         "--seed", str(seed),
-        # Disable all preprocessors so manthan starts immediately
+        # Disable all preprocessors so cegr starts immediately
         "--bve", "0",
         "--synthbve", "0",
         "--autarky", "0",
@@ -181,11 +181,11 @@ def run_arjun_checkrepair(fname, seed, timeout):
     unchanged_count = 0
     counts = []
     for line in output.split("\n"):
-        if "manthan-checkrepair" in line and "Error formula count:" in line:
+        if "cegr-checkrepair" in line and "Error formula count:" in line:
             m = re.search(r"Error formula count:\s*(\d+)", line)
             if m:
                 counts.append(int(m.group(1)))
-        if "ERROR [manthan-checkrepair] Error count INCREASED" in line:
+        if "ERROR [cegr-checkrepair] Error count INCREASED" in line:
             increased = True
         if "checkrepair] Error count decreased" in line:
             decreased_count += 1

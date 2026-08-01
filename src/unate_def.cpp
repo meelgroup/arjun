@@ -458,7 +458,7 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
         }
 
         // Dep-graph safety for non-input L: set_def(test, L) makes test
-        // backward_defined, which Manthan requires to bottom out at orig
+        // backward_defined, which Cegr requires to bottom out at orig
         // sampling vars. Accept non-input L only when (i) L is defined,
         // (ii) deps_recursive(L_orig) ⊆ orig_sampl_vars, and (iii) test_orig
         // ∉ deps_recursive(L_orig) (cycle check). (i) is checked first since

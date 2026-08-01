@@ -38,7 +38,7 @@ THE SOFTWARE.
 #include <cryptominisat5/cryptominisat.h>
 #include <mpfr.h>
 
-namespace ArjunInt { class Manthan; }
+namespace ArjunInt { class Cegr; }
 
 namespace ArjunNS {
 
@@ -555,7 +555,7 @@ public:
     friend class AIGManager;
     friend class AIGRewriter;
     friend class SimplifiedCNF;
-    friend class ArjunInt::Manthan;
+    friend class ArjunInt::Cegr;
     template<class Solver> friend class AIGToCNF;
 
     AIGT type = AIGT::t_const;
@@ -1637,9 +1637,9 @@ public:
         uint32_t interp_max_confl = 30000;
         uint64_t interp_rebuild_max_confl = 500000;
     };
-    struct ManthanConf {
-        ManthanConf() = default;
-        ManthanConf(const ManthanConf& other) = default;
+    struct CegrConf {
+        CegrConf() = default;
+        CegrConf(const CegrConf& other) = default;
         int filter_samples = 1;
         /// Also to try:
         uint32_t samples = 5000;
@@ -1649,18 +1649,18 @@ public:
         uint32_t max_depth = 0;
         uint32_t sampler_fixed_conflicts = 100;
         int minimize_conflict = 1;
-        std::string write_manthan_cnf;
+        std::string write_cegr_cnf;
         int maxsat_better_ctx = 0;
         int do_unique_input_samples = 1;
         int use_all_vars_as_feats = 1;
         int ctx_solver_type = 1;
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
-        int manthan_base = 0;
-        int manthan_order = 0;
+        int cegr_base = 0;
+        int cegr_order = 0;
         int one_repair_per_loop = 0;
         int force_bw_equal = 1;
-        int inv_learnt = 0;
+        int inv_guess = 0;
         int32_t max_repairs = std::numeric_limits<int32_t>::max();
         uint32_t restart = 10000;
         int check_repair = 0;
@@ -1710,8 +1710,8 @@ public:
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
-    SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
-    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf, const InterpConf& iconf);
+    SimplifiedCNF standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& cegr_conf);
+    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
     //Set config

@@ -47,7 +47,7 @@ set(libfiles
     unate_def_common.cpp
     autarky.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
-    manthan.cpp
+    cegr.cpp
     brute_force_synth.cpp
     aig_rewrite.cpp
     aig_to_cnf.cpp
@@ -55,7 +55,7 @@ set(libfiles
 )
 
 if(EXTRA_SYNTH)
-    list(APPEND libfiles manthan_learn.cpp)
+    list(APPEND libfiles cegr_learn.cpp)
 endif()
 
 add_library(arjun ${libfiles})

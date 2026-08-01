@@ -41,7 +41,7 @@
 #include "constants.h"
 #include "autarky.h"
 #include "unate_def.h"
-#include "manthan.h"
+#include "cegr.h"
 #include "brute_force_synth.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
@@ -166,15 +166,15 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
     return puura.get_fully_simplified_renumbered_cnf(cnf, simp_conf);
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& mconf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& mconf)
 {
     // Restart loop: each round exits after "restart" repairs; its AIGs
     // seeds the next round (compacted, re-encoded). max_repairs is cumulative.
     std::map<uint32_t, aig_lit> guess;
     uint32_t round = 0;
-    ManthanStats cumul_stats;
+    CegrStats cumul_stats;
     while (true) {
-        ManthanConf round_mconf = mconf;
+        CegrConf round_mconf = mconf;
         if (mconf.max_repairs != std::numeric_limits<int32_t>::max()) {
             assert(mconf.max_repairs > cumul_stats.tot_repaired);
             round_mconf.max_repairs = mconf.max_repairs - cumul_stats.tot_repaired;
@@ -182,20 +182,20 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
         }
 
         // Run
-        Manthan manthan(arjdata->conf, round_mconf, std::move(cnf));
-        if (!guess.empty()) manthan.set_guess(std::move(guess));
-        cnf = manthan.do_manthan();
+        Cegr cegr(arjdata->conf, round_mconf, std::move(cnf));
+        if (!guess.empty()) cegr.set_guess(std::move(guess));
+        cnf = cegr.do_cegr();
 
         // Stats
-        ManthanStats stats = manthan.get_stats();
+        CegrStats stats = cegr.get_stats();
         if (round == 0) cumul_stats = stats;
         else cumul_stats += stats;
 
         // Check if done
-        if (!manthan.restart_requested()) break;
-        guess = manthan.export_formula_aigs();
+        if (!cegr.restart_requested()) break;
+        guess = cegr.export_formula_aigs();
         round++;
-        verb_print2(1, COLYEL "[manthan-restart] round " << round
+        verb_print2(1, COLYEL "[cegr-restart] round " << round
             << " done, tot repairs so far: " << cumul_stats.tot_repaired
             << "; compacting " << guess.size() << " AIGs and re-entering");
 
@@ -219,7 +219,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     return cnf;
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf, const InterpConf& iconf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& mconf, const InterpConf& iconf)
 {
     BruteForceSynth ss(arjdata->conf, mconf, iconf, std::move(cnf));
     return ss.do_synth();

@@ -56,9 +56,9 @@ only_dirs = [
     # "out-synth-1859870-0", # AI slop cleanup
     # "out-synth-1595974-0", # old system where interpolant was with picosat and MyTracer
     # "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
-    # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
-    # "out-synth-1903613-1", # restarts between manthan & ITE chain rewrite
-    # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
+    # "out-synth-1903613-2", # restarts between cegr & ITE chain rewrite
+    # "out-synth-1903613-1", # restarts between cegr & ITE chain rewrite
+    # "out-synth-1903613-2", # restarts between cegr & ITE chain rewrite
     # "out-synth-1914059-0", # more rewrite
     # "out-synth-1925733-0", # faster y_hat recompute, persistent conflict minim SAT solver
     # "out-synth-1932323-0", # reorder CEGAR variable order on-the-fly
@@ -286,11 +286,10 @@ def print_summary_tables(table_todo, fname_like, full=False):
         ("CAST(median(extend_defined) AS INTEGER)",                      "med-ext-def"),
         ("CAST(ROUND(median(backward_time), 2) AS REAL)",                "med-backw-T"),
         ("CAST(median(backward_defined) AS INTEGER)",                    "med-backw-def"),
-        ("CAST(ROUND(median(manthan_training_time),2) AS REAL)",         "med-mant-tr-T"),
-        ("CAST(ROUND(median(manthan_repair_time),2) AS REAL)",           "med-mant-rep-T"),
-        ("CAST(ROUND(median(manthan_time), 2) AS REAL)",                 "med-manth-T"),
+        ("CAST(ROUND(median(cegr_repair_time),2) AS REAL)",           "med-mant-rep-T"),
+        ("CAST(ROUND(median(cegr_time), 2) AS REAL)",                 "med-manth-T"),
         ("CAST(ROUND(median(repairs),0) AS INTEGER)",                    "med-repairs"),
-        ("CAST(median(manthan_defined) AS INTEGER)",                     "med-manthan-def"),
+        ("CAST(median(cegr_defined) AS INTEGER)",                     "med-cegr-def"),
     ]
 
     cols = compact_cols + (full_only_cols if full else [])
@@ -341,7 +340,7 @@ def print_median_tables(table_todo, fname_like):
         ("repairs",         "repairs"),
         ("timeout_mem",     "timeout_mem"),
         (SOLVE_TIME_EXPR,   "solve_time"),
-        ("manthan_time",    "manthan_time"),
+        ("cegr_time",    "cegr_time"),
     ]
     union_parts = []
     for i, (dir, ver) in enumerate(table_todo):
@@ -364,7 +363,7 @@ def print_instance_stats_table(table_todo, fname_like):
         ("puura_defined",        "puura_def"),
         ("extend_defined",       "ext_def"),
         ("backward_defined",     "back_def"),
-        ("manthan_defined",      "mant_def"),
+        ("cegr_defined",      "mant_def"),
     ]
     union_parts = []
     for i, (dir, ver) in enumerate(table_todo):
@@ -432,35 +431,6 @@ def print_stuck_top_table(table_todo, fname_like, top=5):
         print(f"\n{BLUE}Top {top} shortest UNSOLVED runs: {dir} [{ver[:10]}]{RESET}")
         _print_table(["fname", "stuck at", "term(s)", "memMB", "sig", "mem_out"],
                      str_rows)
-    con.close()
-
-
-def print_cmsgen_time_table(table_todo, fname_like, top=15):
-    """One table per dir/ver: the files that spent the most wall-clock time in
-    CMSGen sampling (cmsgen_sampling_time, accumulated across all CMSGen calls
-    for that benchmark). Highest first, so the worst offenders are on top."""
-    if not table_todo:
-        return
-    con = sqlite3.connect(DB)
-    cur = con.cursor()
-    for dir, ver in table_todo:
-        cur.execute(
-            f"SELECT fname, cmsgen_sampling_time, {SOLVE_TIME_EXPR},"
-            f" manthan_time FROM {TABLE}"
-            f" WHERE dirname=? AND {VER_EXPR}=?"
-            f" AND cmsgen_sampling_time IS NOT NULL{fname_like}"
-            f" ORDER BY cmsgen_sampling_time DESC LIMIT {top}", (dir, ver))
-        str_rows = []
-        for fn, cms_t, solve_t, mant_t in cur.fetchall():
-            str_rows.append([
-                fn,
-                f"{cms_t:.2f}" if cms_t is not None else "",
-                f"{solve_t:.2f}" if solve_t is not None else "unsolved",
-                f"{mant_t:.2f}" if mant_t is not None else "",
-            ])
-        print(f"\n{BLUE}Top {top} CMSGen sampling-time offenders: "
-              f"{dir} [{ver[:10]}]{RESET}")
-        _print_table(["fname", "cmsgen(s)", "solve(s)", "manthan(s)"], str_rows)
     con.close()
 
 
@@ -835,7 +805,6 @@ def main():
     print_signal_warnings(table_todo, fname_like)
     print_stuck_stage_table(table_todo, fname_like)
     print_stuck_top_table(table_todo, fname_like)
-    print_cmsgen_time_table(table_todo, fname_like)
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)

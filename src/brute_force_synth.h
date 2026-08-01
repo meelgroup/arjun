@@ -39,7 +39,7 @@ namespace ArjunInt {
 class BruteForceSynth {
 public:
     BruteForceSynth(const ArjunInt::Config& _conf,
-                 const ArjunNS::Arjun::ManthanConf& _mconf,
+                 const ArjunNS::Arjun::CegrConf& _mconf,
                  const ArjunNS::Arjun::InterpConf& _iconf,
                  ArjunNS::SimplifiedCNF&& _cnf);
 
@@ -47,7 +47,7 @@ public:
 
 private:
     const ArjunInt::Config& conf;
-    const ArjunNS::Arjun::ManthanConf& mconf;
+    const ArjunNS::Arjun::CegrConf& mconf;
     const ArjunNS::Arjun::InterpConf& iconf;
     ArjunNS::SimplifiedCNF cnf;
 

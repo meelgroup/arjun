@@ -39,16 +39,15 @@ def find_arjun_time(fname):
     backward_time = None
     backward_defined = None
 
-    manthan_training_time = None
-    manthan_repair_time = None
-    manthan_time = None
+    cegr_repair_time = None
+    cegr_time = None
     repairs = None
     repairs_per_sec = None
-    manthan_defined = None
-    # Manthan may run several strategies in sequence; each resets its rep
+    cegr_defined = None
+    # cegr may run several strategies in sequence; each resets its rep
     # counter. We accumulate across strategies into `repairs`, using
     # `current_strategy_rep` to hold the in-flight count until the strategy
-    # finishes ("Reached max repairs" or "[manthan] Done.") or the run dies.
+    # finishes ("Reached max repairs" or "[cegr] Done.") or the run dies.
     current_strategy_rep = 0
 
     arjun_time = None
@@ -57,7 +56,7 @@ def find_arjun_time(fname):
     # c o [puura] Done. final vars: 1868 final cls: 5184 defined: 1642 still to-define: 1654 T: 0.77
     # c o [extend] Done. extend_synth  defined: 834 still to-define: 820 T: 0.38
     # c o [backward] Done. backward_round_synth finished  TR: 158 UN: 0 FA: 662 defined: 662 still to-define: 158 T: 0.73
-    # c o [manthan] Done.  sampl T: 3.72 train T: 44.99 repair T: 0.71 repairs: 75 repair failed: 0 defined: 158 still to-define: 0 T: 51.05
+    # c o [cegr] Done.  sampl T: 3.72 train T: 44.99 repair T: 0.71 repairs: 75 repair failed: 0 defined: 158 still to-define: 0 T: 51.05
 
     with open(fname, "r") as f:
         for line in f:
@@ -139,14 +138,14 @@ def find_arjun_time(fname):
                 if match:
                     backward_time = float(match.group(1))
 
-            # c o [manthan] rep:   1319   loops:   1319   avg rep/loop:  1.0   ...   T:    1.83   rep/s: 718.8093
+            # c o [cegr] rep:   1319   loops:   1319   avg rep/loop:  1.0   ...   T:    1.83   rep/s: 718.8093
             # Progress line. Tail may carry "Reached max repairs" (strategy
-            if "c o [manthan] rep:" in line:
+            if "c o [cegr] rep:" in line:
                 if repairs is None:
                     repairs = 0
                 match = re.search(r'T:\s*([\d.]+)', line)
                 if match:
-                    manthan_time = float(match.group(1))
+                    cegr_time = float(match.group(1))
                 match = re.search(r'rep:\s*(\d+)', line)
                 if match:
                     current_strategy_rep = int(match.group(1))
@@ -157,13 +156,13 @@ def find_arjun_time(fname):
                     repairs += current_strategy_rep
                     current_strategy_rep = 0
 
-            # c o [manthan] Done.  sampl T: 3.72 train T: 44.99 repair T: 0.71 repairs: 75 repair failed: 0 defined: 158 still to-define: 0 T: 51.05
-            if "c o [manthan] " in line and "DONE" in line:
+            # c o [cegr] Done.  sampl T: 3.72 train T: 44.99 repair T: 0.71 repairs: 75 repair failed: 0 defined: 158 still to-define: 0 T: 51.05
+            if "c o [cegr] " in line and "DONE" in line:
                 if repairs is None:
                     repairs = 0
                 match = re.search(r'T:\s*([\d.]+)', line)
                 if match:
-                    manthan_time = float(match.group(1))
+                    cegr_time = float(match.group(1))
                 match = re.search(r'rep:\s*(\d+)', line)
                 if match:
                     current_strategy_rep = int(match.group(1))
@@ -199,12 +198,11 @@ def find_arjun_time(fname):
         "extend_defined": extend_defined,
         "backward_time": backward_time,
         "backward_defined": backward_defined,
-        "manthan_training_time": manthan_training_time,
-        "manthan_repair_time": manthan_repair_time,
-        "manthan_time": manthan_time,
+        "cegr_repair_time": cegr_repair_time,
+        "cegr_time": cegr_time,
         "repairs": repairs,
         "repairs_per_sec": repairs_per_sec,
-        "manthan_defined": manthan_defined,
+        "cegr_defined": cegr_defined,
         "arjun_time": arjun_time,
         "last_stage": last_stage,
         "last_stage_done": last_stage_done,
@@ -372,14 +370,13 @@ COLUMNS = [
     ("backward_time",           "REAL"),
     ("backward_defined",        "INTEGER"),
     # ("cmsgen_sampling_time",    "REAL"),
-    # ("manthan_sampling_time",   "REAL"),
-    ("manthan_training_time",   "REAL"),
-    ("manthan_repair_time",     "REAL"),
-    ("manthan_time",            "REAL"),
+    # ("cegr_sampling_time",   "REAL"),
+    ("cegr_repair_time",        "REAL"),
+    ("cegr_time",               "REAL"),
     ("repairs",                 "INTEGER"),
     # ("repairs_failed",          "INTEGER"),
     ("repairs_per_sec",         "REAL"),
-    ("manthan_defined",         "INTEGER"),
+    ("cegr_defined",            "INTEGER"),
     ("arjun_time",              "REAL"),
     ("last_stage",              "TEXT"),
     ("last_stage_done",         "TEXT"),

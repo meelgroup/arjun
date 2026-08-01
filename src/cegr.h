@@ -41,9 +41,9 @@
 namespace ArjunInt {
 
 using sample = std::vector<CMSat::lbool>;
-class ManthanLearn;
+class CegrLearn;
 
-struct ManthanStats {
+struct CegrStats {
     double repair_start_time;
     void print_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
 
@@ -64,7 +64,7 @@ struct ManthanStats {
     uint32_t cex_solver_calls = 0;
     uint32_t repair_solver_calls = 0;
 
-    ManthanStats& operator+=(const ManthanStats& other) {
+    CegrStats& operator+=(const CegrStats& other) {
         num_loops_repair += other.num_loops_repair;
         conflict_sizes_sum += other.conflict_sizes_sum;
         input_only_rep += other.input_only_rep;
@@ -85,22 +85,22 @@ struct ManthanStats {
     }
 };
 
-class Manthan {
+class Cegr {
     public:
-        Manthan(const Config& _conf, const ArjunNS::Arjun::ManthanConf& _mconf, ArjunNS::SimplifiedCNF&& _cnf) :
+        Cegr(const Config& _conf, const ArjunNS::Arjun::CegrConf& _mconf, ArjunNS::SimplifiedCNF&& _cnf) :
             conf(_conf), mconf(_mconf)
             , cex_solver(static_cast<SolverType>(_mconf.ctx_solver_type))
             , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
             , cnf(std::move(_cnf))
         {
         }
-        ArjunNS::SimplifiedCNF do_manthan();
-        friend class ManthanLearn;
+        ArjunNS::SimplifiedCNF do_cegr();
+        friend class CegrLearn;
 
         // Restart support: guess maps each to_define var to its tentative AIG.
         void set_guess(std::map<uint32_t, ArjunNS::aig_lit>&& g) { guess = std::move(g); }
         [[nodiscard]] bool restart_requested() const { return restart_needed; }
-        [[nodiscard]] const ManthanStats& get_stats() const { return stats; }
+        [[nodiscard]] const CegrStats& get_stats() const { return stats; }
         // AIG snapshot of every to_define formula; feeds the next round's guess.
         [[nodiscard]] std::map<uint32_t, ArjunNS::aig_lit> export_formula_aigs() const;
     private:
@@ -115,7 +115,7 @@ class Manthan {
         std::set<uint32_t> needs_repair;
 
         const Config& conf;
-        const ArjunNS::Arjun::ManthanConf& mconf;
+        const ArjunNS::Arjun::CegrConf& mconf;
         MetaSolver cex_solver;
         CachedSolver repair_solver;
 
@@ -243,7 +243,7 @@ class Manthan {
             // Cumulative CPU time (s) of the whole pass.
             double t_total = 0;
 
-            void run(Manthan& m, sample& ctx, const uint32_t y_rep);
+            void run(Cegr& m, sample& ctx, const uint32_t y_rep);
         } recompute;
 
         // ordering
@@ -327,9 +327,9 @@ class Manthan {
         [[nodiscard]] bool check_aig_matches_clauses_per_formula(const std::string& where) const;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
 
-        ManthanStats stats;
+        CegrStats stats;
         std::vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
-        void print_detailed_stats(const ManthanStats& stats) const;
+        void print_detailed_stats(const CegrStats& stats) const;
 
         // Cumulative per-phase CPU time (s) for the repair loop.
         double t_cex_solve = 0;      // get_counterexample

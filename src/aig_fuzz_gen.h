@@ -84,9 +84,9 @@ inline aig_lit gen_random_aig(ArjunNS::AIGManager& aig_mng,
     return pool[start + rng() % (pool.size() - start)];
 }
 
-// Manthan-style: nested ITE trees with AND-of-literals selectors. Exponential
+// Cegr-style: nested ITE trees with AND-of-literals selectors. Exponential
 // in depth — caller must pick tiny depth (2..6).
-inline aig_lit gen_manthan_aig(ArjunNS::AIGManager& aig_mng,
+inline aig_lit gen_cegr_aig(ArjunNS::AIGManager& aig_mng,
                                std::mt19937& rng, uint32_t num_vars,
                                uint32_t depth, uint32_t max_branch_width)
 {
@@ -103,13 +103,13 @@ inline aig_lit gen_manthan_aig(ArjunNS::AIGManager& aig_mng,
         branch = AIG::new_and(branch, AIG::new_lit(rng() % num_vars, rng() % 2));
     }
     if (rng() % 5 == 0) branch = AIG::new_not(branch);
-    aig_lit then_arm = gen_manthan_aig(aig_mng, rng, num_vars, depth - 1, max_branch_width);
-    aig_lit else_arm = gen_manthan_aig(aig_mng, rng, num_vars, depth - 1, max_branch_width);
+    aig_lit then_arm = gen_cegr_aig(aig_mng, rng, num_vars, depth - 1, max_branch_width);
+    aig_lit else_arm = gen_cegr_aig(aig_mng, rng, num_vars, depth - 1, max_branch_width);
     return AIG::new_or(AIG::new_and(branch, then_arm),
                        AIG::new_and(AIG::new_not(branch), else_arm));
 }
 
-// Deep linear ITE chain. Models manthan's repair loop: each iteration adds
+// Deep linear ITE chain. Models cegr's repair loop: each iteration adds
 // one ITE on top of the growing formula. Linear in chain_depth.
 inline aig_lit gen_deep_ite_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                       std::mt19937& rng, uint32_t num_vars,
@@ -138,7 +138,7 @@ inline aig_lit gen_deep_ite_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
     return f;
 }
 
-// OR of several (AND of literals). Models the DNF-cover loop in manthan.cpp.
+// OR of several (AND of literals). Models the DNF-cover loop in cegr.cpp.
 inline aig_lit gen_dnf_cover_aig(ArjunNS::AIGManager& aig_mng,
                                  std::mt19937& rng, uint32_t num_vars,
                                  uint32_t num_branches, uint32_t max_branch_width)
@@ -377,11 +377,11 @@ inline aig_lit gen_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
 }
 
 // Shape codes for pick_shape. Weights mirror the aig_to_cnf fuzzer's, matching
-// each pattern's frequency in the real manthan/arjun workload.
+// each pattern's frequency in the real cegr/arjun workload.
 enum class Shape : uint8_t {
     DeepIteChain,
     DnfCover,
-    Manthan,
+    Cegr,
     Random,
     Chain,
     PureAndChain,
@@ -398,7 +398,7 @@ inline Shape pick_shape(std::mt19937& rng) {
     uint32_t s = rng() % 22;
     if (s < 4)  return Shape::DeepIteChain;
     if (s < 6)  return Shape::DnfCover;
-    if (s < 7)  return Shape::Manthan;
+    if (s < 7)  return Shape::Cegr;
     if (s < 8)  return Shape::Random;
     if (s < 9)  return Shape::Chain;
     if (s < 11) return Shape::PureAndChain;
@@ -430,10 +430,10 @@ inline aig_lit gen_random_shape(ArjunNS::AIGManager& aig_mng,
             uint32_t bw = 2 + rng() % 6;
             return gen_dnf_cover_aig(aig_mng, rng, num_vars, nb, bw);
         }
-        case Shape::Manthan: {
+        case Shape::Cegr: {
             uint32_t d = 2 + rng() % 4;
             uint32_t bw = 2 + rng() % 6;
-            return gen_manthan_aig(aig_mng, rng, num_vars, d, bw);
+            return gen_cegr_aig(aig_mng, rng, num_vars, d, bw);
         }
         case Shape::Random:
             return gen_random_aig(aig_mng, rng, num_vars, depth, max_nodes);
