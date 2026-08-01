@@ -194,7 +194,7 @@ SynthStrategy SynthRunner::parse_one_strategy(const string& raw) {
         }
     }
 
-    if (strat.type != "learn" && strat.type != "bve" && strat.type != "const") {
+    if (strat.type != "learn" && strat.type != "bve" && strat.type != "const" && strat.type != "rnd") {
         cout << "ERROR: unknown strategy type '" << strat.type << "'. Use 'learn', 'bve', or 'const'." << endl;
         exit(EXIT_FAILURE);
     }
