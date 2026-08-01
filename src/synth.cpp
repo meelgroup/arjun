@@ -261,7 +261,6 @@ void SynthRunner::run_cegr_strategies(
     }
     if (cnf.synth_done()) return;
 
-    bool prev_hit_max_repairs = false;
     for (size_t i = 0; i < strategies.size(); i++) {
         const auto& strat = strategies[i];
         const bool is_last = (i == strategies.size() - 1);
@@ -269,15 +268,6 @@ void SynthRunner::run_cegr_strategies(
         auto mconf = apply_strategy(mconf_orig, strat);
         if (is_last && strat.overrides.count("max_repairs") == 0)
             mconf.max_repairs = std::numeric_limits<int32_t>::max();
-
-        // Previous non-final strategy hit max_repairs: shrink the budget for
-        // later non-final strategies unlikely to help this instance.
-        if (!is_last && prev_hit_max_repairs) {
-            auto orig = mconf.max_repairs;
-            mconf.max_repairs = std::max((int32_t)50, orig / 4);
-            verb_print(1, "[synth] Reducing max_repairs " << orig << " -> " << mconf.max_repairs
-                    << " (previous strategy hit limit without finishing)");
-        }
 
         verb_print(1, "Running Cegr strategy " << i+1 << "/" << strategies.size()
             << " -- " << strat.raw << " with max_repairs="
@@ -288,7 +278,5 @@ void SynthRunner::run_cegr_strategies(
                     << " -- " << strat.raw);
             break;
         }
-        // A non-final strategy that didn't finish likely hit max_repairs
-        if (!is_last) prev_hit_max_repairs = true;
     }
 }

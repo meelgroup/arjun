@@ -66,7 +66,7 @@ int redundant_cls = true;
 int simptofile = true;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
-string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),bve";
+string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rnd(max_repairs=400),bve";
 
 int synthesis = false;
 int use_brute_force_synth = 1;
