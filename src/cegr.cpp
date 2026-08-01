@@ -1083,7 +1083,7 @@ void Cegr::print_detailed_stats(const CegrStats& stats) const {
             else os << setw(w) << fixed << setprecision(1) << ((double)sum / (double)cnt);
             return os.str();
         };
-        verb_print(1, COLCYN "[m-stats] v" << setw(5) << v+1
+        verb_print(1, COLCYN "[cegr-stats] v" << setw(5) << v+1
             << " att:" << setw(5) << n_attempts
             << " c:" << setw(4) << n_succ
             << " z:" << setw(4) << n_cost_zero
@@ -1095,16 +1095,16 @@ void Cegr::print_detailed_stats(const CegrStats& stats) const {
             << " ad:" << setw(3) << aig_depth
             << " cf:" << setw(5) << (v < var_conflict_freq.size() ? var_conflict_freq[v] : 0));
     }
-    verb_print(1, COLCYN "[m-stats] --- legend ---");
-    verb_print(1, COLCYN "[m-stats]   v   : var id (1-indexed)");
-    verb_print(1, COLCYN "[m-stats]   att : total repair() calls for this var (successes + cost-zero failures); att = c + z");
-    verb_print(1, COLCYN "[m-stats]   c   : # repairs that succeeded via the conflict-clause branch");
-    verb_print(1, COLCYN "[m-stats]   z   : # cost-zero outcomes: solver found the bug is fixable by flipping later y-vars instead; y_rep needs no repair, so no repair is performed");
-    verb_print(1, COLCYN "[m-stats]   acl : avg #literals in the conflict clause, over the 'c' successes only ('-' if c=0)");
-    verb_print(1, COLCYN "[m-stats]   cl  : #clauses currently in this var's Cegr formula (var_to_formula[v].clauses)");
-    verb_print(1, COLCYN "[m-stats]   an  : #AIG nodes in this var's current Cegr formula");
-    verb_print(1, COLCYN "[m-stats]   ad  : longest AND-gate path from the formula's AIG root");
-    verb_print(1, COLCYN "[m-stats]   cf  : total appearances of this var (any polarity) across all repair-conflict clauses ever seen (per literal, per clause)");
+    verb_print(1, COLCYN "[cegr-stats] --- legend ---");
+    verb_print(1, COLCYN "[cegr-stats]   v   : var id (1-indexed)");
+    verb_print(1, COLCYN "[cegr-stats]   att : total repair() calls for this var (successes + cost-zero failures); att = c + z");
+    verb_print(1, COLCYN "[cegr-stats]   c   : # repairs that succeeded via the conflict-clause branch");
+    verb_print(1, COLCYN "[cegr-stats]   z   : # cost-zero outcomes: solver found the bug is fixable by flipping later y-vars instead; y_rep needs no repair, so no repair is performed");
+    verb_print(1, COLCYN "[cegr-stats]   acl : avg #literals in the conflict clause, over the 'c' successes only ('-' if c=0)");
+    verb_print(1, COLCYN "[cegr-stats]   cl  : #clauses currently in this var's Cegr formula (var_to_formula[v].clauses)");
+    verb_print(1, COLCYN "[cegr-stats]   an  : #AIG nodes in this var's current Cegr formula");
+    verb_print(1, COLCYN "[cegr-stats]   ad  : longest AND-gate path from the formula's AIG root");
+    verb_print(1, COLCYN "[cegr-stats]   cf  : total appearances of this var (any polarity) across all repair-conflict clauses ever seen (per literal, per clause)");
 
     // Aggregate AIG stats
     uint64_t total_aig_nodes = 0, total_clauses = 0, max_aig_nodes = 0;
