@@ -91,29 +91,6 @@ void Manthan::inject_cnf(S& s) const {
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-vector<sample> Manthan::get_cmsgen_samples(uint32_t num) {
-    // Sampling costs one SAT solve each; halve it on large to-define sets.
-    if (to_define.size() > 200) num = std::max<uint32_t>(1, num / 2);
-    verb_print(1, "[manthan] Getting " << num << " CMSGen samples...");
-
-    const double my_time = cpuTime();
-    SATSolver solver_samp;
-    solver_samp.set_seed(conf.seed);
-    inject_cnf(solver_samp);
-    solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
-
-    vector<sample> samples;
-    for (uint32_t i = 0; i < num; i++) {
-        auto ret = solver_samp.solve();
-        assert(ret == l_True);
-        assert(solver_samp.get_model().size() == cnf.nVars());
-        samples.push_back(solver_samp.get_model());
-    }
-    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples."
-            << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
-    return samples;
-}
-
 string Manthan::pr(const lbool val) const {
     if (val == l_True) return "1";
     if (val == l_False) return "0";

@@ -33,7 +33,6 @@ using std::fixed;
 using std::setw;
 using std::vector;
 using std::string;
-using std::cout;
 using std::endl;
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -48,7 +47,7 @@ void ManthanLearn::full_train() {
         << ", minGainSplit=" << setprecision(6) << mconf.min_gain_split << setprecision(2)
         << ", maximumDepth=" << mconf.max_depth);
     double samp_start_time = cpuTime();
-    vector<sample> samples = m.get_cmsgen_samples(mconf.samples);
+    vector<sample> samples = get_cmsgen_samples(mconf.samples);
     m.stats.sampl_time = cpuTime() - samp_start_time;
     verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
         << " samp/var: " << setw(8) << setprecision(2) << std::fixed << m.stats.sampl_time/(double)m.to_define.size()
@@ -228,3 +227,26 @@ FHolder<MetaSolver>::Formula ManthanLearn::recur(mlpack::tree::DecisionTree<>* n
     }
     assert(false);
 }
+
+vector<sample> ManthanLearn::get_cmsgen_samples(uint32_t num) {
+    // Sampling costs one SAT solve each; halve it on large to-define sets.
+    verb_print(1, "[manthan] Getting " << num << " CMSGen samples...");
+
+    const double my_time = cpuTime();
+    SATSolver solver_samp;
+    solver_samp.set_seed(conf.seed);
+    m.inject_cnf(solver_samp);
+    solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
+
+    vector<sample> samples;
+    for (uint32_t i = 0; i < num; i++) {
+        auto ret = solver_samp.solve();
+        assert(ret == l_True);
+        assert(solver_samp.get_model().size() == m.cnf.nVars());
+        samples.push_back(solver_samp.get_model());
+    }
+    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples."
+            << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
+    return samples;
+}
+

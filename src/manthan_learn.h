@@ -43,6 +43,7 @@ public:
         }
     void full_train();
 private:
+    std::vector<sample> get_cmsgen_samples(uint32_t samples);
     double train(const std::vector<sample>& orig_samples, const uint32_t v);
     void verify_aig_error_rate(const std::vector<const sample*>& samples, uint32_t v, double train_error);
     FHolder<MetaSolver>::Formula recur(
