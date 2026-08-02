@@ -125,7 +125,7 @@ double CegrLearn::train(const vector<sample>& orig_samples, const uint32_t v) {
         assert(m.var_to_formula.count(v) == 0);
         uint32_t max_depth = 0;
         m.var_to_formula[v] = recur(&r, v, used_vars, 0, max_depth);
-        SLOW_DEBUG_DO(verify_aig_error_rate(samples, v, train_error));
+        SLOW_DEBUG_DO(verify_aig_matches_tree(&r, samples, v, used_vars, train_error));
         if (mconf.inv_guess)
             m.var_to_formula[v] = m.fh->neg(m.var_to_formula[v]);
         verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%."
@@ -152,34 +152,76 @@ double CegrLearn::train(const vector<sample>& orig_samples, const uint32_t v) {
     return train_error;
 }
 
-void CegrLearn::verify_aig_error_rate(
-        const vector<const sample*>& samples, const uint32_t v, const double train_error) {
+#ifdef SLOW_DEBUG
+// Point-for-point equivalence of the AIG built by recur() against mlpack's own
+// Classify(). Aggregate error rates can coincide while the two functions differ
+// on individual points, so this compares every point instead. Checks the
+// training points, then -- when the feature space is small enough -- every
+// assignment in it, which covers tree regions no sample ever reaches.
+void CegrLearn::verify_aig_matches_tree(mlpack::tree::DecisionTree<>* r,
+        const vector<const sample*>& samples, const uint32_t v,
+        const vector<uint32_t>& used_vars, const double train_error) {
     const auto& aig = m.var_to_formula.at(v).aig;
+    const uint32_t n = used_vars.size();
 
-    // Determine max var index: samples cover [0, nVars()), y_hat vars may go beyond
     uint32_t max_var = m.cnf.nVars();
-    for (const auto& [y, y_hat] : m.y_to_y_hat)
-        max_var = std::max(max_var, y_hat + 1);
-
+    for (const auto& [y, y_hat] : m.y_to_y_hat) max_var = std::max(max_var, y_hat + 1);
     const vector<aig_lit> defs(max_var, nullptr);
 
+    // The AIG reads inputs by their own var, and to_define vars via y_hat, so
+    // seed both slots from the same bit.
+    vector<CMSat::lbool> vals(max_var, CMSat::l_Undef);
+    arma::vec point(n);
+    auto eval_both = [&](uint32_t& mismatches) {
+        std::map<aig_lit, CMSat::lbool> cache;
+        const CMSat::lbool got = ArjunNS::AIG::evaluate(vals, aig, defs, cache);
+        assert(got != CMSat::l_Undef && "AIG leaf outside the feature set");
+        const bool want = r->Classify(point) == 1;
+        if (m.lbool_to_bool(got) != want) mismatches++;
+    };
+    auto set_bit = [&](const uint32_t k, const bool bit) {
+        point[k] = bit ? 1.0 : 0.0;
+        const uint32_t var = used_vars[k];
+        vals[var] = bit ? CMSat::l_True : CMSat::l_False;
+        if (m.to_define_full.count(var)) vals[m.y_to_y_hat.at(var)] = vals[var];
+    };
+
+    uint32_t mismatches = 0;
     uint32_t wrong = 0;
     for (const auto* s : samples) {
-        // Build vals: real sample values, then overlay y_hat slots with y's sample value
-        vector<CMSat::lbool> vals(max_var, CMSat::l_Undef);
-        for (uint32_t i = 0; i < m.cnf.nVars(); i++) vals[i] = (*s)[i];
-        for (const auto& [y, y_hat] : m.y_to_y_hat) vals.at(y_hat) = (*s)[y];
+        for (uint32_t k = 0; k < n; k++) set_bit(k, m.lbool_to_bool((*s)[used_vars[k]]));
+        eval_both(mismatches);
 
         std::map<aig_lit, CMSat::lbool> cache;
-        const CMSat::lbool result = ArjunNS::AIG::evaluate(vals, aig, defs, cache);
-        if (result != (*s)[v]) wrong++;
+        if (ArjunNS::AIG::evaluate(vals, aig, defs, cache) != (*s)[v]) wrong++;
+    }
+    if (mismatches != 0) {
+        std::cout << "ERROR: AIG disagrees with the decision tree on " << mismatches
+            << " / " << samples.size() << " training points, v: " << v+1 << endl;
+        assert(false && "recur() built an AIG that is not the trained tree");
+    }
+
+    // 2^n over the whole feature space; 20 keeps the worst case ~1M evals.
+    if (n <= 20) {
+        const uint64_t total = 1ULL << n;
+        for (uint64_t mask = 0; mask < total; mask++) {
+            for (uint32_t k = 0; k < n; k++) set_bit(k, (mask >> k) & 1ULL);
+            eval_both(mismatches);
+        }
+        if (mismatches != 0) {
+            std::cout << "ERROR: AIG disagrees with the decision tree on " << mismatches
+                << " / " << total << " exhaustive points, v: " << v+1 << endl;
+            assert(false && "recur() built an AIG that is not the trained tree");
+        }
     }
 
     const double aig_error = wrong * 100.0 / (double)samples.size();
-    verb_print(1, "[verify] AIG error: " << setprecision(4) << aig_error
-            << "% ML error: " << train_error << "% on v: " << v+1);
+    verb_print(1, "[verify] AIG matches tree exactly."
+            << " AIG err: " << setprecision(4) << aig_error
+            << "% ML err: " << train_error << "% on v: " << v+1);
     assert(std::abs(aig_error - train_error) <= 0.01);
 }
+#endif
 
 FHolder<MetaSolver>::Formula CegrLearn::recur(mlpack::tree::DecisionTree<>* node,
         const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {

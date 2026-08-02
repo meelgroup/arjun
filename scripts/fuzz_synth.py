@@ -35,7 +35,7 @@ from collections import namedtuple
 def fmt_cmd(command):
     # Render a command (list of args) so it can be copy-pasted into a
     # shell verbatim: each token is shell-quoted, so values containing
-    # parens/commas (e.g. --mstrategy "const(max_repairs=10),bve") stay
+    # parens/commas (e.g. --cstrategy "const(max_repairs=10),bve") stay
     # a single argument.
     return " ".join(shlex.quote(str(c)) for c in command)
 
@@ -225,6 +225,23 @@ def run_check(command, final, seed):
         exit(-1)
 
 
+# Decision trees that never split leave recur()'s ITE construction untested, so
+# track the split/leaf mix and report it — a run that only ever built leaves has
+# not covered the learner, however many iterations it did. "verified" counts the
+# SLOW_DEBUG tree-vs-AIG equivalence checks, and stays 0 in non-SLOW_DEBUG builds.
+tree_depths = {"leaf": 0, "split": 0, "verified": 0}
+TREE_DEPTH_RE = re.compile(r"Training error:.*?depth:\s*(\d+)")
+
+
+def note_tree_depth(line):
+    if "[verify] AIG matches tree exactly" in line:
+        tree_depths["verified"] += 1
+    match = TREE_DEPTH_RE.search(line)
+    if match is None:
+        return
+    tree_depths["split" if int(match.group(1)) > 0 else "leaf"] += 1
+
+
 def run_synth(solver, fname):
     curr_time = time.time()
     toexec = solver.split()
@@ -248,7 +265,9 @@ def run_synth(solver, fname):
     for line in out.split("\n"):
         line = line.strip()
         # print("Solver output line: %s" % line)
-        if ("Training error" not in line) :
+        note_tree_depth(line)
+        # "Training error"/"[verify]" report percentages, not failures.
+        if ("Training error" not in line) and ("[verify]" not in line):
             if ("ERROR" in line) or ("Error" in line) or ("error" in line):
                 print("Error line from solver %s: %s" % (solver, line))
                 return True, []
@@ -354,8 +373,7 @@ def cleanup(fname, prefix):
     os.unlink(prefix)
 
 def gen_mstrategy():
-    # Valid types: "const" and "bve". ("learn" requires EXTRA_SYNTH, so skip it.)
-    types = ["const", "bve"]
+    types = ["const", "bve", "learn"]
 
     uint_params = ["samples", "max_depth", "sampler_fixed_conflicts",
                    "min_leaf_size", "stats_every",
@@ -388,6 +406,15 @@ def gen_mstrategy():
         params = {}
         if must_have_max_repairs or (not must_not_have_max_repairs and random.choice([True, False])):
             params["max_repairs"] = str(random.choice([10, 100, 400, 1000]))
+        # Most learn strategies get params that actually grow a tree. On fuzz-sized
+        # CNFs the defaults (min_leaf_size=10, few unique-input samples) collapse
+        # every tree to a single leaf, so recur()'s ITE path never runs. The
+        # remaining quarter keeps the degenerate configs covered.
+        if stype == "learn" and random.random() < 0.75:
+            params["samples"] = str(random.choice([500, 2000, 5000]))
+            params["min_leaf_size"] = str(random.choice([1, 2, 3]))
+            params["min_gain_split"] = str(random.choice([0.0, 0.0001, 0.001]))
+            params["max_depth"] = str(random.choice([0, 3, 8]))
         for p in random.sample(uint_params, random.randint(0, 2)):
             params.setdefault(p, gen_uint())
         for p in random.sample(int_params, random.randint(0, 2)):
@@ -503,9 +530,9 @@ if __name__ == "__main__":
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))
         solver += " --samples " + random.choice(["0", "100", "10000"])
-        solver += " --mingainsplit " + random.choice(["0.1", "0.001", "5"])
+        solver += " --mingainsplit " + random.choice(["0.0", "0.001", "0.1", "5"])
         solver += " --maxdepth " + random.choice(["2", "10"])
-        solver += " --minleaf " + random.choice(["2", "10"])
+        solver += " --minleaf " + random.choice(["1", "2", "10"])
         solver += " --maxsat " + random.choice(["0", "-1"])  # skip 1 (requires EXTRA_SYNTH)
         solver += " --repaircache " + " " + random.choice(["0", "100", "1000"])
 
@@ -523,7 +550,7 @@ if __name__ == "__main__":
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
 
-        solver += " --mstrategy " + gen_mstrategy()
+        solver += " --cstrategy " + gen_mstrategy()
 
         err, aigs = run_synth(solver, fname)
         if err is None:
@@ -537,6 +564,8 @@ if __name__ == "__main__":
             print("=" * 60)
             exit(-1)
         print("Synthesis succeeded on file %s, produced files: %s" % (fname, str(aigs)))
+        print("Decision trees so far: %d with splits, %d single-leaf, %d verified vs AIG"
+              % (tree_depths["split"], tree_depths["leaf"], tree_depths["verified"]))
         if len(aigs) == 0:
             print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
             exit(-1)
