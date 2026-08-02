@@ -916,8 +916,9 @@ void Cegr::init_from_guess() {
         AIG::get_dependent_vars(aigs[at], deps, y);
         for(const auto& d: deps) {
             if (input.count(d)) continue;
-            assert(later_in_order(y, d) &&
-                "guess AIG must only depend on earlier vars in the (deterministic) order");
+            // Deps may cross y_order (see the note on RecomputeYHat::run):
+            // only acyclicity is guaranteed, checked below.
+            assert(to_define_full.count(d) && "guess AIG leaf must be input or y");
             set_depends_on(y, d);
         }
         at++;
@@ -990,11 +991,28 @@ void Cegr::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
 // AIG snapshot of every to_define formula (orig var space); feeds the next
 // round's guess.
 std::map<uint32_t, aig_lit> Cegr::export_formula_aigs() const {
+    // Formula AIGs mix var spaces: repairs add orig-space leaves, while the
+    // learned/backward-derived bases carry y_hat leaves. y_hat numbering is
+    // per-Cegr-instance, so map those back to y before handing them over.
+    constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
+    auto to_orig = [&](uint32_t v) -> Lit {
+        if (v < yhat_to_y_flat.size() && yhat_to_y_flat[v] != none)
+            return Lit(yhat_to_y_flat[v], false);
+        assert((v < cnf.nVars()) && "formula AIG leaf is neither orig var nor y_hat");
+        return Lit(v, false);
+    };
+
     std::map<uint32_t, aig_lit> ret;
+    std::map<aig_lit, aig_lit> cache; // shared: keeps cross-formula sharing
+    auto visit = [&](AIGT type, uint32_t var, const aig_lit* l, const aig_lit* r) -> aig_lit {
+        if (type == AIGT::t_const) return AIG::new_const(true);
+        if (type == AIGT::t_lit) return AIG::new_lit(to_orig(var));
+        return AIG::new_and(*l, *r);
+    };
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
         assert(var_to_formula.at(y).aig != nullptr);
-        ret[y] = var_to_formula.at(y).aig;
+        ret[y] = AIG::transform<aig_lit>(var_to_formula.at(y).aig, visit, cache);
     }
     return ret;
 }
