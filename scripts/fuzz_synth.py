@@ -415,7 +415,7 @@ def gen_mstrategy():
             params["min_leaf_size"] = str(random.choice([1, 2, 3]))
             params["min_gain_split"] = str(random.choice([0.0, 0.0001, 0.001]))
             params["max_depth"] = str(random.choice([0, 3, 8]))
-        for p in random.sample(uint_params, random.randint(0, 2)):
+        for p in random.sample(uint_params, random.randint(0, 5)):
             params.setdefault(p, gen_uint())
         for p in random.sample(int_params, random.randint(0, 2)):
             params.setdefault(p, gen_int())
