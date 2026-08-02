@@ -1660,6 +1660,7 @@ public:
         int one_repair_per_loop = 0;
         int force_bw_equal = 1;
         int inv_guess = 0;
+        int learn_input_only = 0; // ML features are the input vars only, no already-defined y vars
         int32_t max_repairs = std::numeric_limits<int32_t>::max();
         uint32_t restart = 10000;
         int check_repair = 0;

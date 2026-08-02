@@ -388,7 +388,7 @@ def gen_mstrategy():
                    # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
                    "repair_cache_size",
                    "one_repair_per_loop", "force_bw_equal",
-                   "inv_guess", "seed"]
+                   "inv_guess", "seed", "learn_input_only"]
     #  "ctx_solver_type", "repair_solver_type",
     double_params = ["min_gain_split"]
 

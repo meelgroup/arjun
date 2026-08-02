@@ -45,7 +45,8 @@ void CegrLearn::full_train() {
         << ", samples=" << mconf.samples
         << ", minimumLeafSize=" << mconf.min_leaf_size
         << ", minGainSplit=" << setprecision(6) << mconf.min_gain_split << setprecision(2)
-        << ", maximumDepth=" << mconf.max_depth);
+        << ", maximumDepth=" << mconf.max_depth
+        << ", learn_input_only=" << mconf.learn_input_only);
     double samp_start_time = cpuTime();
     vector<sample> samples = get_cmsgen_samples(mconf.samples);
     m.stats.sampl_time = cpuTime() - samp_start_time;
@@ -73,10 +74,12 @@ double CegrLearn::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
 
     vector<uint32_t> used_vars(m.input.begin(), m.input.end());
-    for(const auto& y: m.y_order) {
-        if (y == v) break;
-        assert(m.dependency_mat[y][v] != 1);
-        used_vars.push_back(y);
+    if (!mconf.learn_input_only) {
+        for(const auto& y: m.y_order) {
+            if (y == v) break;
+            assert(m.dependency_mat[y][v] != 1);
+            used_vars.push_back(y);
+        }
     }
     /* assert(!orig_samples.empty()); */
     vector<const sample*> samples;
