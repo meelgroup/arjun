@@ -116,6 +116,9 @@ class Cegr {
 
         const Config& conf;
         const ArjunNS::Arjun::CegrConf& mconf;
+        [[nodiscard]] uint32_t eff_seed() const {
+            return mconf.seed < 0 ? conf.seed : (uint32_t)mconf.seed;
+        }
         MetaSolver cex_solver;
         CachedSolver repair_solver;
 

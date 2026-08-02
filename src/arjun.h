@@ -1656,6 +1656,7 @@ public:
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
         int cegr_base = 0;
+        int seed = -1; // -1 = inherit the global --seed
         int one_repair_per_loop = 0;
         int force_bw_equal = 1;
         int inv_guess = 0;

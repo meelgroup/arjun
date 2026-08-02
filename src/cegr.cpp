@@ -1182,7 +1182,7 @@ void Cegr::const_functions() {
 }
 
 void Cegr::random_functions() {
-    std::mt19937 mt(conf.seed);
+    std::mt19937 mt(eff_seed());
     std::uniform_int_distribution coin{ 0, 1 };
     for(const auto& y: Cegr::y_order) {
         if (!to_define.count(y)) continue;

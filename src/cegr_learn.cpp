@@ -274,7 +274,7 @@ vector<sample> CegrLearn::get_cmsgen_samples(uint32_t num) {
 
     const double my_time = cpuTime();
     SATSolver solver_samp;
-    solver_samp.set_seed(conf.seed);
+    solver_samp.set_seed(m.eff_seed());
     m.inject_cnf(solver_samp);
     solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
 

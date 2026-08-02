@@ -182,7 +182,7 @@ void add_arjun_options() {
         "Comma-separated synthesis strategy list, e.g. "
         "\"learn(samples=1,max_repairs=100),learn(max_repairs=800),bve\". "
         "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
-        "Params: max_repairs, samples, min_gain_split, "
+        "Params: max_repairs, samples, seed, min_gain_split, "
         "max_depth, sampler_fixed_conflicts, and other CegrConf fields.");
 
     // Restarting
