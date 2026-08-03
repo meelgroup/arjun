@@ -178,7 +178,6 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_cegr(SimplifiedCNF&& cnf, const CegrC
         if (mconf.max_repairs != std::numeric_limits<int32_t>::max()) {
             assert(mconf.max_repairs > cumul_stats.tot_repaired);
             round_mconf.max_repairs = mconf.max_repairs - cumul_stats.tot_repaired;
-            cout << "here, setting: " << round_mconf.max_repairs << " all rounds: " << cumul_stats.tot_repaired << " orig: " << mconf.max_repairs << endl;
         }
 
         // Run
@@ -214,8 +213,9 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_cegr(SimplifiedCNF&& cnf, const CegrC
         }
     }
 
-    // Done!
-    if (arjdata->conf.verb >= 1) cumul_stats.print_stats(COLRED " Done. ");
+    if (arjdata->conf.verb >= 1 && cnf.synth_done()) {
+        cumul_stats.print_stats(COLRED " Done. ");
+    }
     return cnf;
 }
 
