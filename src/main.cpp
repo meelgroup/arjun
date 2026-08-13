@@ -470,7 +470,12 @@ void do_synthesis() {
     // re-encodes these into a repair loop, so the smallest form wins.
     cnf.rewrite_aigs(conf.verb, true);
     if (!output_file.empty()) {
-        cnf.write_aig_def_to_verilog(output_file);
+        if (output_file.ends_with(".aig")) cnf.write_aig_defs_to_file(output_file);
+        else if (output_file.ends_with(".v")) cnf.write_aig_def_to_verilog(output_file);
+        else {
+            cout << "ERROR: output file must end with .aig or .v" << endl;
+            exit(EXIT_FAILURE);
+        }
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }
     if (!conf.debug_synth.empty()) {
