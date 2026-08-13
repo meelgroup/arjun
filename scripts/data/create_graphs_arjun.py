@@ -67,8 +67,10 @@ only_dirs = [
     # "out-synth-1945355-5", # vsids and some other checks
     # "out-synth-1945355-", # vsids and some other checks
     # "out-synth-1957159-2", # cleanup
-    "out-synth-1965186-0", # polarity that's easier?
+    # "out-synth-1965186-0", # polarity that's easier?
     "out-synth-1995325-0", # rnd strategy
+
+    "out-synth-1367674-0", # before unate-eq
 ]
 # -------------------------------------------------------------
 
