@@ -121,7 +121,7 @@ understands the following comment-style extensions:
 | `c p weight LIT VALUE`       | Weight of a literal (for weighted counting). Requires `--mode 1`.                                        |
 | `c t mc \| pmc \| wmc \| pwmc` | Counting task type: `mc` = model counting, `pmc` = projected MC, `wmc` = weighted MC, `pwmc` = projected weighted MC. |
 | `c MUST MULTIPLY BY N`       | Existing count multiplier carried into Arjun (Arjun will combine it with the multiplier it produces).    |
-| `c p no-touch v1 v2 ... 0`   | Variables Arjun must keep verbatim: same numbering, never eliminated, never dropped from `c p show`. Must be the consecutive prefix `1..k` and every one of them must also be in `c p show`. |
+| `c p no-touch v1 v2 ... 0`   | Variables Arjun must keep in simplified CNF. Must be in `c p show` |
 | `c ind v1 v2 ... 0`          | Legacy independent-set syntax. Still accepted, but prefer `c p show`. |
 
 
