@@ -46,6 +46,7 @@ struct Backward
     bool already_duplicated = false;
     std::vector<uint32_t> sampling_vars;
     std::vector<uint32_t> empty_sampling_vars;
+    std::set<uint32_t> no_touch;
 
     std::vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
@@ -68,6 +69,7 @@ struct Backward
     void add_fixed_clauses();
     void duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf);
     void get_incidence();
+    void keep_no_touch(); // passes only shrink sampling_vars, put back what must stay
     void set_up_solver();
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
     void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);

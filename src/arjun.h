@@ -1116,6 +1116,9 @@ struct VarTypes {
     }
 };
 
+// A no-touch var dies if the var it was replaced with is removed
+void expand_with_eq_classes(std::set<uint32_t>& vars, CMSat::SATSolver* solver);
+
 class SimplifiedCNF {
 public:
     std::unique_ptr<CMSat::FieldGen> fg = nullptr;
@@ -1138,6 +1141,7 @@ public:
         backbone_done = other.backbone_done;
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
+        n_no_touch = other.n_no_touch;
         if (!other.need_aig) {
             for(const auto& d: other.defs)
                 assert(d == nullptr);
@@ -1173,6 +1177,29 @@ public:
     [[nodiscard]] const auto& get_orig_clauses() const { return orig_clauses; }
     [[nodiscard]] const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
     [[nodiscard]] const auto& get_backbone_done() const { return backbone_done; }
+
+    // ORIG vars 0..n_no_touch-1 must end up as CNF vars 0..n_no_touch-1
+    void set_no_touch_vars(const std::vector<uint32_t>& vars);
+    [[nodiscard]] uint32_t get_num_no_touch() const { return n_no_touch; }
+    // no-touch set in CNF numbering
+    [[nodiscard]] std::set<uint32_t> get_no_touch_cur() const {
+        std::set<uint32_t> ret;
+        for(uint32_t v = 0; v < n_no_touch; v++) {
+            auto it = orig_to_new_var.find(v);
+            if (it != orig_to_new_var.end()) ret.insert(it->second.var());
+        }
+        return ret;
+    }
+    void force_no_touch_in_sampl() {
+        if (n_no_touch == 0) return;
+        std::set<uint32_t> s(sampl_vars.begin(), sampl_vars.end());
+        std::set<uint32_t> o(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        for(const auto& v: get_no_touch_cur()) { s.insert(v); o.insert(v); }
+        set_sampl_vars(s, true);
+        set_opt_sampl_vars(o);
+    }
+    void check_no_touch_sanity() const;
+    void restore_no_touch(std::unique_ptr<CMSat::SATSolver>& solver, const SimplifiedCNF& prev);
     [[nodiscard]] bool synth_done() const;
     [[nodiscard]] bool is_projected() const { return proj; }
 
@@ -1570,6 +1597,7 @@ private:
     std::map<uint32_t, Weight> weights;
     std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
                                                     // does NOT map to vars NOT in the CNF
+    uint32_t n_no_touch = 0;
     AIGManager aig_mng; // only for const true/false
     std::vector<aig_lit> defs; //Definition of variables in terms of AIG. ORIGINAL number space.
                                //Size is the original number of variables, ALWAYS

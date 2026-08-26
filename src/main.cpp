@@ -392,6 +392,10 @@ void do_synthesis() {
     ArjunNS::SimplifiedCNF cnf(fg);
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
+    if (cnf.get_num_no_touch()) {
+        cout << "ERROR: synthesis with 'c p no-touch' is not supported" << endl;
+        exit(EXIT_FAILURE);
+    }
     if (etof_conf.all_indep) {
         // No projection (or it covers all vars) => no defined vars to synth.
         cout << "ERROR: no defined vars to synthesize "
@@ -493,6 +497,11 @@ void do_backward_pass() {
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
     cnf.check_cnf_sampl_sanity();
+    if (cnf.get_num_no_touch() && !etof_conf.do_renumber) {
+        cout << "ERROR: 'c p no-touch' needs --renumber 1, it's what puts the "
+            "no-touch variables back to 1..k" << endl;
+        exit(EXIT_FAILURE);
+    }
 
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.get_sampl_vars();

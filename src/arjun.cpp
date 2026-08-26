@@ -892,12 +892,108 @@ DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
     // Now we do the mapping. Otherwise, above will be complicated
     // This ALSO gets all the fixed values
     scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
+    scnf.restore_no_touch(solver, *this);
     fix_mapping_after_renumber(scnf, verb);
     if (verb) cout << "c o solver orig num vars: " << solver->nVars() << " solver simp num vars: "
         << solver->simplified_nvars() << endl;
 
     SLOW_DEBUG_DO(assert(scnf.defs_invariant()));
     return scnf;
+}
+
+DLL_PUBLIC void ArjunNS::expand_with_eq_classes(set<uint32_t>& vars, CMSat::SATSolver* solver) {
+    if (vars.empty()) return;
+    const auto eq = solver->get_all_binary_xors();
+    bool changed = true;
+    while(changed) {
+        changed = false;
+        for(const auto& p: eq) {
+            const bool a = vars.count(p.first.var());
+            const bool b = vars.count(p.second.var());
+            if (a == b) continue;
+            vars.insert(a ? p.second.var() : p.first.var());
+            changed = true;
+        }
+    }
+}
+
+DLL_PUBLIC void SimplifiedCNF::set_no_touch_vars(const vector<uint32_t>& vars) {
+    if (vars.empty()) return;
+    set<uint32_t> s(vars.begin(), vars.end());
+    if (*s.begin() != 0 || *s.rbegin() != s.size()-1) {
+        cout << "ERROR: 'c p no-touch' must be the consecutive prefix 1..k of the variables"
+            << endl;
+        exit(-1);
+    }
+    n_no_touch = s.size();
+}
+
+DLL_PUBLIC void SimplifiedCNF::check_no_touch_sanity() const {
+    if (n_no_touch == 0) return;
+    if (n_no_touch > nvars) {
+        cout << "ERROR: 'c p no-touch' has " << n_no_touch << " variables, but the CNF only has "
+            << nvars << endl;
+        exit(-1);
+    }
+    set<uint32_t> sampl(sampl_vars.begin(), sampl_vars.end());
+    for(uint32_t v = 0; v < n_no_touch; v++) {
+        if (!sampl.count(v)) {
+            cout << "ERROR: variable " << v+1 << " is in 'c p no-touch' but not in 'c p show'."
+                << " Every no-touch variable must be in the sampling set." << endl;
+            exit(-1);
+        }
+    }
+}
+
+// CMS loses a no-touch var by fixing it, or by collapsing it into another
+// no-touch var. Re-create it and tie it back.
+DLL_PUBLIC void SimplifiedCNF::restore_no_touch(unique_ptr<CMSat::SATSolver>& solver,
+        const SimplifiedCNF& prev) {
+    n_no_touch = prev.n_no_touch;
+    if (n_no_touch == 0) return;
+    release_assert(!need_aig && "no-touch is not supported together with synthesis");
+
+    map<uint32_t, bool> fixed;
+    for(const auto& l: solver->get_zero_assigned_lits())
+        if (l.var() < prev.nVars()) fixed[l.var()] = !l.sign();
+
+    set<uint32_t> claimed;
+    set<uint32_t> sampl(sampl_vars.begin(), sampl_vars.end());
+    set<uint32_t> opt_sampl(opt_sampl_vars.begin(), opt_sampl_vars.end());
+    for(uint32_t v = 0; v < n_no_touch; v++) {
+        const auto it = orig_to_new_var.find(v);
+        // a signed mapping means the var now stands for its NEGATION
+        if (it != orig_to_new_var.end() && !it->second.sign()
+                && !claimed.count(it->second.var())) {
+            claimed.insert(it->second.var());
+            sampl.insert(it->second.var());
+            opt_sampl.insert(it->second.var());
+            continue;
+        }
+
+        const uint32_t x = nvars;
+        nvars++;
+        defs.push_back(aig_lit());
+        if (it != orig_to_new_var.end()) {
+            const CMSat::Lit rep = it->second;
+            add_clause({CMSat::Lit(x, true), rep});
+            add_clause({CMSat::Lit(x, false), ~rep});
+        } else {
+            const auto p = prev.orig_to_new_var.find(v);
+            release_assert(p != prev.orig_to_new_var.end() && "no-touch var was already lost");
+            const auto f = fixed.find(p->second.var());
+            // on UNSAT there is an empty clause, values are meaningless
+            release_assert((f != fixed.end() || !solver->okay()) &&
+                    "no-touch var vanished but was not fixed");
+            if (f != fixed.end()) add_clause({CMSat::Lit(x, !(f->second ^ p->second.sign()))});
+        }
+        orig_to_new_var[v] = CMSat::Lit(x, false);
+        claimed.insert(x);
+        sampl.insert(x);
+        opt_sampl.insert(x);
+    }
+    set_sampl_vars(sampl, true);
+    set_opt_sampl_vars(opt_sampl);
 }
 
 DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, const uint32_t verb) const {
@@ -921,9 +1017,12 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
             cout << endl;
         }
 
-        // Find which orig to keep undefined (prefer orig_sampl_vars)
+        // Find which orig to keep undefined (prefer no-touch, then orig_sampl_vars)
         uint32_t orig_to_keep = UINT32_MAX;
         for(const auto& o: origs) {
+            if (o < scnf.n_no_touch) { orig_to_keep = o; break; }
+        }
+        if (orig_to_keep == UINT32_MAX) for(const auto& o: origs) {
             if (scnf.orig_sampl_vars.count(o)) {
                 orig_to_keep = o;
                 break;
@@ -1569,8 +1668,19 @@ DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
     constexpr uint32_t m = numeric_limits<uint32_t>::max();
     vector<uint32_t> map_here_to_there(nvars, m);
     uint32_t i = 0;
+    for(uint32_t v = 0; v < n_no_touch; v++) { // back to their original 0..k-1
+        const auto it = orig_to_new_var.find(v);
+        release_assert(it != orig_to_new_var.end() && "no-touch var lost");
+        release_assert(!it->second.sign() && "no-touch var flipped polarity");
+        const uint32_t cur = it->second.var();
+        release_assert(cur < nvars);
+        release_assert(map_here_to_there[cur] == m && "two no-touch vars share a CNF var");
+        map_here_to_there[cur] = i;
+        i++;
+    }
     for(const auto& v: sampl_vars) {
         assert(v < nvars);
+        if (map_here_to_there[v] != m) continue;
         map_here_to_there[v] = i;
         i++;
     }
@@ -1639,6 +1749,12 @@ DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) cons
     for(const auto& cl: clauses) outf << cl << " 0\n";
     if (red) for(const auto& cl: red_clauses)
         outf << "c red " << cl << " 0\n";
+
+    if (n_no_touch) {
+        outf << "c p no-touch ";
+        for(uint32_t v = 0; v < n_no_touch; v++) outf << v+1 << " ";
+        outf << "0\n";
+    }
 
     //Add projection
     outf << "c p show ";

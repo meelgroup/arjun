@@ -107,6 +107,7 @@ bool Minimize::simplify() {
         << stats_line_percent(old_size-sampling_vars.size(), old_size)
         << " T: " << (cpuTime() - my_time));
 
+    keep_no_touch();
     check_no_duplicate_in_sampling_set();
     return true;
 }
@@ -364,7 +365,17 @@ void Minimize::get_empty_occs() {
     uint32_t old_size = sampling_vars.size();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
+    // hold no-touch back, CMS elims the empties it finds
+    auto prot = no_touch;
+    ArjunNS::expand_with_eq_classes(prot, solver.get());
+    std::vector<uint32_t> held;
+    std::erase_if(sampling_vars, [&](uint32_t v) {
+            if (!prot.count(v)) return false;
+            held.push_back(v);
+            return true; });
     solver->clean_sampl_get_empties(sampling_vars, empty_sampling_vars);
+    sampling_vars.insert(sampling_vars.end(), held.begin(), held.end());
+    std::sort(sampling_vars.begin(), sampling_vars.end());
 
     verb_print(1, "[arjun-simp] get-empties"
         << " removed: " << (old_size-sampling_vars.size())

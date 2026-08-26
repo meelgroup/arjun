@@ -77,4 +77,5 @@ template<typename T> void read_in_a_file(const std::string& filename,
             holder->set_opt_sampl_vars(holder->get_sampl_vars());
         }
     }
+    holder->check_no_touch_sanity();
 }
