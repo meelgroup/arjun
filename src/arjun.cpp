@@ -901,7 +901,8 @@ DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
     return scnf;
 }
 
-DLL_PUBLIC void ArjunNS::expand_with_eq_classes(set<uint32_t>& vars, CMSat::SATSolver* solver) {
+// a protected var dies with the var it was replaced with
+static void expand_with_eq_classes(set<uint32_t>& vars, CMSat::SATSolver* solver) {
     if (vars.empty()) return;
     const auto eq = solver->get_all_binary_xors();
     bool changed = true;
@@ -915,6 +916,20 @@ DLL_PUBLIC void ArjunNS::expand_with_eq_classes(set<uint32_t>& vars, CMSat::SATS
             changed = true;
         }
     }
+}
+
+DLL_PUBLIC void ArjunNS::clean_sampl_get_empties_prot(CMSat::SATSolver* solver,
+        vector<uint32_t>& sampl_vars, vector<uint32_t>& empty_vars, set<uint32_t> prot) {
+    if (prot.empty()) { solver->clean_sampl_get_empties(sampl_vars, empty_vars); return; }
+    expand_with_eq_classes(prot, solver);
+    vector<uint32_t> held;
+    std::erase_if(sampl_vars, [&](uint32_t v) {
+            if (!prot.count(v)) return false;
+            held.push_back(v);
+            return true; });
+    solver->clean_sampl_get_empties(sampl_vars, empty_vars);
+    sampl_vars.insert(sampl_vars.end(), held.begin(), held.end());
+    std::sort(sampl_vars.begin(), sampl_vars.end());
 }
 
 DLL_PUBLIC void SimplifiedCNF::set_no_touch_vars(const vector<uint32_t>& vars) {

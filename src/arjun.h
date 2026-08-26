@@ -1116,8 +1116,10 @@ struct VarTypes {
     }
 };
 
-// A no-touch var dies if the var it was replaced with is removed
-void expand_with_eq_classes(std::set<uint32_t>& vars, CMSat::SATSolver* solver);
+// CMS elims the empties it finds, so hold `prot` out of the call entirely
+void clean_sampl_get_empties_prot(CMSat::SATSolver* solver,
+        std::vector<uint32_t>& sampl_vars, std::vector<uint32_t>& empty_vars,
+        std::set<uint32_t> prot);
 
 class SimplifiedCNF {
 public:

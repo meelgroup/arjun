@@ -243,17 +243,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     auto new_sampl_vars = cnf.get_sampl_vars();
     vector<uint32_t> new_empty_sampl_vars;
-    // hold no-touch back, CMS elims the empties it finds
-    auto prot = cnf.get_no_touch_cur();
-    ArjunNS::expand_with_eq_classes(prot, solver.get());
-    vector<uint32_t> held;
-    std::erase_if(new_sampl_vars, [&](uint32_t v) {
-            if (!prot.count(v)) return false;
-            held.push_back(v);
-            return true; });
-    solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
-    new_sampl_vars.insert(new_sampl_vars.end(), held.begin(), held.end());
-    std::sort(new_sampl_vars.begin(), new_sampl_vars.end());
+
+    ArjunNS::clean_sampl_get_empties_prot(solver.get(), new_sampl_vars,
+            new_empty_sampl_vars, cnf.get_no_touch_cur());
+
+    // Set up dont_elim
     if (!cnf.get_weighted()) {
       dont_elim.clear();
       for(uint32_t v: new_sampl_vars) dont_elim.emplace_back(v, false);
