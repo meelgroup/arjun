@@ -140,6 +140,7 @@ void Minimize::run_minimize(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
     std::erase_if(zero_assigned, [&](const Lit& l) { return l.var() >= cnf.nVars(); });
     for(const auto& l: zero_assigned) { cnf.add_clause({l}); }
     cnf.remove_sampling_vars(zero_assigned);
+    cnf.force_no_touch_in_sampl(); // CNF numbering unchanged here, so they are still themselves
 
     for(const auto& v: cnf.get_sampl_vars())
         verb_print(5, "[w-debug] minim final sampl var: " << v+1);
