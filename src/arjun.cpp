@@ -960,6 +960,38 @@ DLL_PUBLIC void SimplifiedCNF::check_no_touch_sanity() const {
     }
 }
 
+DLL_PUBLIC void SimplifiedCNF::check_no_touch_mapping() const {
+    if (n_no_touch == 0) return;
+    const set<uint32_t> sampl(sampl_vars.begin(), sampl_vars.end());
+    set<uint32_t> seen;
+    for(uint32_t v = 0; v < n_no_touch; v++) {
+        const auto it = orig_to_new_var.find(v);
+        if (it == orig_to_new_var.end()) {
+            cout << "ERROR: no-touch var " << v+1 << " no longer maps into the CNF" << endl;
+            exit(-1);
+        }
+        const CMSat::Lit l = it->second;
+        if (l.sign()) {
+            cout << "ERROR: no-touch var " << v+1 << " maps to negated literal " << l << endl;
+            exit(-1);
+        }
+        if (l.var() >= nvars) {
+            cout << "ERROR: no-touch var " << v+1 << " maps to var " << l.var()+1
+                << " but the CNF only has " << nvars << endl;
+            exit(-1);
+        }
+        if (!seen.insert(l.var()).second) {
+            cout << "ERROR: two no-touch vars both map to CNF var " << l.var()+1 << endl;
+            exit(-1);
+        }
+        if (!sampl.count(l.var())) {
+            cout << "ERROR: no-touch var " << v+1 << " (CNF var " << l.var()+1
+                << ") fell out of the sampling set" << endl;
+            exit(-1);
+        }
+    }
+}
+
 // CMS loses a no-touch var by fixing it, or by collapsing it into another
 // no-touch var. Re-create it and tie it back.
 DLL_PUBLIC void SimplifiedCNF::restore_no_touch(unique_ptr<CMSat::SATSolver>& solver,
@@ -1683,14 +1715,9 @@ DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
     constexpr uint32_t m = numeric_limits<uint32_t>::max();
     vector<uint32_t> map_here_to_there(nvars, m);
     uint32_t i = 0;
+    check_no_touch_mapping();
     for(uint32_t v = 0; v < n_no_touch; v++) { // back to their original 0..k-1
-        const auto it = orig_to_new_var.find(v);
-        release_assert(it != orig_to_new_var.end() && "no-touch var lost");
-        release_assert(!it->second.sign() && "no-touch var flipped polarity");
-        const uint32_t cur = it->second.var();
-        release_assert(cur < nvars);
-        release_assert(map_here_to_there[cur] == m && "two no-touch vars share a CNF var");
-        map_here_to_there[cur] = i;
+        map_here_to_there[orig_to_new_var.at(v).var()] = i;
         i++;
     }
     for(const auto& v: sampl_vars) {

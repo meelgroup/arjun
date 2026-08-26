@@ -1201,6 +1201,8 @@ public:
         set_opt_sampl_vars(o);
     }
     void check_no_touch_sanity() const;
+    // what restore_no_touch() establishes: each maps to its own, positive, shown var
+    void check_no_touch_mapping() const;
     void restore_no_touch(std::unique_ptr<CMSat::SATSolver>& solver, const SimplifiedCNF& prev);
     [[nodiscard]] bool synth_done() const;
     [[nodiscard]] bool is_projected() const { return proj; }

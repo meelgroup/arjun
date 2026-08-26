@@ -268,6 +268,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Return final one
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
     ret_cnf.set_backbone_done(backbone_done);
+    ret_cnf.check_no_touch_mapping();
     if (cnf.get_need_aig()) {
         auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | verbose_debug_enabled, "end get_fully_simplified_renumbered_cnf");
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
