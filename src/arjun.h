@@ -383,7 +383,7 @@ public:
         ret.reserve(aigs.size());
         for (const auto& aig : aigs) {
             if (aig == nullptr) {
-                ret.push_back(nullptr);
+                ret.emplace_back(nullptr);
                 continue;
             }
             ret.push_back(deep_clone(aig, cache));
