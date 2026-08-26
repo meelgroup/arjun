@@ -204,7 +204,7 @@ void Cegr::fill_var_to_formula_with(set<uint32_t>& vars) {
 // has any AIG cycles
 bool Cegr::check_aig_dependency_cycles() const {
     // Deep-copy together in one go (preserves cycles, doesn't mutate originals).
-    vector<aig_lit> aigs(cnf.nVars(), nullptr);
+    vector<aig_lit> aigs(cnf.nVars(), aig_lit());
     for(const auto& y: to_define) {
         if (!var_to_formula.count(y)) continue;
         aigs[y] = var_to_formula.at(y).aig;
@@ -771,7 +771,7 @@ void Cegr::bve_and_substitute() {
             << " neg occur: " << setw(6) << num_neg);
 
         const bool sign = (num_pos >= num_neg);
-        aig_lit overall = nullptr;
+        aig_lit overall;
 
         // AIG
         for(const auto& at: lit_to_cls[Lit(y, sign).toInt()]) {
@@ -784,7 +784,7 @@ void Cegr::bve_and_substitute() {
                 }
             }
             if (!todo) continue;
-            aig_lit current = nullptr;
+            aig_lit current;
             for(const auto& l: cl) {
                 if (l.var() == y) continue;
                 if (later_in_order(y, l.var())) {
@@ -1400,7 +1400,7 @@ SimplifiedCNF Cegr::do_cegr() {
     print_detailed_stats(stats);
 
     // Build final CNF
-    vector<aig_lit> aigs(cnf.nVars(), nullptr);
+    vector<aig_lit> aigs(cnf.nVars(), aig_lit());
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
         verb_print(3, "Final formula for " << y+1 << ":" << endl << var_to_formula[y]);

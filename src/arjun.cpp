@@ -202,7 +202,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_cegr(SimplifiedCNF&& cnf, const CegrC
         if (!arjdata->conf.dump_restart_aig.empty()) {
             // deep_clone so map_aigs_to_orig does not disturb the live guess.
             SimplifiedCNF dcnf = cnf;
-            std::vector<aig_lit> aigs(cnf.nVars(), nullptr);
+            std::vector<aig_lit> aigs(cnf.nVars(), aig_lit());
             for (const auto& [y, a] : guess) aigs[y] = a;
             auto aigs_copy = AIG::deep_clone_vec(aigs);
             dcnf.map_aigs_to_orig(aigs_copy, cnf.nVars());
@@ -325,7 +325,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         bool sign = neg > pos;
 
-        aig_lit overall = nullptr;
+        aig_lit overall;
         for(const auto& cl: orig_def) {
             auto current = scnf.aig_mng.new_const(true);
 
@@ -388,7 +388,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         new_replaced.emplace_back(elimed, bad_lit.sign());
         var_to_lits_it_replaced[bad_lit.var()] = new_replaced;
-        scnf.defs[elimed] = nullptr;
+        scnf.defs[elimed] = aig_lit();
         add_elimed.push_back(bad_lit.var());
     }
     for(const auto& v: add_elimed) elimed_vars.push_back(v);
@@ -1066,7 +1066,7 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
         uint32_t id;
         in.read((char*)&id, sizeof(id));
         if (id == UINT32_MAX) {
-            defs[i] = nullptr;
+            defs[i] = aig_lit();
             continue;
         }
         bool edge_neg;
@@ -2364,7 +2364,7 @@ DLL_PUBLIC uint32_t SimplifiedCNF::new_vars(uint32_t vars) {
     for(uint32_t i = 0; i < vars; i++) {
         const uint32_t v = nvars-vars+i;
         orig_to_new_var[defs.size()] = CMSat::Lit(v, false);
-        defs.push_back(nullptr);
+        defs.push_back(aig_lit());
     }
     return nvars;
 }
@@ -2372,7 +2372,7 @@ DLL_PUBLIC uint32_t SimplifiedCNF::new_var() {
     const uint32_t v = nvars;
     nvars++;
     orig_to_new_var[defs.size()] = CMSat::Lit(v, false);
-    defs.push_back(nullptr);
+    defs.push_back(aig_lit());
     return nvars;
 }
 
@@ -2398,7 +2398,7 @@ DLL_PUBLIC void SimplifiedCNF::check_clause(const vector<CMSat::Lit>& cl) const 
 }
 
 DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
-    for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
+    for(const auto& v: orig_sampl_vars) defs[v] = aig_lit();
 }
 
 DLL_PUBLIC void SimplifiedCNF::check_red_cls_deriveable() const {
@@ -2478,7 +2478,7 @@ DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool balance) {
 }
 
 DLL_PUBLIC aig_lit AIG::rewrite_aig(const aig_lit& aig) {
-    if (!aig) return nullptr;
+    if (!aig) return aig_lit();
     AIGRewriter rw;
     return rw.rewrite(aig);
 }
@@ -2545,7 +2545,7 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs) {
 // Only the AND *node* is shared; the outer edge sign is applied by the caller.
 // Iterative post-order — see AIG::simplify for the reasoning.
 aig_lit AIG::simplify_cse(aig_lit aig, map<AIGKey, aig_node_ptr>& cse_map, unordered_map<const AIG*, aig_node_ptr>& cache) {
-    if (!aig) return nullptr;
+    if (!aig) return aig_lit();
 
     auto build_leaf = [&](const AIG* src) -> aig_node_ptr {
         // Leaves are keyed for dedup across the whole simplification pass.

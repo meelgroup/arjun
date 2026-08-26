@@ -57,7 +57,7 @@ public:
         // Valid because clauses are only ever appended.
         uint32_t uninserted_start = 0;
         CMSat::Lit out = CMSat::lit_Error;
-        ArjunNS::aig_lit aig = nullptr;
+        ArjunNS::aig_lit aig;
     };
 
     std::set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {

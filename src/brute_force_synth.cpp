@@ -149,7 +149,7 @@ void BruteForceSynth::synth_complete_with_models() {
         sat.add_clause(forbid);
     }
 
-    skol.assign(cnf.nVars(), nullptr);
+    skol.assign(cnf.nVars(), aig_lit());
     for (uint32_t y : undet) {
         skol[y] = build_decision_tree(tables.at(y), sorted_inputs);
     }
@@ -160,7 +160,7 @@ void BruteForceSynth::synth_complete_with_models() {
 }
 
 void BruteForceSynth::commit_definitions() {
-    vector<aig_lit> aigs(cnf.nVars(), nullptr);
+    vector<aig_lit> aigs(cnf.nVars(), aig_lit());
     for (uint32_t y : to_define) {
         release_assert(skol[y] != nullptr &&
                        "brute_force_synth must produce a Skolem for every to_define var");

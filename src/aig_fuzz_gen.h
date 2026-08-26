@@ -143,7 +143,7 @@ inline aig_lit gen_dnf_cover_aig(ArjunNS::AIGManager& aig_mng,
                                  std::mt19937& rng, uint32_t num_vars,
                                  uint32_t num_branches, uint32_t max_branch_width)
 {
-    aig_lit overall = nullptr;
+    aig_lit overall;
     for (uint32_t b = 0; b < num_branches; b++) {
         uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
         aig_lit cur = AIG::new_lit(rng() % num_vars, rng() % 2);
@@ -173,7 +173,7 @@ inline aig_lit gen_pure_and_chain(ArjunNS::AIGManager& /*aig_mng*/,
     uint32_t actual = std::min<uint32_t>(len, pool.size());
     if (actual < 2) actual = std::min<uint32_t>(2u, pool.size());
     std::vector<char> used(num_vars, 0);
-    aig_lit cur = nullptr;
+    aig_lit cur;
     uint32_t made = 0;
     for (auto& p : pool) {
         if (used[p.first]) continue;
@@ -201,7 +201,7 @@ inline aig_lit gen_pure_or_chain(ArjunNS::AIGManager& /*aig_mng*/,
     uint32_t actual = std::min<uint32_t>(len, pool.size());
     if (actual < 2) actual = std::min<uint32_t>(2u, pool.size());
     std::vector<char> used(num_vars, 0);
-    aig_lit cur = nullptr;
+    aig_lit cur;
     uint32_t made = 0;
     for (auto& p : pool) {
         if (used[p.first]) continue;

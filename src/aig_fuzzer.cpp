@@ -228,7 +228,7 @@ static bool check_equivalence_eval(const aig_lit& orig, const aig_lit& simplifie
 {
     if (num_vars > 18) return true;
     uint32_t limit = 1u << num_vars;
-    vector<aig_lit> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, aig_lit());
     for (uint32_t mask = 0; mask < limit; mask++) {
         vector<lbool> vals(num_vars);
         for (uint32_t v = 0; v < num_vars; v++)
@@ -245,7 +245,7 @@ static bool check_equivalence_eval(const aig_lit& orig, const aig_lit& simplifie
 static bool check_equivalence_random_eval(const aig_lit& orig, const aig_lit& simplified,
                                            uint32_t num_vars, std::mt19937& rng)
 {
-    vector<aig_lit> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, aig_lit());
     for (uint32_t trial = 0; trial < 10; trial++) {
         vector<lbool> vals(num_vars);
         for (uint32_t v = 0; v < num_vars; v++)
@@ -270,7 +270,7 @@ static void report_failure(const char* method, const aig_lit& orig, const aig_li
 
     if (num_vars <= 6) {
         cerr << "Truth table differences:" << endl;
-        vector<aig_lit> defs(num_vars, nullptr);
+        vector<aig_lit> defs(num_vars, aig_lit());
         for (uint32_t mask = 0; mask < (1u << num_vars); mask++) {
             vector<lbool> vals(num_vars);
             for (uint32_t v = 0; v < num_vars; v++)

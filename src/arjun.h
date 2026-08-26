@@ -70,17 +70,17 @@ struct aig_lit {
     aig_node_ptr node;
     bool neg;
 
-    aig_lit() : node(nullptr), neg(false) {}
-    aig_lit(std::nullptr_t) : node(nullptr), neg(false) {}
-    aig_lit(aig_node_ptr n) : node(std::move(n)), neg(false) {}
-    aig_lit(aig_node_ptr n, bool ng) : node(std::move(n)), neg(ng) {}
+    explicit aig_lit() : node(nullptr), neg(false) {}
+    explicit aig_lit(std::nullptr_t) : node(nullptr), neg(false) {}
+    explicit aig_lit(aig_node_ptr n) : node(std::move(n)), neg(false) {}
+    explicit aig_lit(aig_node_ptr n, bool ng) : node(std::move(n)), neg(ng) {}
 
     AIG* operator->() const { return node.get(); }
     AIG& operator*() const { return *node; }
     [[nodiscard]] AIG* get() const { return node.get(); }
     explicit operator bool() const { return (bool)node; }
 
-    aig_lit operator~() const { return {node, !neg}; }
+    aig_lit operator~() const { return aig_lit(node, !neg); }
 
     bool operator==(const aig_lit& o) const { return node == o.node && neg == o.neg; }
     bool operator!=(const aig_lit& o) const { return !(*this == o); }
@@ -392,7 +392,7 @@ public:
     }
 
     static aig_lit deep_clone(const aig_lit& aig, std::unordered_map<const AIG*, aig_node_ptr>& cache) {
-        if (!aig) return nullptr;
+        if (!aig) return aig_lit(nullptr);
 
         // Clones nodes, not signed edges. Sign is carried on the returned edge.
         std::function<aig_node_ptr(const AIG*)> clone_node =

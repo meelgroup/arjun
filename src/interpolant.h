@@ -103,7 +103,7 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     int conclusion_type = 0;
     uint64_t conclusion_root = UINT64_MAX;
 
-    ArjunNS::aig_lit out = nullptr;
+    ArjunNS::aig_lit out;
 
     uint64_t derived_count = 0;
     uint64_t orig_count = 0;
@@ -156,7 +156,7 @@ class Interpolant {
 public:
     Interpolant(const Config& _conf, const ArjunNS::Arjun::InterpConf& _iconf, const uint32_t num_vars) :
         conf(_conf), iconf(_iconf) {
-        defs.resize(num_vars, nullptr);
+        defs.resize(num_vars, ArjunNS::aig_lit());
     }
     ~Interpolant();
 

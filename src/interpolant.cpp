@@ -322,7 +322,7 @@ void InterpTracerMcMillan::reset_per_solve() {
     empty_id = UINT64_MAX;
     conclusion_type = 0;
     conclusion_root = UINT64_MAX;
-    out = nullptr;
+    out = aig_lit();
     derived_count = 0;
     core_count = 0;
 }
@@ -365,10 +365,10 @@ aig_lit InterpTracerMcMillan::build_interpolant() {
     // else the derived empty clause.
     uint64_t root;
     if (conclusion_type == CaDiCaL::ASSUMPTIONS) {
-        if (conclusion_root == UINT64_MAX) return nullptr;
+        if (conclusion_root == UINT64_MAX) return aig_lit();
         root = conclusion_root;
     } else {
-        if (empty_id == UINT64_MAX) return nullptr;
+        if (empty_id == UINT64_MAX) return aig_lit();
         root = empty_id;
     }
 
@@ -399,7 +399,7 @@ aig_lit InterpTracerMcMillan::build_interpolant() {
     }
 
     auto it = labels.find(root);
-    aig_lit res = (it != labels.end()) ? it->second : nullptr;
+    aig_lit res = (it != labels.end()) ? it->second : aig_lit();
 
     if (res != nullptr && conclusion_type == CaDiCaL::ASSUMPTIONS) {
         // Root clause is {¬a : a failing assumption}. Resolve with each unit a

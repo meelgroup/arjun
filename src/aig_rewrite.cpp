@@ -1006,7 +1006,7 @@ void AIGRewriter::balance_defs(vector<aig_lit>& defs) {
 // ========== Main rewrite entry points ==========
 
 aig_lit AIGRewriter::rewrite(const aig_lit& aig, bool balance) {
-    if (!aig) return nullptr;
+    if (!aig) return aig_lit();
     struct_hash.clear();
     lit_hash.clear();
     const_true_node.reset();

@@ -120,7 +120,7 @@ static bool cnf_matches_aig(SATSolver& s, const aig_lit& aig, Lit out_lit,
                              uint32_t num_vars)
 {
     if (num_vars > 12) return true; // too expensive
-    vector<aig_lit> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, aig_lit());
     for (uint32_t mask = 0; mask < (1u << num_vars); mask++) {
         vector<lbool> vals(num_vars);
         vector<Lit> assumps;

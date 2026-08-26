@@ -24,7 +24,7 @@ static bool eval(const aig_lit& aig, uint32_t num_vars, uint32_t mask) {
     for (uint32_t v = 0; v < num_vars; v++) {
         vals[v] = ((mask >> v) & 1) ? CMSat::l_True : CMSat::l_False;
     }
-    std::vector<aig_lit> defs(num_vars, nullptr);
+    std::vector<aig_lit> defs(num_vars, aig_lit());
     std::map<aig_lit, CMSat::lbool> cache;
     auto result = AIG::evaluate(vals, aig, defs, cache);
     assert(result != CMSat::l_Undef);
@@ -320,7 +320,7 @@ void test_not_through_and() {
 
 void test_rewrite_preserves_null() {
     AIGRewriter rw;
-    auto r = rw.rewrite(nullptr);
+    auto r = rw.rewrite(aig_lit());
     check(r == nullptr, "rewrite(nullptr) = nullptr");
 }
 

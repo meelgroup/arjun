@@ -103,7 +103,7 @@ static bool random_check(const aig_lit& orig, const aig_lit& simplified,
                          uint32_t num_vars, std::mt19937& rng,
                          uint32_t num_trials)
 {
-    vector<aig_lit> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, aig_lit());
     for (uint32_t t = 0; t < num_trials; t++) {
         vector<lbool> vals(num_vars);
         for (uint32_t v = 0; v < num_vars; v++) {
