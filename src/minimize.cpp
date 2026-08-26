@@ -50,14 +50,12 @@ bool Minimize::simplify_bve_only() {
     double simp_bve_time = cpuTime();
     verb_print(1, "[arjun] CMS::simplify() with *only* BVE...");
 
-    if (conf.simp) {
-        solver->set_bve(1);
-        solver->set_verbosity(conf.verb);
-        string str("occ-bve");
-        if (solver->simplify(&dont_elim, &str) == l_False) return false;
-        verb_print(1, "[arjun] CMS::simplify() with *only* BVE finished. T: "
-            << cpuTime() - simp_bve_time);
-    }
+    solver->set_bve(1);
+    solver->set_verbosity(conf.verb);
+    string str("occ-bve");
+    if (solver->simplify(&dont_elim, &str) == l_False) return false;
+    verb_print(1, "[arjun] CMS::simplify() with *only* BVE finished. T: "
+        << cpuTime() - simp_bve_time);
     solver->set_intree_probe(true);
     solver->set_distill(true);
     return true;

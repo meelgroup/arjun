@@ -118,7 +118,7 @@ private:
     aig_lit try_resolve_distribute(const aig_lit& l, const aig_lit& r);
 
     static bool is_complement(const aig_lit& a, const aig_lit& b) {
-        return a.node && b.node && a.node == b.node && a.neg != b.neg;
+        return a.node && a.node == b.node && a.neg != b.neg;
     }
     static bool is_or(const aig_lit& a) {
         return a.node && a->type == AIGT::t_and && a.neg;

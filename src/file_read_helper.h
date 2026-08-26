@@ -62,7 +62,7 @@ template<typename T> void read_in_a_file(const std::string& filename,
         holder->start_with_clean_sampl_vars();
         all_indep = true;
     } else {
-        // Check if CNF has all vars as indep. Then its's all_indep
+        // Check if CNF has all vars as indep. Then it's all_indep
         std::set<uint32_t> tmp;
         for(auto const& s: holder->get_sampl_vars()) {
             if (s >= holder->nVars()) {

@@ -145,7 +145,11 @@ public:
                 return ret;
             }
 
-            if (aig->type == AIGT::t_const) return CMSat::boolToLBool(!aig.neg);
+            if (aig->type == AIGT::t_const) {
+                const CMSat::lbool ret = CMSat::boolToLBool(!aig.neg);
+                cache[aig] = ret;
+                return ret;
+            }
 
             if (aig->type == AIGT::t_and) {
                 const auto lv = sub_eval(aig->l);
@@ -176,8 +180,7 @@ public:
     }
 
     static aig_lit new_const(bool val) {
-        // Single positive t_const node representing TRUE. Callers ask for FALSE
-        // via a complemented edge.
+        // Fresh positive t_const node meaning TRUE; FALSE is a complemented edge.
         auto n = std::make_shared<AIG>();
         n->type = AIGT::t_const;
         return aig_lit(n, !val);
@@ -381,13 +384,7 @@ public:
         std::vector<aig_lit> ret;
         std::unordered_map<const AIG*, aig_node_ptr> cache;
         ret.reserve(aigs.size());
-        for (const auto& aig : aigs) {
-            if (aig == nullptr) {
-                ret.emplace_back(nullptr);
-                continue;
-            }
-            ret.push_back(deep_clone(aig, cache));
-        }
+        for (const auto& aig : aigs) ret.push_back(deep_clone(aig, cache));
         return ret;
     }
 
@@ -397,8 +394,6 @@ public:
         // Clones nodes, not signed edges. Sign is carried on the returned edge.
         std::function<aig_node_ptr(const AIG*)> clone_node =
             [&](const AIG* src) -> aig_node_ptr {
-                if (!src) return nullptr;
-
                 auto it = cache.find(src);
                 if (it != cache.end()) return it->second;
 
@@ -428,8 +423,6 @@ public:
 
     template<typename Func>
     static void traverse_helper(const aig_lit& node, Func&& func, std::set<aig_lit>& visited) {
-        if (!node) return;
-
         if (visited.count(node)) return;
         visited.insert(node);
 
@@ -632,10 +625,7 @@ public:
     }
 
     AIGManager& operator=(const AIGManager& other) {
-        if (this != &other) {
-            clear();
-            const_true_node = other.const_true_node;
-        }
+        const_true_node = other.const_true_node;
         return *this;
     }
 
@@ -649,10 +639,6 @@ public:
 
 
 private:
-    void clear() {
-        const_true_node = nullptr;
-    }
-
     // Shared positive TRUE const node (copies share it, so comparisons stay
     // pointer-equal). A convenience — AIG::new_const can make other TRUE nodes.
     aig_node_ptr const_true_node = nullptr;
@@ -1303,9 +1289,7 @@ public:
               std::cout << "       Maybe you have two 'c p show' lines in your file?" << std::endl;
               exit(EXIT_FAILURE);
             }
-            assert(!sampl_vars_set && "Sampling variables have already been set!");
             assert(sampl_vars.empty());
-            assert(sampl_vars_set == false);
             assert(opt_sampl_vars_set == false);
             assert(opt_sampl_vars.empty());
         }
@@ -1335,22 +1319,23 @@ public:
         set_opt_sampl_vars(opt_sampl_vars2);
     }
 
+    void check_field_weighted() const {
+        if (fg->weighted()) return;
+        std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
+        exit(EXIT_FAILURE);
+    }
     void set_multiplier_weight(const std::unique_ptr<CMSat::Field>& m) {
         *multiplier_weight = *m;
     }
     [[nodiscard]] const auto& get_multiplier_weight() const { return multiplier_weight; }
     [[nodiscard]] auto get_lit_weight(CMSat::Lit lit) const {
         assert(weighted);
-        if (!fg->weighted()) {
-          std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(EXIT_FAILURE);
-        }
+        check_field_weighted();
         assert(lit.var() < nVars());
         auto it = weights.find(lit.var());
-        if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->one());
-        if (!lit.sign())
-            return std::unique_ptr<CMSat::Field>(it->second.pos->dup());
-        return std::unique_ptr<CMSat::Field>(it->second.neg->dup());
+        if (it == weights.end()) return fg->one();
+        if (!lit.sign()) return it->second.pos->dup();
+        return it->second.neg->dup();
     }
     void unset_var_weight(uint32_t v) {
         assert(v < nVars());
@@ -1364,10 +1349,7 @@ public:
     void set_lit_weight(CMSat::Lit lit, const CMSat::Field& w) {
         check_var(lit.var());
         assert(weighted);
-        if (!fg->weighted()) {
-          std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(EXIT_FAILURE);
-        }
+        check_field_weighted();
         assert(lit.var() < nVars());
         auto it = weights.find(lit.var());
         if (it == weights.end()) {
@@ -1428,10 +1410,7 @@ public:
 
     [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);
-        if (!fg->weighted()) {
-          std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(EXIT_FAILURE);
-        }
+        check_field_weighted();
         return weights.count(v) > 0;
     }
 

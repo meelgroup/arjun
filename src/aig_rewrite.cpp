@@ -130,7 +130,7 @@ aig_lit AIGRewriter::make_canonical(const aig_lit& l, const aig_lit& r) {
         stats.structural_hash_hits++;
         return aig_lit(it->second, folded.neg);
     }
-    // Safe to write children: new_and just allocated the node.
+    // May be a pre-existing shared node, so only a commutative fanin swap here.
     folded.node->l = ll;
     folded.node->r = rr;
     struct_hash.emplace(key, folded.node);
@@ -259,7 +259,7 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
     while (!stack.empty()) {
         Frame& f = stack.back();
         const AIG* src = f.src;
-        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (cache.count(src)) { stack.pop_back(); continue; }
         if (src->type != AIGT::t_and) {
             cache[src] = (src->type == AIGT::t_const)
                 ? cached_const(true)
@@ -275,10 +275,8 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
         }
 
         // Compose child rebuilds with this node's incoming edge signs.
-        auto it_lc = cache.find(src->l.get());
-        auto it_rc = cache.find(src->r.get());
-        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
-        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
+        const aig_lit& lcached = cache.at(src->l.get());
+        const aig_lit& rcached = cache.at(src->r.get());
         const aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
         const aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
 
@@ -340,8 +338,7 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
         stack.pop_back();
     }
 
-    auto it = cache.find(edge.get());
-    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
+    const aig_lit& cached = cache.at(edge.get());
     return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
@@ -358,7 +355,7 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
     while (!stack.empty()) {
         Frame& f = stack.back();
         const AIG* src = f.src;
-        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (cache.count(src)) { stack.pop_back(); continue; }
         if (src->type != AIGT::t_and) {
             cache[src] = (src->type == AIGT::t_const)
                 ? cached_const(true)
@@ -372,18 +369,15 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
             stack.push_back({src->l.get(), false});
             continue;
         }
-        auto it_lc = cache.find(src->l.get());
-        auto it_rc = cache.find(src->r.get());
-        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
-        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
+        const aig_lit& lcached = cache.at(src->l.get());
+        const aig_lit& rcached = cache.at(src->r.get());
         aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
         aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
         cache[src] = make_canonical(l, r);
         stack.pop_back();
     }
 
-    auto it = cache.find(edge.get());
-    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
+    const aig_lit& cached = cache.at(edge.get());
     return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
@@ -413,10 +407,6 @@ bool peel_cube(const aig_lit& e, vector<uint32_t>& out) {
         }
     }
     return true;
-}
-
-inline bool is_or_edge(const aig_lit& e) {
-    return e.node && e->type == AIGT::t_and && e.neg;
 }
 
 } // namespace
@@ -606,8 +596,7 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
             const aig_lit n = todo.back();
             todo.pop_back();
             for (const aig_lit& c : {~n->l, ~n->r}) {
-                if (!c.node) continue;
-                if (is_or_edge(c)) {
+                if (is_or(c)) {
                     if (c.get()->visit_epoch != epoch) {
                         c.get()->visit_epoch = epoch;
                         todo.push_back(c);
@@ -634,7 +623,7 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
 
     for (auto& def : defs) {
         if (!def || def->type != AIGT::t_and) continue;
-        const aig_lit root_or = is_or_edge(def) ? def : ~def;
+        const aig_lit root_or = is_or(def) ? def : ~def;
         std::vector<Frame> stack;
         if (!memo.count(memo_key(root_or))) stack.push_back({root_or, false, {}});
 
@@ -689,7 +678,7 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
                     if (peel_cube(op, c)) { cubes.push_back(std::move(c)); continue; }
                     // Rebuilt value of this AND operand.
                     const aig_lit r = ~memo.at(memo_key(~op));
-                    if (is_or_edge(r)) {
+                    if (is_or(r)) {
                         // Same-op result: dissolve its operands into this level.
                         vector<aig_lit> sub;
                         flatten_or(r, sub);
