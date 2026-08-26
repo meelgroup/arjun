@@ -116,7 +116,7 @@ aig_lit AIGRewriter::make_canonical(const aig_lit& l, const aig_lit& r) {
     }
 
     aig_lit folded = AIG::new_and(l, r);
-    if (!folded || folded->type != AIGT::t_and) return folded;
+    if (folded->type != AIGT::t_and) return folded;
 
     aig_lit ll = folded->l;
     aig_lit rr = folded->r;
