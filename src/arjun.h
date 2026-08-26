@@ -1640,13 +1640,15 @@ public:
     struct CegrConf {
         CegrConf() = default;
         CegrConf(const CegrConf& other) = default;
+
+        // Learning a skolem function
         int filter_samples = 1;
-        /// Also to try:
         uint32_t samples = 5000;
         uint32_t min_leaf_size = 10;
-        // TODO experiment with 0.003
         double min_gain_split = 0.001;
         uint32_t max_depth = 0;
+        int learn_input_only = 0; // ML features are the input vars only, no already-defined y vars
+
         uint32_t sampler_fixed_conflicts = 100;
         int minimize_conflict = 1;
         std::string write_cegr_cnf;
@@ -1660,11 +1662,10 @@ public:
         int one_repair_per_loop = 0;
         int force_bw_equal = 1;
         int inv_guess = 0;
-        int learn_input_only = 0; // ML features are the input vars only, no already-defined y vars
         int32_t max_repairs = std::numeric_limits<int32_t>::max();
         uint32_t restart = 10000;
         int check_repair = 0;
-        std::string ganak_binary;
+        std::string ganak_binary; // to check if count of error formula is strictly monotonic
 
         // Hard-coded cutoffs now configurable
         uint32_t stats_every = 40;          // print stats every N repair loops
