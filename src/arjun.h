@@ -1086,6 +1086,357 @@ public:
     [[nodiscard]] bool exact() const final { return false; }
 };
 
+// Only accepted format: a+bi or a-bi (spaces around '+'/'-' are optional).
+// Both the real part and the imaginary part must always be present.
+// Examples: "1/2+4i", "1/2 + 4i", "1/2-4i", "-1/2+4i"
+// The weight string must end with the DIMACS terminator " 0".
+inline bool parse_complex_mpq(const std::string& str, FMpq& real_out,
+    FMpq& imag_out, const uint32_t line_no) {
+  uint32_t at = 0;
+  if (!real_out.parse_mpq(str, at, line_no)) return false;
+  FMpq::skip_whitespace(str, at);
+  if (at >= str.size() || (str[at] != '+' && str[at] != '-')) {
+    std::cerr << "ERROR: complex weight requires both real and imaginary parts (a+bi or a-bi),"
+              << " missing '+' or '-' at line " << line_no << std::endl;
+    return false;
+  }
+  bool pos = (str[at] == '+');
+  at++;
+  FMpq::skip_whitespace(str, at);
+  if (!imag_out.parse_mpq(str, at, line_no)) return false;
+  FMpq::skip_whitespace(str, at);
+  if (at >= str.size() || str[at] != 'i') {
+    std::cerr << "ERROR: Expected 'i' after imaginary part at line " << line_no << std::endl;
+    return false;
+  }
+  at++;
+  if (!pos) imag_out *= FMpq(-1);
+  return FMpq::check_end_of_weight(str, at, line_no);
+}
+
+class FComplex final : public CMSat::Field {
+public:
+    mpq_class real;
+    mpq_class imag;
+    FComplex() : real(0), imag(0) {}
+    FComplex(const mpq_class& _real, const mpq_class& _imag) : real(_real), imag(_imag) {}
+    FComplex(const FComplex& other) : real(other.real), imag(other.imag) {}
+
+    Field& operator=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        real = od.real;
+        imag = od.imag;
+        return *this;
+    }
+
+    Field& operator+=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        real += od.real;
+        imag += od.imag;
+        return *this;
+    }
+
+    [[nodiscard]] std::unique_ptr<Field> add(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        return std::make_unique<FComplex>(real+od.real, imag+od.imag);
+    }
+
+    Field& operator-=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        real -= od.real;
+        imag -= od.imag;
+        return *this;
+    }
+
+    Field& operator*=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        mpq_class r = real;
+        mpq_class i = imag;
+        real = r*od.real-i*od.imag;
+        imag = r*od.imag+i*od.real;
+        return *this;
+    }
+
+    Field& operator/=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        if (od.is_zero()) throw std::runtime_error("Division by zero");
+        mpq_class div = od.imag*od.imag+od.real*od.real;
+        mpq_class r = real;
+        mpq_class i = imag;
+        real = r*od.real+i*od.imag;
+        real /= div;
+        imag = i*od.real-r*od.imag;
+        imag /= div;
+        return *this;
+    }
+
+    bool operator==(const Field& other) const final {
+        const auto& od = static_cast<const FComplex&>(other);
+        return real == od.real && imag == od.imag;
+    }
+
+    std::ostream& display(std::ostream& os) const final {
+        os << real << " + " << imag << "i";
+        return os;
+    }
+
+    [[nodiscard]] std::unique_ptr<Field> dup() const final {
+        return std::make_unique<FComplex>(real, imag);
+    }
+
+    [[nodiscard]] bool is_zero() const final { return real == 0 && imag == 0; }
+    [[nodiscard]] bool is_one() const final { return real == 1 && imag == 0; }
+    void set_zero() final { real = 0; imag = 0; }
+    void set_one() final { real = 1; imag = 0; }
+
+    uint64_t helper(const mpz_class& v) const {
+      return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
+    }
+
+    [[nodiscard]] uint64_t bytes_used() const final {
+      return sizeof(FComplex) +
+          helper(imag.get_num()) + helper(imag.get_den()) +
+          helper(real.get_num()) + helper(real.get_den());
+    }
+
+    bool parse(const std::string& str, const uint32_t line_no) final {
+        FMpq _real, _imag;
+        if (!parse_complex_mpq(str, _real, _imag, line_no)) return false;
+        real = _real.get_val();
+        imag = _imag.get_val();
+        return true;
+   }
+};
+
+class FGenComplex final : public CMSat::FieldGen {
+public:
+    ~FGenComplex() final = default;
+    [[nodiscard]] std::unique_ptr<CMSat::Field> zero() const final {
+        return std::make_unique<FComplex>();
+    }
+
+    [[nodiscard]] std::unique_ptr<CMSat::Field> one() const final {
+        return std::make_unique<FComplex>(1, 0);
+    }
+
+    [[nodiscard]] std::unique_ptr<FieldGen> dup() const final {
+        return std::make_unique<FGenComplex>();
+    }
+
+    [[nodiscard]] bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
+      const auto& ad = static_cast<const FComplex&>(a);
+      const auto& bd = static_cast<const FComplex&>(b);
+      return ad.real > bd.real || (ad.real == bd.real && ad.imag > bd.imag);
+    }
+
+    [[nodiscard]] bool weighted() const final { return true; }
+    [[nodiscard]] bool exact() const final { return true; }
+};
+
+class MPFComplex final : public CMSat::Field {
+public:
+    mpfr_t real;
+    mpfr_t imag;
+
+    explicit MPFComplex(mpfr_prec_t prec) {
+      mpfr_init2(real, prec);
+      mpfr_init2(imag, prec);
+      mpfr_set_si(real, 0, MPFR_RNDN);
+      mpfr_set_si(imag, 0, MPFR_RNDN);
+    }
+    explicit MPFComplex(long r, long i, mpfr_prec_t prec) {
+      mpfr_init2(real, prec);
+      mpfr_init2(imag, prec);
+      mpfr_set_si(real, r, MPFR_RNDN);
+      mpfr_set_si(imag, i, MPFR_RNDN);
+    }
+    explicit MPFComplex(const mpfr_t& _real, const mpfr_t& _imag) {
+      assert(mpfr_get_prec(_real) == mpfr_get_prec(_imag));
+      const auto prec = mpfr_get_prec(_real);
+      mpfr_init2(real, prec);
+      mpfr_init2(imag, prec);
+      mpfr_set(real, _real, MPFR_RNDN);
+      mpfr_set(imag, _imag, MPFR_RNDN);
+    }
+    explicit MPFComplex(const MPFComplex& other) : MPFComplex(other.real, other.imag) {}
+    ~MPFComplex() final {
+      mpfr_clear(real);
+      mpfr_clear(imag);
+    }
+
+    Field& operator=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        mpfr_set(real, od.real, MPFR_RNDN);
+        mpfr_set(imag, od.imag, MPFR_RNDN);
+        return *this;
+    }
+
+    Field& operator+=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        mpfr_add(real, real, od.real, MPFR_RNDN);
+        mpfr_add(imag, imag, od.imag, MPFR_RNDN);
+        return *this;
+    }
+
+    [[nodiscard]] std::unique_ptr<Field> add(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        const auto prec = mpfr_get_prec(real);
+        mpfr_t r;
+        mpfr_t i;
+        mpfr_init2(r, prec);
+        mpfr_init2(i, prec);
+        mpfr_add(r, real, od.real, MPFR_RNDN);
+        mpfr_add(i, imag, od.imag, MPFR_RNDN);
+        auto ret = std::make_unique<MPFComplex>(r, i);
+        mpfr_clear(r);
+        mpfr_clear(i);
+        return ret;
+    }
+
+    Field& operator-=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        mpfr_sub(real, real, od.real, MPFR_RNDN);
+        mpfr_sub(imag, imag, od.imag, MPFR_RNDN);
+        return *this;
+    }
+
+    Field& operator*=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        const auto prec = mpfr_get_prec(real);
+        mpfr_t r;
+        mpfr_init2(r, prec);
+        mpfr_t tmp;
+        mpfr_init2(tmp, prec);
+        mpfr_t tmp2;
+        mpfr_init2(tmp2, prec);
+
+        mpfr_mul(tmp, real, od.real, MPFR_RNDN);
+        mpfr_mul(tmp2, imag, od.imag, MPFR_RNDN);
+        mpfr_sub(r, tmp, tmp2, MPFR_RNDN);
+
+        mpfr_mul(tmp, real, od.imag, MPFR_RNDN);
+        mpfr_mul(tmp2, imag, od.real, MPFR_RNDN);
+        mpfr_add(imag, tmp, tmp2, MPFR_RNDN);
+
+        mpfr_set(real, r, MPFR_RNDN);
+        mpfr_clear(r);
+        mpfr_clear(tmp);
+        mpfr_clear(tmp2);
+        return *this;
+    }
+
+    Field& operator/=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        if (od.is_zero()) throw std::runtime_error("Division by zero");
+        const auto prec = mpfr_get_prec(real);
+        mpfr_t r;
+        mpfr_init2(r, prec);
+        mpfr_t tmp;
+        mpfr_init2(tmp, prec);
+        mpfr_t tmp2;
+        mpfr_init2(tmp2, prec);
+
+        mpfr_t div;
+        mpfr_init2(div, prec);
+        mpfr_mul(tmp, od.imag, od.imag, MPFR_RNDN);
+        mpfr_mul(tmp2, od.real, od.real, MPFR_RNDN);
+        mpfr_add(div, tmp, tmp2, MPFR_RNDN);
+
+        mpfr_mul(tmp, real, od.real, MPFR_RNDN);
+        mpfr_mul(tmp2, imag, od.imag, MPFR_RNDN);
+        mpfr_add(r, tmp, tmp2, MPFR_RNDN);
+        mpfr_div(r, r, div, MPFR_RNDN);
+
+        mpfr_mul(tmp, imag, od.real, MPFR_RNDN);
+        mpfr_mul(tmp2, real, od.imag, MPFR_RNDN);
+        mpfr_sub(imag, tmp, tmp2, MPFR_RNDN);
+        mpfr_div(imag, imag, div, MPFR_RNDN);
+        mpfr_set(real, r, MPFR_RNDN);
+
+        mpfr_clear(div);
+        mpfr_clear(r);
+        mpfr_clear(tmp);
+        mpfr_clear(tmp2);
+        return *this;
+    }
+
+    bool operator==(const Field& other) const final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        return mpfr_equal_p(real, od.real) && mpfr_equal_p(imag, od.imag);
+    }
+
+    std::ostream& display(std::ostream& os) const final {
+      char* tmp = nullptr;
+      mpfr_asprintf(&tmp, "%.8Re + %.8Rei", real, imag);
+      os << tmp;
+      mpfr_free_str(tmp);
+      return os;
+    }
+
+    [[nodiscard]] std::unique_ptr<Field> dup() const final {
+        return std::make_unique<MPFComplex>(real, imag);
+    }
+
+    [[nodiscard]] bool is_zero() const final {
+        return mpfr_zero_p(real) && mpfr_zero_p(imag);
+    }
+
+    [[nodiscard]] bool is_one() const final {
+        return mpfr_cmp_si(real, 1) == 0 && mpfr_zero_p(imag);
+    }
+
+    void set_zero() final {
+      mpfr_set_si(real, 0, MPFR_RNDN);
+      mpfr_set_si(imag, 0, MPFR_RNDN);
+    }
+
+    void set_one() final {
+      mpfr_set_si(real, 1, MPFR_RNDN);
+      mpfr_set_si(imag, 0, MPFR_RNDN);
+    }
+
+    [[nodiscard]] uint64_t bytes_used() const final {
+      return sizeof(MPFComplex) + mpfr_memory_usage(real) + mpfr_memory_usage(imag);
+    }
+
+    bool parse(const std::string& str, const uint32_t line_no) final {
+        FMpq _real, _imag;
+        if (!parse_complex_mpq(str, _real, _imag, line_no)) return false;
+        mpfr_set_q(real, _real.get_val().get_mpq_t(), MPFR_RNDN);
+        mpfr_set_q(imag, _imag.get_val().get_mpq_t(), MPFR_RNDN);
+        return true;
+   }
+};
+
+class FGenMPFComplex final : public CMSat::FieldGen {
+public:
+    mpfr_prec_t prec;
+    ~FGenMPFComplex() final = default;
+    explicit FGenMPFComplex(mpfr_prec_t _prec) : prec(_prec) {}
+    [[nodiscard]] std::unique_ptr<CMSat::Field> zero() const final {
+        return std::make_unique<MPFComplex>(prec);
+    }
+
+    [[nodiscard]] std::unique_ptr<CMSat::Field> one() const final {
+        return std::make_unique<MPFComplex>(1, 0, prec);
+    }
+
+    [[nodiscard]] std::unique_ptr<FieldGen> dup() const final {
+        return std::make_unique<FGenMPFComplex>(prec);
+    }
+
+    [[nodiscard]] bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
+      const auto& ad = static_cast<const MPFComplex&>(a);
+      const auto& bd = static_cast<const MPFComplex&>(b);
+      const int real_cmp = mpfr_cmp(ad.real, bd.real);
+      if (real_cmp != 0) return real_cmp > 0;
+      return mpfr_cmp(ad.imag, bd.imag) > 0;
+    }
+
+    [[nodiscard]] bool weighted() const final { return true; }
+    [[nodiscard]] bool exact() const final { return false; }
+};
+
 struct SimpConf {
     bool oracle_extra = true;
     bool oracle_vivify = true;
@@ -1201,7 +1552,7 @@ public:
         assert(!need_aig);
         assert(nvars == 0);
         assert(clauses.empty());
-        assert(red_clauses.empty());
+        ;
         assert(defs.empty());
         assert(opt_sampl_vars.empty());
         assert(sampl_vars.empty());

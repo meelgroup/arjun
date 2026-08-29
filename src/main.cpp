@@ -75,6 +75,7 @@ int do_backward = true;
 string debug_minim;
 int mode = 0;
 unique_ptr<FieldGen> fg = nullptr;
+int mpfr_precision = 128;
 
 string print_version() {
     std::stringstream ss;
@@ -153,6 +154,7 @@ void add_arjun_options() {
     myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout in K steps. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");
     myopt("--seed", conf.seed, fc_int, "Random seed");
+    myopt("--mpfrprec", mpfr_precision, fc_int, "MPFR precision in bits");
 
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
@@ -612,8 +614,14 @@ int main(int argc, char** argv) {
         case 1:
             fg = std::make_unique<ArjunNS::FGenMpq>();
             break;
+        case 2:
+            fg = std::make_unique<ArjunNS::FGenComplex>();
+            break;
+        case 6:
+            fg = std::make_unique<ArjunNS::FGenMPFComplex>(mpfr_precision);
+            break;
         default:
-            cout << "c o [arjun] ERROR: Unknown mode" << endl;
+            cout << "c o [arjun] ERROR: Unknown mode: " << mode << endl;
             exit(EXIT_FAILURE);
     }
 
