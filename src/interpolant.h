@@ -77,10 +77,10 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // vars), so a pivot on them is AND'd like a shared pivot. = orig_num_vars.
     uint32_t b_local_from = UINT32_MAX;
 
-    std::unordered_set<uint64_t> b_clause_ids;
-    std::unordered_map<uint64_t, std::vector<CMSat::Lit>> cls;
-    std::unordered_map<uint64_t, ArjunNS::aig_lit> labels;
-    std::unordered_map<uint64_t, std::vector<uint64_t>> antec;
+    std::unordered_set<int64_t> b_clause_ids;
+    std::unordered_map<int64_t, std::vector<CMSat::Lit>> cls;
+    std::unordered_map<int64_t, ArjunNS::aig_lit> labels;
+    std::unordered_map<int64_t, std::vector<int64_t>> antec;
     std::unordered_map<CMSat::Lit, ArjunNS::aig_lit, LitHash> lit_to_aig;
 
     // Resolvent membership scratch for resolve_chain, indexed by Lit::toInt().
@@ -96,12 +96,12 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     ArjunNS::aig_lit hash_or(const ArjunNS::aig_lit& l,
                              const ArjunNS::aig_lit& r);
 
-    uint64_t empty_id = UINT64_MAX;
+    int64_t empty_id = INT64_MAX;
 
     // cadical reports the refutation via conclude_unsat(). conclusion_root
     // is the empty clause (CONFLICT) or failing-assumption clause (ASSUMPTIONS).
     int conclusion_type = 0;
-    uint64_t conclusion_root = UINT64_MAX;
+    int64_t conclusion_root = INT64_MAX;
 
     ArjunNS::aig_lit out;
 
@@ -112,16 +112,16 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     ArjunNS::aig_lit lit_aig(CMSat::Lit l);
     ArjunNS::aig_lit or_of_shared_lits(const std::vector<CMSat::Lit>& cl);
 
-    void add_original_clause(uint64_t id, bool red,
+    void add_original_clause(int64_t id, bool red,
             const std::vector<int>& clause, bool restored = false) override;
-    void add_derived_clause(uint64_t id, bool red,
+    void add_derived_clause(int64_t id, bool red, int witness,
             const std::vector<int>& clause,
-            const std::vector<uint64_t>& antecedents) override;
-    void add_assumption_clause(uint64_t id,
+            const std::vector<int64_t>& antecedents) override;
+    void add_assumption_clause(int64_t id,
             const std::vector<int>& clause,
-            const std::vector<uint64_t>& antecedents) override;
+            const std::vector<int64_t>& antecedents) override;
     void conclude_unsat(CaDiCaL::ConclusionType type,
-            const std::vector<uint64_t>& ids) override;
+            const std::vector<int64_t>& ids) override;
 
     // Drop per-solve scratch (labels, and-table, refutation root); cls /
     // antec / b_clause_ids outlive a solve. Caller must call it, not
@@ -135,12 +135,12 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
 private:
     // Computed lazily from the current input_vars so a persistent tracer
     // picks up input vars added after the clause.
-    [[nodiscard]] ArjunNS::aig_lit original_label(uint64_t id);
-    void build_derived_label(uint64_t id);
+    [[nodiscard]] ArjunNS::aig_lit original_label(int64_t id);
+    void build_derived_label(int64_t id);
     // Replay `chain` as a linear resolution into labels[id]. Returns false
     // (labels[id] left partial) if the chain is not a clean linear resolution.
-    [[nodiscard]] bool resolve_chain(uint64_t id,
-            const std::vector<uint64_t>& chain, bool reversed);
+    [[nodiscard]] bool resolve_chain(int64_t id,
+            const std::vector<int64_t>& chain, bool reversed);
 };
 
 // Definition extraction by Craig interpolation over a doubled CNF (copy 1 =

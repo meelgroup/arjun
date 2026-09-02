@@ -285,7 +285,7 @@ aig_lit InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
     return leaves[0];
 }
 
-void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
+void InterpTracerMcMillan::add_original_clause(int64_t id, bool /*red*/,
         const vector<int>& clause, bool restored) {
     // Restored clauses are re-announced after weakening with a stale
     // next_is_b; they were recorded on first add, so skip the re-record.
@@ -303,7 +303,7 @@ void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
 }
 
 // McMillan label of an original clause from the current input_vars.
-aig_lit InterpTracerMcMillan::original_label(uint64_t id) {
+aig_lit InterpTracerMcMillan::original_label(int64_t id) {
     const vector<Lit>& cl = cls[id];
     if (!b_clause_ids.count(id)) {
         // A-side clause: label = OR of shared lits in the clause. Shared
@@ -319,16 +319,16 @@ void InterpTracerMcMillan::reset_per_solve() {
     // and-table don't (they depend on input_vars, which may have grown).
     labels.clear();
     and_table.clear();
-    empty_id = UINT64_MAX;
+    empty_id = INT64_MAX;
     conclusion_type = 0;
-    conclusion_root = UINT64_MAX;
+    conclusion_root = INT64_MAX;
     out = aig_lit();
     derived_count = 0;
     core_count = 0;
 }
 
-void InterpTracerMcMillan::add_assumption_clause(uint64_t id,
-        const vector<int>& clause, const vector<uint64_t>& antecedents) {
+void InterpTracerMcMillan::add_assumption_clause(int64_t id,
+        const vector<int>& clause, const vector<int64_t>& antecedents) {
     // The failing-assumption clause: the negation of the assumption core,
     // derived purely from the formula. Treat it like any derived clause.
     derived_count++;
@@ -337,22 +337,25 @@ void InterpTracerMcMillan::add_assumption_clause(uint64_t id,
 }
 
 void InterpTracerMcMillan::conclude_unsat(CaDiCaL::ConclusionType type,
-        const vector<uint64_t>& ids) {
+        const vector<int64_t>& ids) {
     conclusion_type = type;
     // ASSUMPTIONS: failing-assumption clause id. CONFLICT: empty clause id.
     // (Doubled-CNF interpolation uses assumptions only, so ids[0] suffices.)
     if (!ids.empty()) conclusion_root = ids[0];
 }
 
-void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
-        const vector<int>& clause,
-        const vector<uint64_t>& antecedents) {
+void InterpTracerMcMillan::add_derived_clause(int64_t id, bool /*red*/,
+        int witness, const vector<int>& clause,
+        const vector<int64_t>& antecedents) {
+    // A RAT step (only cadical's 'factor'/BVA, off by default) isn't a
+    // resolution, so the label replay below would silently be wrong.
+    release_assert(witness == 0 && "interpolation needs a resolution proof");
     derived_count++;
     // Record only; label building is deferred to build_interpolant() so we
     // resolve just the proof core, not every derived clause cadical streams.
     cls[id] = pl_to_lit_cl(clause);
     antec[id] = antecedents;
-    if (cls[id].empty() && empty_id == UINT64_MAX) {
+    if (cls[id].empty() && empty_id == INT64_MAX) {
         empty_id = id;
         VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 4) {
             cout << "c o [interp] empty clause derived id=" << id << endl;
@@ -363,33 +366,33 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
 aig_lit InterpTracerMcMillan::build_interpolant() {
     // Refutation root: failing-assumption clause for ASSUMPTIONS UNSAT,
     // else the derived empty clause.
-    uint64_t root;
+    int64_t root;
     if (conclusion_type == CaDiCaL::ASSUMPTIONS) {
-        if (conclusion_root == UINT64_MAX) return aig_lit();
+        if (conclusion_root == INT64_MAX) return aig_lit();
         root = conclusion_root;
     } else {
-        if (empty_id == UINT64_MAX) return aig_lit();
+        if (empty_id == INT64_MAX) return aig_lit();
         root = empty_id;
     }
 
     // Backward reachability from the root over the recorded antecedent
     // chains. Only these clauses contribute to the interpolant.
-    std::unordered_set<uint64_t> reach;
-    vector<uint64_t> stack{root};
+    std::unordered_set<int64_t> reach;
+    vector<int64_t> stack{root};
     while (!stack.empty()) {
-        const uint64_t id = stack.back();
+        const int64_t id = stack.back();
         stack.pop_back();
         if (!reach.insert(id).second) continue;
         auto it = antec.find(id);
         if (it == antec.end()) continue;  // original clause: a proof leaf
-        for (const uint64_t a : it->second) stack.push_back(a);
+        for (const int64_t a : it->second) stack.push_back(a);
     }
 
     // Forward pass: cadical IDs are monotonic, so ascending-ID order is a
     // valid topological order. Labels (both kinds) are built here.
-    vector<uint64_t> order(reach.begin(), reach.end());
+    vector<int64_t> order(reach.begin(), reach.end());
     std::sort(order.begin(), order.end());
-    for (const uint64_t id : order) {
+    for (const int64_t id : order) {
         if (antec.count(id)) {
             build_derived_label(id);
             core_count++;
@@ -419,8 +422,8 @@ aig_lit InterpTracerMcMillan::build_interpolant() {
     return out;
 }
 
-void InterpTracerMcMillan::build_derived_label(uint64_t id) {
-    const vector<uint64_t>& antecedents = antec[id];
+void InterpTracerMcMillan::build_derived_label(int64_t id) {
+    const vector<int64_t>& antecedents = antec[id];
     if (antecedents.empty()) {
         // A derived clause always has antecedents.
         assert(false && "derived clause with no antecedents");
@@ -432,15 +435,15 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
     assert(false && "failed to resolve derived clause's antecedent chain");
 }
 
-bool InterpTracerMcMillan::resolve_chain(uint64_t id,
-        const vector<uint64_t>& chain, bool reversed) {
+bool InterpTracerMcMillan::resolve_chain(int64_t id,
+        const vector<int64_t>& chain, bool reversed) {
     release_assert(!chain.empty());
     const size_t n = chain.size();
     // Walk `chain` forward or reversed without copying it.
     auto at = [&](size_t i) { return reversed ? chain[n - 1 - i] : chain[i]; };
 
     // Initial resolvent = first clause in the chain + its label.
-    const uint64_t id1 = at(0);
+    const int64_t id1 = at(0);
     auto it_lab = labels.find(id1);
     release_assert(it_lab != labels.end() && "antecedent label must exist");
     aig_lit lab = it_lab->second;
@@ -485,7 +488,7 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
     };
 
     for (size_t i = 1; i < n; i++) {
-        const uint64_t id2 = at(i);
+        const int64_t id2 = at(i);
         auto it_cl = cls.find(id2);
         auto it_l2 = labels.find(id2);
         release_assert(it_cl != cls.end() && it_l2 != labels.end() &&
