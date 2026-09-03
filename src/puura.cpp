@@ -151,6 +151,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_oracle_find_bins(conf.oracle_find_bins);
     solver->set_oracle_mult(simp_conf.oracle_mult);
     solver->set_bve(simp_conf.do_bve);
+    solver->set_distill_rem_level(simp_conf.distill_rem_level);
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
         solver->set_occ_based_lit_rem_time_limitM(500);

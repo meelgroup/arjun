@@ -1455,6 +1455,7 @@ struct SimpConf {
     int64_t backbone_max_confl = -1;
     int weaken_limit = 8000;
     int puura_strategy = 1;
+    int distill_rem_level = 2;
 };
 
 struct VarTypes {

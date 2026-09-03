@@ -496,6 +496,7 @@ if __name__ == "__main__":
         # Vary the minim cap so we exercise both the gated path (cap
         # below the enum set, minim skipped) and the ungated path.
         solver += "--bruteforcesynthminimmax %d " % random.choice([0, 8, 40, 9999])
+        solver += "--distillremlevel %d " % random.choice([0, 1, 2])
 
         opts = [
             " --synthbve"
