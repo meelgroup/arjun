@@ -257,7 +257,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     simp_conf2.bve_grow_iter2 = 0;
     simp_conf2.iter1 = 1;
     simp_conf2.iter2 = 1;
-    simp_conf2.bve_too_large_resolvent = 4;
+    simp_conf2.bve_too_large_resolvent = simp_conf.bve_too_large_resolvent2;
     cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
     if (etof_conf.num_sbva_steps > 0)
         standalone_sbva(cnf, etof_conf.num_sbva_steps,

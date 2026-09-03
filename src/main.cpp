@@ -300,6 +300,7 @@ void add_arjun_options() {
     myopt("--iter2", simp_conf.iter2, fc_int,"Puura iterations after oracle");
     myopt("--iter2grow", simp_conf.bve_grow_iter2, fc_int,"Puura BVE grow rate allowed after Oracle");
     myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, fc_int,"Puura BVE max resolvent size in literals. -1 == no limit");
+    myopt("--bveresolvmaxsz2", simp_conf.bve_too_large_resolvent2, fc_int,"Like --bveresolvmaxsz, for the 2nd pass");
     myopt("--oraclemult", simp_conf.oracle_mult, fc_double,"Oracle multiplier for timeout (i.e. steps-out)");
     myopt("--oraclesparsify", simp_conf.oracle_sparsify, fc_int,"Use Oracle to sparsify");
     myopt("--oraclevivif", simp_conf.oracle_vivify, fc_int,"Use oracle to vivify");

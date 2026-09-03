@@ -1450,6 +1450,7 @@ struct SimpConf {
     bool do_bve = true;
     bool appmc = false;
     int bve_too_large_resolvent = 12;
+    int bve_too_large_resolvent2 = 4; // 2nd pass simplification
     int do_subs_with_resolvent_clauses = 1;
     bool do_backbone_puura = true;
     int64_t backbone_max_confl = -1;
