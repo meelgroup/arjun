@@ -1456,6 +1456,7 @@ struct SimpConf {
     int weaken_limit = 8000;
     int puura_strategy = 1;
     int distill_rem_level = 2;
+    int xor_gate_find_maxsize = 12;
 };
 
 struct VarTypes {
