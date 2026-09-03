@@ -431,23 +431,27 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
     }
+
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
         SLOW_DEBUG_DO(check_stage("autarky"));
     }
+
     if (etof_conf.do_extend_indep && !cnf.synth_done()) {
         arjun->standalone_extend_synth(cnf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage("extend_synth"));
     }
+
     if (do_backward && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage("minim_idep_synt"));
     }
+
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
