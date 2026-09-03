@@ -432,7 +432,14 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
         if (l.var() >= nVars()) continue;
         Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
-        assert(scnf.defs[orig_lit.var()] == nullptr && "Variable must not already have a definition");
+        // scnf inherits defs, so a repeated round can revisit an already-fixed
+        // var. It must carry exactly the constant we are about to set.
+        const auto& cur = scnf.defs[orig_lit.var()];
+        if (cur != nullptr) {
+            assert(cur->type == AIGT::t_const && "Already-defined fixed var must be a constant");
+            assert(cur.neg == orig_lit.sign() && "Already-defined fixed var has the wrong value");
+            continue;
+        }
         scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
     }
 }
