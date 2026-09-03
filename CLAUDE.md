@@ -60,6 +60,9 @@ From `build/`:
 ./fuzz_aig_rewrite --num 1000
 ```
 
+They are independent, so with enough cores run all three at once (e.g. three
+parallel tool calls in the same message) instead of sequentially.
+
 All must pass before reporting a change as complete.
 
 ## Source layout (`src/`)
