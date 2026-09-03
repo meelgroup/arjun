@@ -38,6 +38,7 @@
 
 #include "time_mem.h"
 #include "arjun.h"
+#include <cryptominisat5/cryptominisat.h>
 #include "config.h"
 #include "file_read_helper.h"
 #include "synth.h"
@@ -82,6 +83,8 @@ string print_version() {
     ss << "c o Arjun SHA1: " << arjun->get_version_sha1() << endl;
     ss << "c o SBVA SHA1: " << arjun->get_sbva_version_sha1() << endl;
     ss << "c o CMS SHA1: " << arjun->get_solver_version_sha1() << endl;
+    ss << "c o CaDiCaL SHA1: " << CMSat::SATSolver::get_cadical_version_sha1() << endl;
+    ss << "c o CadiBack SHA1: " << CMSat::SATSolver::get_cadiback_version_sha1() << endl;
     ss << arjun->get_thanks_info("c o ") << endl;
     ss << arjun->get_solver_thanks_info("c o ") << endl;
     ss << "c o [arjun] Compilation environment: " << arjun->get_compilation_env();
