@@ -32,6 +32,16 @@ import shlex
 from collections import namedtuple
 
 
+_USE_COLOR = os.isatty(1) and os.environ.get("NO_COLOR") is None
+CYAN, GREEN, RED, YELLOW, BLUE, MAGENTA = "36", "32", "31;1", "33", "34;1", "35"
+
+
+def col(txt, code):
+    if not _USE_COLOR:
+        return txt
+    return "\033[%sm%s\033[0m" % (code, txt)
+
+
 def fmt_cmd(command):
     # Render a command (list of args) so it can be copy-pasted into a
     # shell verbatim: each token is shell-quoted, so values containing
@@ -148,7 +158,7 @@ def set_up_parser():
 
 
 def run(command):
-    print("--> Executing: %s" % fmt_cmd(command))
+    print(col("--> Executing: ", BLUE) + fmt_cmd(command))
     if options.verbose:
         print("CPU limit of parent (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU))
 
@@ -188,40 +198,40 @@ def run_check(command, final, seed):
     # below via output match) means test-synth crashed or hit an internal
     # error — treat as a bug regardless of final/non-final.
     if p.returncode < 0 or p.returncode > 1:
-        print("=" * 60)
-        print("BUG: test-synth crashed with returncode %d" % p.returncode)
+        print(col("=" * 60, RED))
+        print(col("BUG: test-synth crashed with returncode %d" % p.returncode, RED))
         print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
         print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-        print("=" * 60)
+        print(col("=" * 60, RED))
         exit(-1)
 
     for line in consoleOutput.split("\n"):
         if "INCORRECT" in line:
-            print("=" * 60)
-            print("BUG: test-synth reported AIGs are INCORRECT")
+            print(col("=" * 60, RED))
+            print(col("BUG: test-synth reported AIGs are INCORRECT", RED))
             print("Command was: %s" % fmt_cmd(command))
             print("Full check output was:")
             print(consoleOutput)
             print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-            print("=" * 60)
+            print(col("=" * 60, RED))
             exit(-1)
         # Match "CORRECT" but not "INCORRECT" — test-synth prints both on
         # failure ("AIGs are INCORRECT") and success ("AIGs are CORRECT"),
         # and plain substring matching accepts the failure text too.
         if "CORRECT" in line and "INCORRECT" not in line:
-            print("Check output: %s" % line)
+            print(col("Check output: ", GREEN) + line)
             ok = True
 
     if not ok and final:
-        print("=" * 60)
-        print("BUG: check process did not report CORRECT")
+        print(col("=" * 60, RED))
+        print(col("BUG: check process did not report CORRECT", RED))
         print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
         print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-        print("=" * 60)
+        print(col("=" * 60, RED))
         exit(-1)
 
 
@@ -346,7 +356,7 @@ def is_unsat(fname) :
 
 def gen_fuzz(seed) :
     fname = unique_file("fuzzTest")
-    print("Seed: ", seed,  " checking fname: ", fname)
+    print(col("Seed: ", MAGENTA) + str(seed) + col("  checking fname: ", MAGENTA) + fname)
     call = gen_fuzz_call_brummayer("./cnf-fuzz-brummayer.py", fname)
     print("Calling: ", call)
     status = subprocess.call(call, shell=True)
@@ -474,26 +484,15 @@ if __name__ == "__main__":
             continue
         # solver = "./arjun --synth --debugsynth --verb 1"
         prefix = unique_file("fuzzTest")
-        print("Using prefix %s for synthesis output files" % prefix)
+        print(col("Using prefix ", YELLOW) + prefix + col(" for synthesis output files", YELLOW))
         solver = "./arjun --verb 2 --debugsynth %s " % prefix
         solver += "--synth "
 
-        # --bruteforcesynth is default-on in the binary, so explicitly
-        # toggle 50/50 to cover both paths: 1 = try brute-force synthesis
-        # first (it declines to Cegr when the enum set exceeds
-        # --bruteforcesynththresh), 0 = Cegr only. brute_force_synth mostly
-        # ignores the Cegr flag matrix this fuzzer randomizes, but
-        # the flags shape the pre-synth pipeline (BVE, autarky, extend,
-        # unate_def variants), so the CNF varies widely across iters.
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
-        # Independently toggle the dry-run backward minim pre-pass. Only
-        # affects iters where --bruteforcesynth=1, but the binary accepts
-        # it either way.
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
-        # Vary the minim cap so we exercise both the gated path (cap
-        # below the enum set, minim skipped) and the ungated path.
         solver += "--bruteforcesynthminimmax %d " % random.choice([0, 8, 40, 9999])
         solver += "--distillremlevel %d " % random.choice([0, 1, 2])
+        solver += "--unatedefforce %d " % random.randint(0, 1)
 
         opts = [
             " --synthbve"
@@ -557,11 +556,11 @@ if __name__ == "__main__":
             continue
         if err:
             print("Synthesis failed on file %s" % fname)
-            print("=" * 60)
+            print(col("=" * 60, RED))
             print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-            print("=" * 60)
+            print(col("=" * 60, RED))
             exit(-1)
-        print("Synthesis succeeded on file %s, produced files: %s" % (fname, str(aigs)))
+        print(col("Synthesis succeeded", GREEN) + " on file %s, produced files: %s" % (fname, str(aigs)))
         print("Decision trees so far: %d with splits, %d single-leaf, %d verified vs AIG"
               % (tree_depths["split"], tree_depths["leaf"], tree_depths["verified"]))
         if len(aigs) == 0:
@@ -569,13 +568,19 @@ if __name__ == "__main__":
             exit(-1)
         check_core_files(prefix)
 
+        # A stage can run twice (the unate loop), overwriting its own AIG.
+        # Only the last write survives on disk, so check each name once.
+        seen = set()
         for aig in aigs:
+            if aig in seen:
+                continue
+            seen.add(aig)
             final = "final" in aig
             if final:
                 call = "./test-synth -u -v -s %d %s %s" % (seed, fname, aig)
             else:
                 call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
-            print("Running check command: ", call)
+            print(col("Running check command: ", CYAN) + call)
             run_check(call.split(), final, seed)
             os.unlink(aig)
         cleanup(fname, prefix)
