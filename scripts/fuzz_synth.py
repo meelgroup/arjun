@@ -476,10 +476,7 @@ if __name__ == "__main__":
         prefix = unique_file("fuzzTest")
         print("Using prefix %s for synthesis output files" % prefix)
         solver = "./arjun --verb 2 --debugsynth %s " % prefix
-        if random.choice([True, False]):
-            solver += "--synth "
-        else:
-            solver += "--synthmore "
+        solver += "--synth "
 
         # --bruteforcesynth is default-on in the binary, so explicitly
         # toggle 50/50 to cover both paths: 1 = try brute-force synthesis

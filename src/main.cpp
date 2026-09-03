@@ -158,7 +158,6 @@ void add_arjun_options() {
 
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
-    myflag("--synthmore", synthesis, "Run synthesis, with more aggressive BVE options");
     myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
@@ -565,17 +564,6 @@ int main(int argc, char** argv) {
             cout << "ERROR: Cannot use synthesis and appmc simplification at the same time" << endl;
             exit(EXIT_FAILURE);
         }
-    }
-
-    if (program.is_used("--synthmore")) {
-        if (simp_conf.appmc) {
-            cout << "ERROR: Cannot use synthesis and appmc simplification at the same time" << endl;
-            exit(EXIT_FAILURE);
-        }
-        cout << "c o [arjun] Setting defaults for synthesis mode" << endl;
-        if (!program.is_used("--bveresolvmaxsz")) simp_conf.bve_too_large_resolvent = 1000;
-        /* if (!program.is_used("--iter1grow")) simp_conf.bve_grow_iter1 = 200; */
-        if (!program.is_used("--iter2grow")) simp_conf.bve_grow_iter2 = 500;
     }
 
     // Default ganak binary: look next to arjun binary, or in ../ganak/build/
