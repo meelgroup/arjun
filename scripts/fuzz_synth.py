@@ -492,7 +492,7 @@ if __name__ == "__main__":
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminimmax %d " % random.choice([0, 8, 40, 9999])
         solver += "--distillremlevel %d " % random.choice([0, 1, 2])
-        solver += "--unatedefforce %d " % random.randint(0, 1)
+        solver += "--ctxlightinproc %d " % random.choice([0, 1, 2])
 
         opts = [
             " --synthbve"

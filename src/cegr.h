@@ -93,6 +93,7 @@ class Cegr {
             , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
             , cnf(std::move(_cnf))
         {
+            cex_solver.set_light_inprocessing(_mconf.ctx_light_inproc);
         }
         ArjunNS::SimplifiedCNF do_cegr();
         friend class CegrLearn;

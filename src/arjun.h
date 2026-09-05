@@ -1988,6 +1988,7 @@ public:
         int maxsat_better_ctx = 0;
         int do_unique_input_samples = 1;
         int ctx_solver_type = 1;
+        int ctx_light_inproc = 2; // cex_solver: 1 = no lucky-under-assumptions, 2 = also no inprobing/congruence/sweep/factor
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
         int cegr_base = 0;

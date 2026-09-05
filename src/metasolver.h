@@ -58,6 +58,21 @@ public:
         if (solver_type == SolverType::cms) cms->set_verbosity(v);
     }
 
+    // CaDiCaL 2.1.3 skipped lucky_phases() under assumptions; 3.0.1's
+    // luckyassumptions (default on) does not, so many short assumption-based
+    // solve() calls on one big growing formula pay for formula-wide
+    // propagation sweeps every call -- 56% of runtime on query52_query25_1344n.
+    // set() on an unknown option is a no-op, so this is safe on older CaDiCaL.
+    void set_light_inprocessing(int level) {
+        if (solver_type != SolverType::cadical || level <= 0) return;
+        cadical->set("luckyassumptions", 0);
+        if (level < 2) return;
+        cadical->set("inprobing", 0);
+        cadical->set("congruence", 0);
+        cadical->set("sweep", 0);
+        cadical->set("factor", 0);
+    }
+
     // Variable management
     void new_var() {
         if (solver_type == SolverType::cms) cms->new_var();

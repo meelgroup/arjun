@@ -200,6 +200,9 @@ void add_arjun_options() {
 
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--ctxlightinproc", mconf.ctx_light_inproc, fc_int,
+        "Cegr context solver CaDiCaL inprocessing: 0 = stock, 1 = no lucky phases under "
+        "assumptions, 2 = also no inprobing/congruence/sweep/factor");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repaircache", mconf.repair_cache_size, fc_int,"Repair cache size. 0 = no cache");
 
