@@ -318,6 +318,7 @@ void add_arjun_options() {
     myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
     myopt("--puurastrategy", simp_conf.puura_strategy, fc_int, "Puura iter1 simplification strategy: 0=default, 1=new-model");
     myopt("--xorgatemaxsize", simp_conf.xor_gate_find_maxsize, fc_int, "Max clause size for XOR-gate finding");
+    myopt("--puuradistill", simp_conf.puura_distill, fc_int, "Run distillation inside Puura's simplification strategy. 0 = drop all distill tokens");
     myopt("--distillremlevel", simp_conf.distill_rem_level, fc_int, "Clause removal during Puura's distillation. 0 = never, 1 = only on a real conflict, 2 = also when a literal is positively implied. Levels below 2 keep gate clauses that BVE needs to recover definitions");
     myopt("--red", redundant_cls, fc_int,"Also dump redundant clauses");
 

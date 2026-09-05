@@ -1457,6 +1457,10 @@ struct SimpConf {
     int weaken_limit = 8000;
     int puura_strategy = 1;
     int distill_rem_level = 2;
+    ///Drop the distillation tokens from puura's strategy. Debug knob: distillation
+    ///rewrites the gate clauses BVE needs to recover definitions, so turning it off
+    ///says how much of a lost definition is distillation's doing.
+    int puura_distill = 1;
     int xor_gate_find_maxsize = 12;
 };
 

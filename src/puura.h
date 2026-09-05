@@ -64,6 +64,7 @@ private:
     ///its gate away, or SCC/var-replacement folded it into another var).
     void print_stage(const char* name, CMSat::SATSolver* solver, double stage_start);
     void print_cnf_shape(const char* name, const ArjunNS::SimplifiedCNF& cnf);
+    static std::string strip_distill_tokens(const std::string& strat);
 
     const Config& conf;
 

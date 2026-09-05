@@ -175,6 +175,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     }
 
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    if (!simp_conf.puura_distill) str = strip_distill_tokens(str);
     string str_iter2 = str + string("occ-backw-sub, ");
     for (int i = 0; i < simp_conf.iter1; i++) {
         const double t = cpuTime();
@@ -304,6 +305,24 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 //inputs the interesting part is the clause-length profile: a definition chain
 //is nearly all binaries and ternaries, and BVE only unrolls it while that stays
 //true.
+//Drop every distillation token from a strategy string, keeping the rest in order.
+string Puura::strip_distill_tokens(const string& strat) {
+    string out;
+    size_t at = 0;
+    while (at < strat.size()) {
+        size_t end = strat.find(',', at);
+        if (end == string::npos) end = strat.size();
+        string tok = strat.substr(at, end-at);
+        size_t b = tok.find_first_not_of(" \t");
+        size_t e = tok.find_last_not_of(" \t");
+        string trimmed = (b == string::npos) ? "" : tok.substr(b, e-b+1);
+        if (!trimmed.empty() && trimmed.find("distill") == string::npos)
+            out += trimmed + ", ";
+        at = end+1;
+    }
+    return out;
+}
+
 void Puura::print_cnf_shape(const char* name, const ArjunNS::SimplifiedCNF& cnf) {
     if (conf.verb < 1) return;
     uint64_t lits = 0, bins = 0, terns = 0, longs = 0;
