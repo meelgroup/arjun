@@ -70,6 +70,7 @@ only_dirs = [
     # "out-synth-1965186-0", # polarity that's easier?
     "out-synth-1995325-0", # rnd strategy
     "out-synth-2248210-0", # new CMS, new CaDiCaL
+    # "out-synth-2253327-0", # stupid idea about unate + no-unate
 
     # "out-synth-1367674-0", # before unate-eq
 ]
