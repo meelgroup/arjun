@@ -131,7 +131,14 @@ bool Minimize::probe_all()
         verb_print(1, "[arjun-simp] probing only the first 700k sampling vars"
             << " left: " << (ord.size()-700000));
     }
+#ifdef OLD_CMS
+    for(auto v: ord) {
+        uint32_t min_props = 0;
+        if (solver->probe(Lit(v, false), min_props) == l_False) return false;
+    }
+#else
     if (solver->probe_all(ord) == l_False) return false;
+#endif
     s = "must-scc-vrepl";
     if (solver->simplify(nullptr, &s) == l_False) return false;
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));

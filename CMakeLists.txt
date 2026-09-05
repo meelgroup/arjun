@@ -235,6 +235,10 @@ endif()
 # Flags
 # -----------------------------------------------------------------------------
 option(ENABLE_TESTING "Enable testing" OFF)
+option(OLDCMS "Old CMS" OFF)
+if(OLDCMS)
+    add_compile_definitions(OLD_CMS)
+endif()
 
 if(NOT WIN32)
     if(NOT ENABLE_TESTING AND ${CMAKE_SYSTEM_NAME} MATCHES "Linux")
