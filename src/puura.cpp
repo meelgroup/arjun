@@ -175,7 +175,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     }
 
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-    if (!simp_conf.puura_distill) str = strip_distill_tokens(str);
+    if (simp_conf.puura_distill != 1)
+        str = strip_distill_tokens(str, simp_conf.puura_distill == 2);
     string str_iter2 = str + string("occ-backw-sub, ");
     for (int i = 0; i < simp_conf.iter1; i++) {
         const double t = cpuTime();
@@ -305,10 +306,14 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 //inputs the interesting part is the clause-length profile: a definition chain
 //is nearly all binaries and ternaries, and BVE only unrolls it while that stays
 //true.
-//Drop every distillation token from a strategy string, keeping the rest in order.
-string Puura::strip_distill_tokens(const string& strat) {
+//Drop distillation tokens from a strategy string, keeping the rest in order.
+//only_before_bve keeps the ones that run after the first occ-bve: distillation
+//rewrites the very clauses BVE reads as gate definitions, so on a circuit CNF
+//it is worth deleting only the passes that get to the formula first.
+string Puura::strip_distill_tokens(const string& strat, bool only_before_bve) {
     string out;
     size_t at = 0;
+    bool past_bve = false;
     while (at < strat.size()) {
         size_t end = strat.find(',', at);
         if (end == string::npos) end = strat.size();
@@ -316,8 +321,10 @@ string Puura::strip_distill_tokens(const string& strat) {
         size_t b = tok.find_first_not_of(" \t");
         size_t e = tok.find_last_not_of(" \t");
         string trimmed = (b == string::npos) ? "" : tok.substr(b, e-b+1);
-        if (!trimmed.empty() && trimmed.find("distill") == string::npos)
-            out += trimmed + ", ";
+        if (trimmed.empty()) { at = end+1; continue; }
+        const bool is_distill = trimmed.find("distill") != string::npos;
+        if (!is_distill || (only_before_bve && past_bve)) out += trimmed + ", ";
+        if (trimmed == "occ-bve") past_bve = true;
         at = end+1;
     }
     return out;
