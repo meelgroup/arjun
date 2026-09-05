@@ -59,6 +59,11 @@ private:
         const std::vector<uint32_t>& sampl_vars,
         const std::vector<uint32_t>& empty_sampl_vars);
 
+    ///Progress of definition recovery through puura's simplification pipeline.
+    ///A to-define var counts as defined once CMS has removed it (BVE resolved
+    ///its gate away, or SCC/var-replacement folded it into another var).
+    void print_stage(const char* name, CMSat::SATSolver* solver, double stage_start);
+
     const Config& conf;
 
     std::set<uint32_t> to_define;

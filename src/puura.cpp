@@ -175,13 +175,19 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     string str_iter2 = str + string("occ-backw-sub, ");
-    for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
+    for (int i = 0; i < simp_conf.iter1; i++) {
+        const double t = cpuTime();
+        solver->simplify(&dont_elim, &str);
+        print_stage(("iter1-" + std::to_string(i)).c_str(), solver.get(), t);
+    }
 
     // Now doing Oracle
     string str2;
     bool backbone_done = cnf.get_backbone_done();
     if (!backbone_done && simp_conf.do_backbone_puura) {
+        const double t_bb = cpuTime();
         solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
+        print_stage("backbone", solver.get(), t_bb);
         switch ((simp_conf.puura_strategy & 2) >> 1) {
             case 0: {
                 string str_scc = "must-scc-vrepl, must-renumber";
@@ -203,7 +209,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify-mustfinish";
         else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
     }
-    solver->simplify(&dont_elim, &str2);
+    {
+        const double t = cpuTime();
+        solver->simplify(&dont_elim, &str2);
+        print_stage("oracle", solver.get(), t);
+    }
 
     // Now more expensive BVE, also RED linked in to occur
     if (!simp_conf.appmc) {
@@ -216,7 +226,9 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
             solver->set_picosat_gate_limitK(400);
             solver->set_picosat_confl_limit(1000);
         }
+        const double t = cpuTime();
         solver->simplify(&dont_elim, &str_iter2);
+        print_stage(("iter2-" + std::to_string(i)).c_str(), solver.get(), t);
     }
 
     // Final cleanup -- renumbering, disconnected component removing, etc.
@@ -232,7 +244,9 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     if (simp_conf.oracle_extra && !simp_conf.appmc) {
         solver->set_min_bva_gain(0);
         string s_bve = "occ-bve";
+        const double t = cpuTime();
         solver->simplify(&dont_elim, &s_bve);
+        print_stage("final-bve", solver.get(), t);
     }
 
     switch ((simp_conf.puura_strategy & 4) >> 2) {
@@ -282,6 +296,21 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     }
     SLOW_DEBUG_DO(ret_cnf.check_red_cls_deriveable());
     return ret_cnf;
+}
+
+void Puura::print_stage(const char* name, CMSat::SATSolver* solver, double stage_start) {
+    if (conf.verb < 1) return;
+    const uint32_t n = solver->nVars();
+    uint32_t removed = 0;
+    for(uint32_t v = 0; v < n; v++) if (solver->removed_var(v)) removed++;
+    uint32_t left = 0;
+    for(const auto& v: to_define) if (!solver->removed_var(v)) left++;
+
+    verb_print(1, "[puura-stage] " << std::left << std::setw(18) << name << std::right
+        << " vars: " << std::setw(7) << (n - removed) << "/" << n
+        << " elimed: " << std::setw(7) << solver->get_elimed_vars().size()
+        << " to-define-left: " << std::setw(7) << left << "/" << to_define.size()
+        << " T: " << std::fixed << std::setprecision(2) << (cpuTime() - stage_start));
 }
 
 void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf) {
