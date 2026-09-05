@@ -130,6 +130,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     for(const auto& v: cnf.get_opt_sampl_vars())
         verb_print(5, "[w-debug] orig opt sampl var: " << v+1);
 
+    print_cnf_shape("in", cnf);
     auto solver = fill_solver(cnf);
     set_zero_weight_lits(cnf, solver);
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
@@ -282,6 +283,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Return final one
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
     ret_cnf.set_backbone_done(backbone_done);
+    print_cnf_shape("out", ret_cnf);
     if (cnf.get_need_aig()) {
         auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | verbose_debug_enabled, "end get_fully_simplified_renumbered_cnf");
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
@@ -296,6 +298,35 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     }
     SLOW_DEBUG_DO(ret_cnf.check_red_cls_deriveable());
     return ret_cnf;
+}
+
+//Shape of the CNF, printed on the way in and out of puura. On circuit-like
+//inputs the interesting part is the clause-length profile: a definition chain
+//is nearly all binaries and ternaries, and BVE only unrolls it while that stays
+//true.
+void Puura::print_cnf_shape(const char* name, const ArjunNS::SimplifiedCNF& cnf) {
+    if (conf.verb < 1) return;
+    uint64_t lits = 0, bins = 0, terns = 0, longs = 0;
+    uint32_t max_sz = 0;
+    for(const auto& cl: cnf.get_clauses()) {
+        lits += cl.size();
+        max_sz = std::max<uint32_t>(max_sz, cl.size());
+        if (cl.size() == 2) bins++;
+        else if (cl.size() == 3) terns++;
+        else longs++;
+    }
+    const auto& cls = cnf.get_clauses();
+    verb_print(1, "[puura-cnf] " << std::left << std::setw(18) << name << std::right
+        << " vars: " << std::setw(7) << cnf.nVars()
+        << " cls: " << std::setw(7) << cls.size()
+        << " bin: " << std::setw(7) << bins
+        << " tern: " << std::setw(7) << terns
+        << " long: " << std::setw(7) << longs
+        << " lits: " << std::setw(8) << lits
+        << " avg-sz: " << std::fixed << std::setprecision(2)
+        << (cls.empty() ? 0.0 : (double)lits/(double)cls.size())
+        << " max-sz: " << max_sz
+        << " sampl: " << cnf.get_sampl_vars().size());
 }
 
 void Puura::print_stage(const char* name, CMSat::SATSolver* solver, double stage_start) {

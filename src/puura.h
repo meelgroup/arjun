@@ -63,6 +63,7 @@ private:
     ///A to-define var counts as defined once CMS has removed it (BVE resolved
     ///its gate away, or SCC/var-replacement folded it into another var).
     void print_stage(const char* name, CMSat::SATSolver* solver, double stage_start);
+    void print_cnf_shape(const char* name, const ArjunNS::SimplifiedCNF& cnf);
 
     const Config& conf;
 
