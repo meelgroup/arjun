@@ -15,7 +15,7 @@ RESET = "\033[0m"
 
 DB = "data.sqlite3"
 TABLE = "arjun"
-TIMEOUT = 1800  # seconds used for PAR2 / scatter timeout
+TIMEOUT = 1800  # the run timeout, in seconds. PAR2 charges 2x this per unsolved
 TMP_DIR = "tmp"
 
 # arjun_sha1 is NULL for non-arjun solvers (e.g. CADET), so fall back to the
@@ -71,7 +71,8 @@ only_dirs = [
     "out-synth-1995325-0", # rnd strategy
     # "out-synth-2248210-0", # new CMS, new CaDiCaL
     # "out-synth-2253327-0", # stupid idea about unate + no-unate
-    "out-synth-2261154-0", # "develop" CMS, but with CaDiCaL 3.0.1 lucky issue fixed
+    # "out-synth-2261154-0", # "develop" CMS, but with CaDiCaL 3.0.1 lucky issue fixed
+    "out-synth-2263789-", # fixing up the distill with new cadical
 
     # "out-synth-1367674-0", # before unate-eq
 ]
@@ -271,11 +272,20 @@ def print_summary_tables(table_todo, fname_like, full=False):
     dirs = ",".join("'" + d + "'" for d, _ in table_todo)
     vers = ",".join("'" + v + "'" for _, v in table_todo)
 
+    #PAR2 charges an unsolved instance 2x the timeout. Only meaningful over a
+    #set that includes the unsolved ones -- restricted to solved instances the
+    #coalesce never fires and it degenerates into the mean time over whatever
+    #each config happened to solve, which *punishes* solving more hard
+    #instances. So that table gets an honestly-named average instead.
+    par2_col = (f"CAST(ROUND(sum(coalesce({SOLVE_TIME_EXPR},{2*TIMEOUT}))/COUNT(*),0)"
+                " AS INTEGER)", "PAR2")
+    avg_t_col = (f"CAST(ROUND(sum({SOLVE_TIME_EXPR})/COUNT(*),0) AS INTEGER)",
+                 "avg-T-solved")
+
     compact_cols = [
         ("dirname",                                                      "dirname"),
         ("MIN(timeout_call)",                                            "call"),
         (f"sum({SOLVE_TIME_EXPR} IS NOT NULL)",                          "solved"),
-        (f"CAST(ROUND(sum(coalesce({SOLVE_TIME_EXPR},{TIMEOUT}))/COUNT(*),0) AS INTEGER)", "PAR2"),
         ("CAST(ROUND(median(timeout_mem),0) AS INTEGER)",                "med memMB"),
         ("sum(mem_out)",                                                 "mem_out"),
         ("sum(signal == 11)",                                            "sigSEGV"),
@@ -298,15 +308,16 @@ def print_summary_tables(table_todo, fname_like, full=False):
         ("CAST(median(cegr_defined) AS INTEGER)",                     "med-cegr-def"),
     ]
 
-    cols = compact_cols + (full_only_cols if full else [])
-    select_clause = ",\n        ".join(f"{expr} as '{alias}'" for expr, alias in cols)
-    headers = [alias for _, alias in cols]
-    call_idx = headers.index("call")
-
     for only_counted in [False, True]:
         title = ("Data based on ONLY SOLVED benchmarks"
                  if only_counted else "Data including UNSOLVED benchmarks")
         counted_req = f" AND {SOLVE_TIME_EXPR} IS NOT NULL" if only_counted else ""
+
+        cols = (compact_cols[:3] + [avg_t_col if only_counted else par2_col]
+                + compact_cols[3:] + (full_only_cols if full else []))
+        select_clause = ",\n        ".join(f"{expr} as '{alias}'" for expr, alias in cols)
+        headers = [alias for _, alias in cols]
+        call_idx = headers.index("call")
         sql = (f"select {select_clause} from {TABLE}"
                f" where dirname IN ({dirs}) and {VER_EXPR} IN ({vers})"
                f"{fname_like}{counted_req} group by dirname order by solved asc")
