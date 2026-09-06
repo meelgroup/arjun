@@ -158,6 +158,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_varelim_occ_cutoff(simp_conf.bve_occ_cutoff);
     solver->set_varelim_occ_prod_cutoff(simp_conf.bve_occ_prod_cutoff);
     solver->set_varelim_max_cls_size(simp_conf.bve_cls_max_size);
+    solver->set_varelim_sched_only_touched(simp_conf.bve_sched_only_touched);
     solver->set_backbone_ccnr_mems_limitM(simp_conf.backbone_ccnr_mems_limitM);
 #endif
     if (!simp_conf.appmc) {

@@ -1462,6 +1462,7 @@ struct SimpConf {
     int64_t bve_occ_cutoff = 0;
     int64_t bve_occ_prod_cutoff = 10000;
     int64_t bve_cls_max_size = 0;
+    int bve_sched_only_touched = 0;
     int64_t backbone_ccnr_mems_limitM = 300;
 };
 
