@@ -1457,17 +1457,10 @@ struct SimpConf {
     int weaken_limit = 8000;
     int puura_strategy = 1;
     int distill_rem_level = 2;
-    ///Drop the distillation tokens from puura's strategy. Debug knob: distillation
-    ///rewrites the gate clauses BVE needs to recover definitions, so turning it off
-    ///says how much of a lost definition is distillation's doing.
     int puura_distill = 1;
     int xor_gate_find_maxsize = 12;
-    ///BVE occurrence limits. 0 on the per-polarity cap = off; the product cap is
-    ///the real work bound. See CMS's --varelimocclim / --varelimprodlim.
     int64_t bve_occ_cutoff = 0;
     int64_t bve_occ_prod_cutoff = 10000;
-    ///Mems budget per CCNR local-search try inside CMS's backbone. Each try that
-    ///finds no model leaves cadiback with that many more candidates to test.
     int64_t backbone_ccnr_mems_limitM = 300;
 };
 
