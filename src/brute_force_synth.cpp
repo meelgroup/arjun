@@ -175,7 +175,7 @@ SimplifiedCNF BruteForceSynth::do_synth() {
     verb_print(1, "[brute_force_synth] starting; nVars=" << cnf.nVars()
         << " clauses=" << cnf.get_clauses().size());
 
-    cnf.get_var_types(conf.verb, "start do_synth").unpack_to(
+    cnf.get_var_types(conf.verb, "start brute_force_synth").unpack_to(
         input, to_define, backward_defined);
 
     // VarTypes.input lumps extend-defined vars in; we enumerate over the
