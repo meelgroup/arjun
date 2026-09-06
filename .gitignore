@@ -19,3 +19,6 @@ html/*.ts
 presentation*
 
 /scripts/data/__pycache__
+/build_bisect
+/build_new
+/build_old2
