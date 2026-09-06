@@ -368,11 +368,34 @@ void Puura::print_stage(const char* name, CMSat::SATSolver* solver, double stage
     uint32_t left = 0;
     for(const auto& v: to_define) if (!solver->removed_var(v)) left++;
 
+    uint64_t cls = 0, lits = 0, bins = 0, terns = 0, longs = 0;
+    uint32_t max_sz = 0;
+    {
+        vector<CMSat::Lit> cl; bool is_xor, rhs;
+        solver->start_getting_constraints(false, true);
+        while (solver->get_next_constraint(cl, is_xor, rhs)) {
+            if (is_xor) continue;
+            cls++; lits += cl.size();
+            max_sz = std::max<uint32_t>(max_sz, cl.size());
+            if (cl.size() == 2) bins++; else if (cl.size() == 3) terns++; else longs++;
+        }
+        solver->end_getting_constraints();
+    }
+
     verb_print(1, "[puura-stage] " << std::left << std::setw(18) << name << std::right
         << " vars: " << std::setw(7) << (n - removed) << "/" << n
         << " elimed: " << std::setw(7) << solver->get_elimed_vars().size()
         << " to-define-left: " << std::setw(7) << left << "/" << to_define.size()
         << " T: " << std::fixed << std::setprecision(2) << (cpuTime() - stage_start));
+    verb_print(1, "[puura-stage] " << std::left << std::setw(18) << name << std::right
+        << " cls: " << std::setw(7) << cls
+        << " bin: " << std::setw(7) << bins
+        << " tern: " << std::setw(7) << terns
+        << " long: " << std::setw(7) << longs
+        << " lits: " << std::setw(8) << lits
+        << " avg-sz: " << std::fixed << std::setprecision(2)
+        << (cls == 0 ? 0.0 : (double)lits/(double)cls)
+        << " max-sz: " << max_sz);
 }
 
 void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf) {
