@@ -1461,6 +1461,7 @@ struct SimpConf {
     int xor_gate_find_maxsize = 12;
     int64_t bve_occ_cutoff = 0;
     int64_t bve_occ_prod_cutoff = 10000;
+    int64_t bve_cls_max_size = 1000;
     int64_t backbone_ccnr_mems_limitM = 300;
 };
 
