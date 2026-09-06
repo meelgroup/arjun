@@ -1462,6 +1462,10 @@ struct SimpConf {
     ///says how much of a lost definition is distillation's doing.
     int puura_distill = 1;
     int xor_gate_find_maxsize = 12;
+    ///BVE occurrence limits. 0 on the per-polarity cap = off; the product cap is
+    ///the real work bound. See CMS's --varelimocclim / --varelimprodlim.
+    int64_t bve_occ_cutoff = 0;
+    int64_t bve_occ_prod_cutoff = 10000;
 };
 
 struct VarTypes {
