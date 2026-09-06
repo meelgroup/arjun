@@ -1476,6 +1476,22 @@ struct VarTypes {
     }
 };
 
+// Memo + scratch for get_dependent_vars_recursive. The scratch buffers are
+// sized to the number of orig vars, so re-allocating and re-zeroing them per
+// call dominates on large CNFs -- reuse one of these across calls instead.
+// epoch_counter must travel with merge_stamp, otherwise stale stamps collide.
+struct DepCache {
+    // std::map, not unordered_map: entry refs must stay stable across inserts.
+    std::map<uint32_t, std::vector<uint32_t>> cache;
+    std::vector<char> is_dep;
+    std::vector<uint64_t> merge_stamp;
+    std::vector<uint32_t> aig_dep_list;
+    std::vector<const AIG*> ag_stack;
+    uint64_t epoch_counter = 0;
+
+    void clear() { cache.clear(); }
+};
+
 class SimplifiedCNF {
 public:
     std::unique_ptr<CMSat::FieldGen> fg = nullptr;
@@ -1582,9 +1598,10 @@ public:
     [[nodiscard]] bool check_orig_sampl_vars_undefined() const;
     [[nodiscard]] bool defs_invariant() const;
 
-    // Orig vars this AIG depends on, recursively expanding defined vars; sorted
-    // unique. Cache is std::map so entry refs stay stable across inserts.
-    std::vector<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::vector<uint32_t>>& cache) const;
+    // Orig vars this AIG depends on, recursively expanding defined vars. Unique
+    // but NOT sorted. The returned ref points into dc.cache; it stays valid
+    // until dc is cleared or destroyed.
+    const std::vector<uint32_t>& get_dependent_vars_recursive(const uint32_t orig_v, DepCache& dc) const;
 
     [[nodiscard]] bool check_aig_cycles() const;
     void check_self_dependency() const;

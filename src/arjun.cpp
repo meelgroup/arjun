@@ -1432,11 +1432,11 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(vector<int>& ret, uint32_t n
 // input variables are NOT included in the dependencies
 DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_dependencies(const set<uint32_t>& vars) const {
     auto new_to_orig_var = get_new_to_orig_var();
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     map<uint32_t, set<uint32_t>> ret;
     for(const auto& n: vars) {
         const auto orig_v = new_to_orig_var.at(n).var();
-        const auto ret_orig = get_dependent_vars_recursive(orig_v, cache);
+        const auto& ret_orig = get_dependent_vars_recursive(orig_v, cache);
         set<uint32_t> ret_new;
         for(const auto& ov: ret_orig) {
             if(!orig_to_new_var.count(ov)) continue;
@@ -1688,8 +1688,8 @@ void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_lit& def) {
     defs[v_orig] = def;
 #ifdef VERBOSE_DEBUG
     std::cout << "setting def for orig var " << v_orig << endl;
-    map<uint32_t, vector<uint32_t>> cache;
-    auto s = get_dependent_vars_recursive(v_orig, cache);
+    DepCache cache;
+    const auto& s = get_dependent_vars_recursive(v_orig, cache);
     cout << "Dependent vars: ";
     for(const auto& d: s) cout << d+1 << " ";
     cout << endl;
@@ -1742,13 +1742,13 @@ DLL_PUBLIC VarTypes
     set<uint32_t> bve_defined_vars_orig;
     set<uint32_t> forced_vars_orig;
     set<uint32_t> scc_vars_orig;
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     for (uint32_t orig = 0; orig < num_defs(); orig++) {
         if (get_orig_sampl_vars().count(orig)) continue;
         if (!orig_to_new_var.count(orig)) {
             // Eliminated already from the CNF: either BVE, SCC, or forced
             assert(defs[orig] != nullptr && "if it is not in the CNF, it must be defined");
-            const auto s = get_dependent_vars_recursive(orig, cache);
+            const auto& s = get_dependent_vars_recursive(orig, cache);
             if (s.empty()) forced_vars_orig.insert(orig);
             else if (s.size() == 1) scc_vars_orig.insert(orig);
             else bve_defined_vars_orig.insert(orig);
@@ -1757,7 +1757,7 @@ DLL_PUBLIC VarTypes
 
         // This var is NOT input and IS in the CNF
         if (!defined(orig)) continue;
-        auto s = get_dependent_vars_recursive(orig, cache);
+        const auto& s = get_dependent_vars_recursive(orig, cache);
         bool only_input_deps = true;
         for(const auto& d: s) {
             if (!get_orig_sampl_vars().count(d)) {
@@ -1943,19 +1943,26 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
 // Orig vars this AIG depends on, recursively expanding defined vars. Iterative
 // variable-level DFS with reused scratch buffers; dedup via per-frame epoch
 // stamps. Results are unique but NOT sorted (callers only iterate).
-DLL_PUBLIC vector<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v, map<uint32_t, vector<uint32_t>>& cache) const {
+DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v, DepCache& dc) const {
     assert(need_aig);
     assert(defined(orig_v));
 
-    // Scratch buffers reused across all nested visits.
-    vector<char> is_dep;               // indexed by orig var id; cleared after each AIG query
-    vector<uint32_t> aig_dep_list;
-    vector<const AIG*> ag_stack;
+    auto& cache = dc.cache;
+    {
+        const auto top_it = cache.find(orig_v);
+        if (top_it != cache.end()) return top_it->second;
+    }
+
+    // Scratch buffers, reused across calls via dc: sized to num orig vars, so
+    // re-allocating them per call is the dominant cost on large CNFs.
+    auto& is_dep = dc.is_dep;               // indexed by orig var id; cleared after each AIG query
+    auto& aig_dep_list = dc.aig_dep_list;
+    auto& ag_stack = dc.ag_stack;
 
     // Per-frame epoch stamp: merge_stamp[u] == frame.epoch means u is already in
     // that frame's `merged`. Fresh epoch per frame avoids ancestor-frame collisions.
-    vector<uint64_t> merge_stamp;
-    uint64_t epoch_counter = 0;
+    auto& merge_stamp = dc.merge_stamp;
+    auto& epoch_counter = dc.epoch_counter;
 
     struct Frame {
         uint32_t v;
@@ -2017,7 +2024,8 @@ DLL_PUBLIC vector<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const ui
     }
     // Unreachable: orig_v is defined, so the loop always returns via the
     // stack.empty() branch above.
-    return {};
+    static const vector<uint32_t> empty;
+    return empty;
 }
 
 DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
@@ -2087,7 +2095,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
 
 DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
     if (!need_aig) return;
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
         if (orig_sampl_vars.count(orig_v)) {
             if (!defined(orig_v)) continue;
@@ -2171,7 +2179,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
     const auto new_to_orig_vars = get_new_to_orig_var_list();
 
     // Check each sampling variable
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     for(const auto& new_v : opt_sampl_vars) {
         release_assert(new_v < nvars);
 
@@ -2196,7 +2204,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
             // If it's defined, it must only depend on orig_sampl_vars
             release_assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
             /* if (defined(orig_v)) { */
-            const auto deps = get_dependent_vars_recursive(orig_v, cache);
+            const auto& deps = get_dependent_vars_recursive(orig_v, cache);
             bool only_orig_sampl = true;
             for(const auto& dep_v : deps) {
                 if (!orig_sampl_vars.count(dep_v)) {
@@ -2222,14 +2230,14 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
 // this checks that NO unsat-define has been made yet
 DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
     if (!need_aig) return;
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     map<uint32_t, set<uint32_t>> dependencies;
     for(const auto& [o, n] : orig_to_new_var) {
         release_assert(o < defs.size());
         release_assert(n != CMSat::lit_Undef && n.var() < nvars);
         if (orig_sampl_vars.count(o)) continue; // don't care about orig sampling vars
         if (defined(o)) {
-            auto s = get_dependent_vars_recursive(o, cache);
+            const auto& s = get_dependent_vars_recursive(o, cache);
             dependencies[o].insert(s.begin(), s.end());
             bool only_orig_sampl = true;
             for(const auto& v: s) {

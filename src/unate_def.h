@@ -136,7 +136,7 @@ class Unate {
         // Cycle-safety cache for non-input L: dep-recursive lookups on
         // l_orig.var(). Invalidated after every successful commit since the
         // new def changes the dep graph.
-        std::map<uint32_t, std::vector<uint32_t>> eq_deps_cache;
+        ArjunNS::DepCache eq_deps_cache;
         bool eq_enabled = false;
         uint32_t eq_attempts_since_last_hit = 0;
         uint32_t eq_new_defs = 0;
