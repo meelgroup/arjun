@@ -107,11 +107,19 @@ void Cegr::rebuild_var_bytemaps() {
 }
 
 void Cegr::fill_dependency_mat_with_backward() {
+    double my_time = cpuTime();
     dependency_mat.clear();
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
 
     const auto deps = cnf.compute_dependencies(backward_defined);
+    size_t tot_deps = 0;
+    for(const auto& [_, dep_set]: deps) tot_deps += dep_set.size();
+    verb_print(1, "[cegr] compute_dependencies done. vars: " << deps.size()
+            << " tot deps: " << tot_deps
+            << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
+
+    my_time = cpuTime();
     for(const auto& v: to_define_full) {
         assert(input.count(v) == 0);
         set<uint32_t> deps_for_var; // these vars depend on v
@@ -122,11 +130,16 @@ void Cegr::fill_dependency_mat_with_backward() {
             assert(input.count(d) == 0);
             set_depends_on(d, v);
         }
-        assert(check_map_dependency_cycles());
+        SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
     }
+    verb_print(1, "[cegr] dependency mat filled. T: "
+            << setprecision(2) << fixed << (cpuTime() - my_time));
 
-    assert(check_transitive_closure_correctness());
+    my_time = cpuTime();
+    SLOW_DEBUG_DO(assert(check_transitive_closure_correctness()));
     assert(check_map_dependency_cycles());
+    verb_print(1, "[cegr] dependency mat checked. T: "
+            << setprecision(2) << fixed << (cpuTime() - my_time));
 }
 
 bool Cegr::check_transitive_closure_correctness() const {
@@ -1201,7 +1214,8 @@ SimplifiedCNF Cegr::do_cegr() {
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     const double my_time = cpuTime();
     const auto ret = cnf.find_disconnected();
-    verb_print(1, "[cegr] Found " << ret.size() << " components");
+    verb_print(1, "[cegr] Found " << ret.size() << " components. T: "
+            << setprecision(2) << fixed << (cpuTime() - my_time));
     repaired_vars_count.resize(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
     conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
@@ -1222,29 +1236,40 @@ SimplifiedCNF Cegr::do_cegr() {
     to_define_full.clear();
     to_define_full.insert(to_define.begin(), to_define.end());
     to_define_full.insert(backward_defined.begin(), backward_defined.end());
+    double t_step = cpuTime();
     rebuild_var_bytemaps();
     fill_dependency_mat_with_backward();
     get_incidence();
+    verb_print(1, "[cegr] Dependency setup done. T: " << setprecision(2) << fixed << (cpuTime() - t_step));
 
+    t_step = cpuTime();
     inject_cnf(repair_solver);
     {
         cex_solver.new_vars(cnf.nVars());
         for(const auto& c: cnf.get_clauses()) cex_solver.add_clause(c);
         for(const auto& c: cnf.get_red_clauses()) cex_solver.add_red_clause(c);
     }
+    verb_print(1, "[cegr] Solvers filled. T: " << setprecision(2) << fixed << (cpuTime() - t_step));
+
+    t_step = cpuTime();
     fh = std::make_unique<FHolder<MetaSolver>>(&cex_solver);
     create_vars_for_y_hats();
     // Cegr only ever reads cex models up to the y_hats (created just
     // above); skip materializing the tens of thousands of helper vars.
     cex_solver.set_model_prefix(cex_solver.nVars());
     add_not_f_x_yhat();
+    verb_print(1, "[cegr] y_hats + ~F(x,y_hat) built. T: " << setprecision(2) << fixed << (cpuTime() - t_step));
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[cegr] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
 
     // Order & train
     pre_order_vars();
+    t_step = cpuTime();
     fill_var_to_formula_with(backward_defined);
+    verb_print(1, "[cegr] fill_var_to_formula_with(backward_defined) done. T: "
+            << setprecision(2) << fixed << (cpuTime() - t_step));
 
+    t_step = cpuTime();
     if (!guess.empty()) {
         // Restart round: seed from the previous round's AIGs.
         init_from_guess();
@@ -1263,6 +1288,8 @@ SimplifiedCNF Cegr::do_cegr() {
     } else if (mconf.cegr_base == 3) {
         random_functions();
     }
+    verb_print(1, "[cegr] Base functions (" << mconf.cegr_base_str() << ") done. T: "
+            << setprecision(2) << fixed << (cpuTime() - t_step));
     verb_print(4, "[trace] post bve_and_substitute nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
 
     // Counterexample-guided repair
