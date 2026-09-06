@@ -157,6 +157,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_xor_gate_find_maxsize(simp_conf.xor_gate_find_maxsize);
     solver->set_varelim_occ_cutoff(simp_conf.bve_occ_cutoff);
     solver->set_varelim_occ_prod_cutoff(simp_conf.bve_occ_prod_cutoff);
+    solver->set_backbone_ccnr_mems_limitM(simp_conf.backbone_ccnr_mems_limitM);
 #endif
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);

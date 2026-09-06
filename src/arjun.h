@@ -1466,6 +1466,9 @@ struct SimpConf {
     ///the real work bound. See CMS's --varelimocclim / --varelimprodlim.
     int64_t bve_occ_cutoff = 0;
     int64_t bve_occ_prod_cutoff = 10000;
+    ///Mems budget per CCNR local-search try inside CMS's backbone. Each try that
+    ///finds no model leaves cadiback with that many more candidates to test.
+    int64_t backbone_ccnr_mems_limitM = 30;
 };
 
 struct VarTypes {

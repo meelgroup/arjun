@@ -320,6 +320,7 @@ void add_arjun_options() {
     myopt("--xorgatemaxsize", simp_conf.xor_gate_find_maxsize, fc_int, "Max clause size for XOR-gate finding");
     myopt("--bveocclim", simp_conf.bve_occ_cutoff, fc_int, "BVE: refuse a var whose more frequent polarity occurs more than this often (CaDiCaL's elimocclim). 0 = no such limit");
     myopt("--bveprodlim", simp_conf.bve_occ_prod_cutoff, fc_int, "BVE: refuse a var whose pos*neg occurrence product is over this. This is the bound on resolution work");
+    myopt("--ccnrbudget", simp_conf.backbone_ccnr_mems_limitM, fc_int, "Mems budget, in millions, for each CCNR local search try that pre-filters backbone candidates. If no model is found, cadiback must test every variable");
     myopt("--puuradistill", simp_conf.puura_distill, fc_int, "Distillation inside Puura's simplification strategy. 1 = as scheduled, 0 = drop every distill token, 2 = drop only the ones that run before the first occ-bve");
     myopt("--distillremlevel", simp_conf.distill_rem_level, fc_int, "Clause removal during Puura's distillation. 0 = never, 1 = only on a real conflict, 2 = also when a literal is positively implied. Levels below 2 keep gate clauses that BVE needs to recover definitions");
     myopt("--red", redundant_cls, fc_int,"Also dump redundant clauses");
