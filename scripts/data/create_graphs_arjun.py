@@ -72,7 +72,7 @@ only_dirs = [
     # "out-synth-2248210-0", # new CMS, new CaDiCaL
     # "out-synth-2253327-0", # stupid idea about unate + no-unate
     # "out-synth-2261154-0", # "develop" CMS, but with CaDiCaL 3.0.1 lucky issue fixed
-    "out-synth-2263789-", # fixing up the distill with new cadical
+    "out-synth-2263789-2", # fixing up the distill with new cadical
 
     # "out-synth-1367674-0", # before unate-eq
 ]
