@@ -14,10 +14,16 @@ ALWAYS build with `make -j12` from `build/` — otherwise it's slow.
 cd build && ./build_norm.sh
 ```
 
-Dependencies (cadical, cryptominisat, sbva, treedecomp) are typically sibling
-checkouts under `../` and are pointed at via the cmake configuration already
-present in `build/`. If cmake needs to be re-run, use `scripts/build_norm.sh`
-or `scripts/build_release.sh`.
+Dependencies are sibling checkouts of this repo — arjun is `../arjun`, so
+cryptominisat is `../cryptominisat`, cadical is `../cadical`, and likewise
+`../cadiback`, `../sbva`, `../treedecomp`, `../EvalMaxSAT`, `../ganak`. To read a
+dependency's source or headers, go straight there (e.g.
+`../cryptominisat/src/cryptominisat.h`). NEVER search the filesystem for
+them — no `find /`, no `find ~`; any hit outside `../` is an unrelated copy.
+
+They are pointed at via the cmake configuration already present in `build/`.
+If cmake needs to be re-run, use `scripts/build_norm.sh` or
+`scripts/build_release.sh`.
 
 ## Running
 
