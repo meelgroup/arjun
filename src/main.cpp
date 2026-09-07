@@ -172,6 +172,7 @@ void add_arjun_options() {
     myopt("--unatedefeq", conf.unate_def_eq, fc_int,"In unate_def, also detect equiv defs of the form t = L or t = ~L for some literal L");
     myopt("--unatedefeqmax", conf.unate_def_eq_max_per_var, fc_int,"Max equiv candidates to test per to-define variable in unate_def");
     myopt("--unatedefeqconfl", conf.unate_def_eq_max_confl, fc_int,"Conflict budget per SAT call inside the equiv unate_def search");
+    myopt("--unatedefmaxconfltot", conf.unate_def_max_confl_total, fc_int,"Conflict budget for the WHOLE unate_def pass, not per call. 0 = no limit");
     myopt("--unatedefeqdry", conf.unate_def_eq_dry_streak, fc_int,
           "Disable equiv unate_def probe after this many consecutive misses "
           "with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
@@ -380,6 +381,8 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
     arj->set_extend_max_confl(conf.extend_max_confl);
+    arj->set_unate_def_max_confl(conf.unate_def_max_confl);
+    arj->set_unate_def_max_confl_total(conf.unate_def_max_confl_total);
     arj->set_unate_def_eq(conf.unate_def_eq);
     arj->set_unate_def_eq_max_per_var(conf.unate_def_eq_max_per_var);
     arj->set_unate_def_eq_max_confl(conf.unate_def_eq_max_confl);

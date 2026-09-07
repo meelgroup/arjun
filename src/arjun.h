@@ -2102,6 +2102,8 @@ public:
     void set_dump_restart_aig(std::string dump_restart_aig);
     void set_weighted(const bool);
     void set_extend_max_confl(uint32_t extend_max_confl);
+    void set_unate_def_max_confl(uint32_t unate_def_max_confl);
+    void set_unate_def_max_confl_total(uint32_t unate_def_max_confl_total);
     void set_unate_def_eq(int unate_def_eq);
     void set_unate_def_eq_max_per_var(uint32_t unate_def_eq_max_per_var);
     void set_unate_def_eq_max_confl(uint32_t unate_def_eq_max_confl);
@@ -2131,6 +2133,8 @@ public:
     [[nodiscard]] bool get_ite_gate_based() const;
     [[nodiscard]] bool get_irreg_gate_based() const;
     [[nodiscard]] uint32_t get_extend_max_confl() const;
+    [[nodiscard]] uint32_t get_unate_def_max_confl() const;
+    [[nodiscard]] uint32_t get_unate_def_max_confl_total() const;
     [[nodiscard]] int get_unate_def_eq() const;
     [[nodiscard]] uint32_t get_unate_def_eq_max_per_var() const;
     [[nodiscard]] uint32_t get_unate_def_eq_max_confl() const;

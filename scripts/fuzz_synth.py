@@ -523,6 +523,7 @@ if __name__ == "__main__":
         solver += " --unatedefeqmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
         solver += " --unatedefeqconfl " + random.choice(["1", "10", "100", "1000", "100000"])
         solver += " --unatedefeqdry " + random.choice(["1", "10", "100", "100000"])
+        solver += " --unatedefmaxconfltot " + random.choice(["0", "0", "1", "10", "1000", "1000000"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))

@@ -113,6 +113,16 @@ class Unate {
         uint32_t new_units = 0;
         uint32_t tested_num = 0;
         double my_time = 0.0;
+        uint64_t confl_at_start = 0;
+        bool budget_hit = false;
+
+        [[nodiscard]] uint64_t confl_used() const { return s->get_sum_conflicts() - confl_at_start; }
+        bool out_of_budget() {
+            if (conf.unate_def_max_confl_total == 0) return false;
+            if (confl_used() < conf.unate_def_max_confl_total) return false;
+            budget_hit = true;
+            return true;
+        }
 
         // Pass-section helpers, in the order synthesis_unate_def uses them.
         CMSat::Lit get_true_lit();

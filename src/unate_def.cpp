@@ -60,6 +60,8 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         return;
     }
     s = ArjunInt::setup_f_not_f(cnf, input, conf);
+    confl_at_start = s->get_sum_conflicts();
+    budget_hit = false;
     new_to_orig = cnf.get_new_to_orig_var();
 
     setup_y_prime_backward_defs();
@@ -71,7 +73,10 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     eq_attempts_since_last_hit = 0;
 
     const uint32_t to_define_size_before = to_define.size();
-    for (uint32_t test : to_define) process_test_var(test);
+    for (uint32_t test : to_define) {
+        if (out_of_budget()) break;
+        process_test_var(test);
+    }
 
     log_pass_summary(to_define_size_before);
 }
@@ -350,6 +355,7 @@ void Unate::log_pass_summary(const uint32_t to_define_size_before) {
             << " units: " << setw(7) << new_units
             << " eq defs: " << setw(7) << eq_new_defs
             << " eq calls: " << setw(7) << eq_stats.eq_sat_calls
+            << " confl: " << setw(9) << confl_used() << (budget_hit ? "(HIT)" : "     ")
             << " tested: " << setw(7) << tested_num
             << " tests/s: " << setprecision(2) << fixed << setw(6) << safe_div(tested_num, total_time));
 
@@ -439,6 +445,11 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
     uint32_t cand_depth = 0; // 1-based position of the winner
     for (const uint32_t l_var : eq_cur_cands) {
         cand_depth++;
+        if (out_of_budget()) {
+            eq_stats.cands_skipped_budget +=
+                (uint64_t)(eq_cur_cands.size() - (cand_depth - 1));
+            break;
+        }
         if (cand_count >= conf.unate_def_eq_max_per_var) {
             eq_stats.cands_skipped_budget +=
                 (uint64_t)(eq_cur_cands.size() - (cand_depth - 1));
@@ -508,6 +519,7 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
         else if (r1 == l_True) eq_stats.p1_sat++;
         else eq_stats.p1_undef++;
         if (r1 != l_False) continue;
+        if (out_of_budget()) break;
 
         // Mirror probe under L=v2: pins test=1 under L=v2.
         assumps.push_back(l_eq_v2);
