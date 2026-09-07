@@ -91,6 +91,10 @@ void Cegr::inject_cnf(S& s) const {
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
+#ifdef EXTRA_SYNTH
+template void Cegr::inject_cnf<CMSat::SATSolver>(CMSat::SATSolver&) const; // cegr_learn.cpp
+#endif
+
 string Cegr::pr(const lbool val) const {
     if (val == l_True) return "1";
     if (val == l_False) return "0";
