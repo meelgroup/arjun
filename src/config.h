@@ -51,7 +51,6 @@ struct Config {
     uint32_t unate_def_eq_max_confl = 10000;
     uint32_t unate_def_max_confl_total = 50000.; // whole pass, not per call. 0 = off
     // Disable equiv probe after this many consecutive misses with zero hits.
-    // Low = bail aggressively; high = effectively never.
     uint32_t unate_def_eq_dry_streak = 128;
     // Allow non-input vars as candidate L in the equiv t=L probe (tried after
     // inputs). 0 = inputs only; 1 = inputs first, then non-inputs.
