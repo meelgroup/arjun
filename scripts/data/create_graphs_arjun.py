@@ -57,7 +57,7 @@ only_dirs = [
     # "out-synth-1595974-0", # old system where interpolant was with picosat and MyTracer
     # "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
     # "out-synth-1903613-2", # restarts between cegr & ITE chain rewrite
-    # "out-synth-1903613-1", # restarts between cegr & ITE chain rewrite
+    "out-synth-1903613-1", # restarts between cegr & ITE chain rewrite
     # "out-synth-1903613-2", # restarts between cegr & ITE chain rewrite
     # "out-synth-1914059-0", # more rewrite
     # "out-synth-1925733-0", # faster y_hat recompute, persistent conflict minim SAT solver
@@ -73,9 +73,9 @@ only_dirs = [
     # "out-synth-2253327-0", # stupid idea about unate + no-unate
     # "out-synth-2261154-0", # "develop" CMS, but with CaDiCaL 3.0.1 lucky issue fixed
     # "out-synth-2263789-0", # fixing up the distill with new cadical
-    "out-synth-2263789-2", # fixing up the distill with new cadical
-    "out-synth-2272478-4", # even better maybe
-    "out-synth-2273894-", # limit unate
+    # "out-synth-2263789-2", # fixing up the distill with new cadical
+    # "out-synth-2272478-4", # even better maybe
+    "out-synth-2273894-3", # limit unate
 
     # "out-synth-1367674-0", # before unate-eq
 ]
@@ -647,7 +647,7 @@ def generate_cdf(fname2_s):
             f.write('set key bottom right font ",6"\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
-            f.write(f'set xrange [0.001:{TIMEOUT}]\n')
+            f.write(f'set xrange [10.0:{TIMEOUT}]\n')
             # f.write('set yrange [0:]\n')
             f.write('set ylabel "Instances synthesised"\n')
             f.write('set xlabel "Time (s)"\n')
