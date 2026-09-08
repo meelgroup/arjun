@@ -170,14 +170,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     }
 
     string str;
-    switch (simp_conf.puura_strategy & 1) {
-        case 0:
-            str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-            break;
-        case 1:
-            str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-            break;
-    }
+    str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
 
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     if (simp_conf.puura_distill != 1)
@@ -196,18 +189,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         const double t_bb = cpuTime();
         solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
         print_stage("backbone", solver.get(), t_bb);
-        switch ((simp_conf.puura_strategy & 2) >> 1) {
-            case 0: {
-                string str_scc = "must-scc-vrepl, must-renumber";
-                solver->simplify(&dont_elim, &str_scc);
-                break;
-            }
-            case 1: {
-                string str_post_backbone = "must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, must-renumber";
-                solver->simplify(&dont_elim, &str_post_backbone);
-                break;
-            }
-        }
+        string str_scc = "must-scc-vrepl, must-renumber";
+        solver->simplify(&dont_elim, &str_scc);
     }
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
@@ -257,14 +240,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         print_stage("final-bve", solver.get(), t);
     }
 
-    switch ((simp_conf.puura_strategy & 4) >> 2) {
-        case 0:
-            str += string(", must-scc-vrepl, must-renumber,");
-            break;
-        case 1:
-            str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, intree-probe, must-scc-vrepl, must-renumber,");
-            break;
-    }
+    str += string(", must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
     auto new_sampl_vars = cnf.get_sampl_vars();
