@@ -75,6 +75,7 @@ only_dirs = [
     # "out-synth-2263789-0", # fixing up the distill with new cadical
     "out-synth-2263789-2", # fixing up the distill with new cadical
     "out-synth-2272478-4", # even better maybe
+    "out-synth-2273894-", # limit unate
 
     # "out-synth-1367674-0", # before unate-eq
 ]
