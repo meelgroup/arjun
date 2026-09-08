@@ -49,7 +49,7 @@ struct Config {
     uint32_t unate_def_eq_max_per_var = 128;
     uint32_t unate_def_max_confl = 15000;
     uint32_t unate_def_eq_max_confl = 10000;
-    uint32_t unate_def_max_confl_total = 0; // whole pass, not per call. 0 = off
+    uint32_t unate_def_max_confl_total = 50000.; // whole pass, not per call. 0 = off
     // Disable equiv probe after this many consecutive misses with zero hits.
     // Low = bail aggressively; high = effectively never.
     uint32_t unate_def_eq_dry_streak = 128;
