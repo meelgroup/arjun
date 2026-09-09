@@ -170,7 +170,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     }
 
     string str;
-    str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    str = string("occ-sweep, must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
 
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     if (simp_conf.puura_distill != 1)
@@ -179,6 +179,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     for (int i = 0; i < simp_conf.iter1; i++) {
         const double t = cpuTime();
         solver->simplify(&dont_elim, &str);
+        if (str.find("occ-sweep,") != string::npos)
+            str.replace(str.find("occ-sweep,"), 9, "");
         print_stage(("iter1-" + std::to_string(i)).c_str(), solver.get(), t);
     }
 
