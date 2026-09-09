@@ -40,6 +40,7 @@
 #include "time_mem.h"
 #include "constants.h"
 #include "autarky.h"
+#include "cnf_rewrite.h"
 #include "unate_def.h"
 #include "cegr.h"
 #include "brute_force_synth.h"
@@ -135,6 +136,11 @@ DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF&
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
     Autarky autarky(arjdata->conf);
     autarky.find_autarkies(cnf);
+}
+
+DLL_PUBLIC bool Arjun::standalone_cnf_rewrite(SimplifiedCNF& cnf, const std::string& tag) {
+    CnfRewrite rw(arjdata->conf);
+    return rw.run(cnf, tag);
 }
 
 DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const InterpConf& iconf) {
@@ -249,9 +255,11 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf) {
     SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     cnf.remove_equiv_weights();
+    if (arjdata->conf.cnf_rewrite & 2) standalone_cnf_rewrite(cnf, "[pre-puura]");
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     if (etof_conf.do_autarky) standalone_autarky(cnf);
     cnf.remove_equiv_weights();
+    if (arjdata->conf.cnf_rewrite & 1) standalone_cnf_rewrite(cnf, "[post-puura]");
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
     simp_conf2.bve_grow_iter2 = 0;
@@ -1624,6 +1632,46 @@ DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
     }
 }
 
+DLL_PUBLIC void SimplifiedCNF::set_all_clauses(vector<vector<CMSat::Lit>>&& cls,
+        vector<vector<CMSat::Lit>>&& red) {
+    clauses = std::move(cls);
+    red_clauses = std::move(red);
+}
+
+DLL_PUBLIC void SimplifiedCNF::renumber_vars(const vector<uint32_t>& map_here_to_there, uint32_t new_nvars) {
+    assert(!need_aig && "not supported with AIG definitions");
+    constexpr uint32_t m = numeric_limits<uint32_t>::max();
+    assert(map_here_to_there.size() >= nvars);
+    map<uint32_t, CMSat::Lit> upd_vmap;
+    for(const auto& [o,n]: orig_to_new_var) {
+        if (n == CMSat::lit_Undef || map_here_to_there[n.var()] == m) continue;
+        upd_vmap[o] = CMSat::Lit(map_here_to_there[n.var()], n.sign());
+    }
+    orig_to_new_var = upd_vmap;
+    for(auto& v: sampl_vars) { assert(map_here_to_there[v] != m); v = map_here_to_there[v]; }
+    for(auto& v: opt_sampl_vars) { assert(map_here_to_there[v] != m); v = map_here_to_there[v]; }
+    sort(sampl_vars.begin(), sampl_vars.end());
+    sort(opt_sampl_vars.begin(), opt_sampl_vars.end());
+    for(auto& cl: clauses) for(auto& l: cl) {
+        assert(map_here_to_there[l.var()] != m);
+        l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
+    }
+    for(auto& cl: red_clauses) for(auto& l: cl) {
+        assert(map_here_to_there[l.var()] != m);
+        l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
+    }
+    if (weighted) {
+        map<uint32_t, Weight> new_weights;
+        for(auto& w: weights) {
+            assert(map_here_to_there[w.first] != m);
+            new_weights[map_here_to_there[w.first]] = w.second;
+        }
+        weights = new_weights;
+    }
+    nvars = new_nvars;
+    defs.resize(std::max<size_t>(defs.size(), nvars));
+}
+
 DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) const {
     uint32_t num_cls = clauses.size();
     ofstream outf;
@@ -2746,3 +2794,31 @@ set_get_macro(int, oracle_find_bins)
 set_get_macro(double, cms_glob_mult)
 set_get_macro(int, extend_ccnr)
 set_get_macro(uint32_t, seed)
+set_get_macro(int, cnf_rewrite)
+set_get_macro(int, cnfrw_max_gate_inputs)
+set_get_macro(int, cnfrw_max_xor_size)
+set_get_macro(int, cnfrw_irreg)
+set_get_macro(int, cnfrw_irreg_max_prod)
+set_get_macro(int, cnfrw_irreg_max_vars)
+set_get_macro(int, cnfrw_rewrite)
+set_get_macro(int, cnfrw_balance)
+set_get_macro(int, cnfrw_group_cse)
+set_get_macro(int, cnfrw_cut_cnf)
+set_get_macro(int, cnfrw_detect_ite)
+set_get_macro(int, cnfrw_detect_xor)
+set_get_macro(int, cnfrw_guard)
+set_get_macro(int, cnfrw_var_weight)
+set_get_macro(int, cnfrw_cls_weight)
+set_get_macro(int, cnfrw_kary_fusion)
+set_get_macro(int, cnfrw_max_kary)
+set_get_macro(int, cnfrw_max_mux_chain)
+set_get_macro(int, cnfrw_min_gain)
+set_get_macro(int, cnfrw_max_cls_len)
+set_get_macro(int, cnfrw_fraig)
+set_get_macro(int, cnfrw_fraig_confl)
+set_get_macro(int, cnfrw_fraig_confl_total)
+set_get_macro(int, cnfrw_encoder)
+set_get_macro(int, cnfrw_map_leaves)
+set_get_macro(int, cnfrw_map_cuts)
+set_get_macro(double, cnfrw_map_helper_w)
+set_get_macro(double, cnfrw_fraig_time)

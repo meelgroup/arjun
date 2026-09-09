@@ -22,6 +22,7 @@
  */
 
 #include "aig_rewrite.h"
+#include "aig_fraig.h"
 #include "aig_fuzz_gen.h"
 #include <cryptominisat5/cryptominisat.h>
 #include <cassert>
@@ -128,6 +129,8 @@ static bool random_check(const aig_lit& orig, const aig_lit& simplified,
 }
 
 struct FuzzStats {
+    uint64_t fraig_eq = 0;
+    uint64_t fraig_const = 0;
     uint64_t iters = 0;
     uint64_t nodes_before = 0;
     uint64_t nodes_after = 0;
@@ -165,6 +168,7 @@ struct FuzzStats {
              << "  distrib="      << total_and_or_distrib
              << "  xor_simp="     << total_xor_simplify
              << "  hash_hits="    << total_struct_hash_hits
+             << "  fraig_eq=" << fraig_eq << "  fraig_const=" << fraig_const
              << endl;
     }
 
@@ -230,6 +234,24 @@ static bool run_one(const aig_lit& orig, uint32_t num_vars,
                            "rewrite grew an already-rewritten AIG");
             return false;
         }
+    }
+
+    {
+        std::vector<aig_lit> fr_roots{simp, orig};
+        AIGFraigConf fc;
+        fc.max_confl_per_check = 200;
+        AIGFraig fr(fc);
+        fr.fraig(fr_roots);
+        fs.fraig_eq += fr.get_stats().proved_eq;
+        fs.fraig_const += fr.get_stats().proved_const;
+        for (size_t k = 0; k < 2; k++) {
+            if (!fr_roots[k]) fr_roots[k] = k == 0 ? simp : orig;
+            if (!random_check(orig, fr_roots[k], num_vars, rng, 40)) {
+                report_failure(orig, fr_roots[k], num_vars, seed, iter, "random_check(fraig)");
+                return false;
+            }
+        }
+        simp = fr_roots[0];
     }
 
     size_t before = AIG::count_aig_nodes_fast(orig);

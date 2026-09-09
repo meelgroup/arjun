@@ -20,6 +20,7 @@
  */
 
 #include "aig_to_cnf.h"
+#include "aig_cnf_map.h"
 #include "aig_rewrite.h"
 #include "aig_fuzz_gen.h"
 #include <cryptominisat5/cryptominisat.h>
@@ -153,6 +154,8 @@ static bool cnf_matches_aig(SATSolver& s, const aig_lit& aig, Lit out_lit,
 // -----------------------------------------------------------------------------
 
 struct FuzzStats {
+    uint64_t map_clauses_total = 0;
+    uint64_t map_helpers_total = 0;
     uint64_t iters = 0;
     uint64_t nodes_total = 0;
     uint64_t naive_clauses_total = 0;
@@ -175,6 +178,9 @@ struct FuzzStats {
         cout << "Optimized avg clauses/helpers: "
              << (iters ? (double)opt_clauses_total / iters : 0.0) << " / "
              << (iters ? (double)opt_helpers_total / iters : 0.0) << endl;
+        cout << "Mapper    avg clauses/helpers: "
+             << (iters ? (double)map_clauses_total / iters : 0.0) << " / "
+             << (iters ? (double)map_helpers_total / iters : 0.0) << endl;
         if (naive_clauses_total > 0) {
             double cs = 100.0 * (1.0 - (double)opt_clauses_total / naive_clauses_total);
             double hs = 100.0 * (1.0 - (double)opt_helpers_total / naive_helpers_total);
@@ -258,6 +264,23 @@ static bool run_one(const aig_lit& aig, uint32_t num_vars,
     }
     if (!cnf_matches_aig(solver, aig, opt_out, num_vars)) {
         report_failure(aig, num_vars, seed, iter, "cnf_matches_aig(opt)");
+        return false;
+    }
+
+    AIGCnfMapper<SATSolver> mapper(solver);
+    mapper.set_max_leaves(2 + (iter % 4));
+    mapper.set_max_cuts(1 + (iter % 9));
+    mapper.set_kand((iter / 4) % 2);
+    const Lit map_out = mapper.encode_batch({aig})[0];
+    fs.map_clauses_total += mapper.get_stats().clauses;
+    fs.map_helpers_total += mapper.get_stats().helpers;
+    if (!sat_equivalent(solver, naive_out, map_out)) {
+        report_failure(aig, num_vars, seed, iter, "sat_equivalent(mapper)");
+        cerr << "  naive_out=" << naive_out << "  map_out=" << map_out << endl;
+        return false;
+    }
+    if (!cnf_matches_aig(solver, aig, map_out, num_vars)) {
+        report_failure(aig, num_vars, seed, iter, "cnf_matches_aig(mapper)");
         return false;
     }
 

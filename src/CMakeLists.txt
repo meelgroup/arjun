@@ -46,6 +46,8 @@ set(libfiles
     unate_def.cpp
     unate_def_common.cpp
     autarky.cpp
+    cnf_rewrite.cpp
+    aig_fraig.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
     cegr.cpp
     brute_force_synth.cpp
@@ -115,6 +117,16 @@ set_target_properties(aig_chain_stats PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+add_executable(cnf_gate_stats cnf_gate_stats.cpp)
+target_link_libraries(cnf_gate_stats PRIVATE arjun cryptominisat5)
+target_include_directories(cnf_gate_stats PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+set_target_properties(cnf_gate_stats PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
 target_link_libraries(fuzz_aig PRIVATE arjun)
@@ -143,7 +155,7 @@ target_include_directories(fuzz_aig_rewrite PRIVATE
 )
 
 if(ZLIB_FOUND)
-    foreach(tgt arjun-bin arjun-example fuzz_aig fuzz_aig_to_cnf fuzz_aig_rewrite)
+    foreach(tgt arjun-bin arjun-example fuzz_aig fuzz_aig_to_cnf fuzz_aig_rewrite cnf_gate_stats)
         target_include_directories(${tgt} PRIVATE ${ZLIB_INCLUDE_DIR})
         target_link_libraries(${tgt} PRIVATE ${ZLIB_LIBRARY})
     endforeach()

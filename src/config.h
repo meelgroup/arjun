@@ -62,6 +62,36 @@ struct Config {
     // If set, dump guess AIGs at each restart to <prefix>-restart<N>.aig/.v.
     std::string dump_restart_aig;
     uint32_t seed = 42;
+    // CNF rewriting through AIG lifting (cnf_rewrite.cpp).
+    // 0 = off, 1 = after the first puura pass, 2 = before puura, 3 = both
+    int cnf_rewrite = 1;
+    int cnfrw_max_gate_inputs = 1000000;
+    int cnfrw_max_xor_size = 8;
+    int cnfrw_irreg = 1;
+    int cnfrw_irreg_max_prod = 64;
+    int cnfrw_irreg_max_vars = 14;
+    int cnfrw_rewrite = 1;
+    int cnfrw_balance = 0;
+    int cnfrw_group_cse = 1;
+    int cnfrw_cut_cnf = 1;
+    int cnfrw_detect_ite = 1;
+    int cnfrw_detect_xor = 1;
+    int cnfrw_guard = 1;
+    int cnfrw_var_weight = 6;
+    int cnfrw_cls_weight = 1;
+    int cnfrw_kary_fusion = 1;
+    int cnfrw_max_kary = 1000000;
+    int cnfrw_max_mux_chain = 8;
+    int cnfrw_min_gain = 0;
+    int cnfrw_max_cls_len = 0;
+    int cnfrw_fraig = 1;
+    int cnfrw_fraig_confl = 300;
+    int cnfrw_fraig_confl_total = 100000;
+    double cnfrw_fraig_time = 20.0;
+    int cnfrw_encoder = 0;
+    int cnfrw_map_leaves = 5;
+    int cnfrw_map_cuts = 8;
+    double cnfrw_map_helper_w = 1.0;
 };
 
 }
