@@ -1781,6 +1781,11 @@ public:
 
     // renumber variables such that sampling set start from 0...N
     void renumber_sampling_vars_for_ganak();
+    // Generic renumbering: map_here_to_there[v] is the new index of v, or
+    // UINT32_MAX for a var that no longer occurs anywhere.
+    void renumber_vars(const std::vector<uint32_t>& map_here_to_there, uint32_t new_nvars);
+    void set_all_clauses(std::vector<std::vector<CMSat::Lit>>&& cls,
+                         std::vector<std::vector<CMSat::Lit>>&& red);
 
     void write_simpcnf(const std::string& fname, bool red = true) const;
 
@@ -2080,6 +2085,7 @@ public:
     SimplifiedCNF standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& cegr_conf);
     SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
+    bool standalone_cnf_rewrite(SimplifiedCNF& cnf, const std::string& tag = "");
 
     //Set config
     void set_verb(uint32_t verb);
@@ -2112,6 +2118,34 @@ public:
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
     void set_seed(uint32_t seed);
+    void set_cnf_rewrite(int cnf_rewrite);
+    void set_cnfrw_max_gate_inputs(int cnfrw_max_gate_inputs);
+    void set_cnfrw_max_xor_size(int cnfrw_max_xor_size);
+    void set_cnfrw_irreg(int cnfrw_irreg);
+    void set_cnfrw_irreg_max_prod(int cnfrw_irreg_max_prod);
+    void set_cnfrw_irreg_max_vars(int cnfrw_irreg_max_vars);
+    void set_cnfrw_rewrite(int cnfrw_rewrite);
+    void set_cnfrw_balance(int cnfrw_balance);
+    void set_cnfrw_group_cse(int cnfrw_group_cse);
+    void set_cnfrw_cut_cnf(int cnfrw_cut_cnf);
+    void set_cnfrw_detect_ite(int cnfrw_detect_ite);
+    void set_cnfrw_detect_xor(int cnfrw_detect_xor);
+    void set_cnfrw_guard(int cnfrw_guard);
+    void set_cnfrw_var_weight(int cnfrw_var_weight);
+    void set_cnfrw_cls_weight(int cnfrw_cls_weight);
+    void set_cnfrw_kary_fusion(int cnfrw_kary_fusion);
+    void set_cnfrw_max_kary(int cnfrw_max_kary);
+    void set_cnfrw_max_mux_chain(int cnfrw_max_mux_chain);
+    void set_cnfrw_min_gain(int cnfrw_min_gain);
+    void set_cnfrw_max_cls_len(int cnfrw_max_cls_len);
+    void set_cnfrw_fraig(int cnfrw_fraig);
+    void set_cnfrw_fraig_confl(int cnfrw_fraig_confl);
+    void set_cnfrw_fraig_confl_total(int cnfrw_fraig_confl_total);
+    void set_cnfrw_encoder(int cnfrw_encoder);
+    void set_cnfrw_map_leaves(int cnfrw_map_leaves);
+    void set_cnfrw_map_cuts(int cnfrw_map_cuts);
+    void set_cnfrw_map_helper_w(double cnfrw_map_helper_w);
+    void set_cnfrw_fraig_time(double cnfrw_fraig_time);
 
     //Get config
     [[nodiscard]] uint32_t get_verb() const;
@@ -2143,6 +2177,34 @@ public:
     [[nodiscard]] double get_cms_glob_mult() const;
     [[nodiscard]] int get_extend_ccnr() const;
     [[nodiscard]] uint32_t get_seed() const;
+    [[nodiscard]] int get_cnf_rewrite() const;
+    [[nodiscard]] int get_cnfrw_max_gate_inputs() const;
+    [[nodiscard]] int get_cnfrw_max_xor_size() const;
+    [[nodiscard]] int get_cnfrw_irreg() const;
+    [[nodiscard]] int get_cnfrw_irreg_max_prod() const;
+    [[nodiscard]] int get_cnfrw_irreg_max_vars() const;
+    [[nodiscard]] int get_cnfrw_rewrite() const;
+    [[nodiscard]] int get_cnfrw_balance() const;
+    [[nodiscard]] int get_cnfrw_group_cse() const;
+    [[nodiscard]] int get_cnfrw_cut_cnf() const;
+    [[nodiscard]] int get_cnfrw_detect_ite() const;
+    [[nodiscard]] int get_cnfrw_detect_xor() const;
+    [[nodiscard]] int get_cnfrw_guard() const;
+    [[nodiscard]] int get_cnfrw_var_weight() const;
+    [[nodiscard]] int get_cnfrw_cls_weight() const;
+    [[nodiscard]] int get_cnfrw_kary_fusion() const;
+    [[nodiscard]] int get_cnfrw_max_kary() const;
+    [[nodiscard]] int get_cnfrw_max_mux_chain() const;
+    [[nodiscard]] int get_cnfrw_min_gain() const;
+    [[nodiscard]] int get_cnfrw_max_cls_len() const;
+    [[nodiscard]] int get_cnfrw_fraig() const;
+    [[nodiscard]] int get_cnfrw_fraig_confl() const;
+    [[nodiscard]] int get_cnfrw_fraig_confl_total() const;
+    [[nodiscard]] int get_cnfrw_encoder() const;
+    [[nodiscard]] int get_cnfrw_map_leaves() const;
+    [[nodiscard]] int get_cnfrw_map_cuts() const;
+    [[nodiscard]] double get_cnfrw_map_helper_w() const;
+    [[nodiscard]] double get_cnfrw_fraig_time() const;
 
 private:
     ArjPrivateData* arjdata = nullptr;

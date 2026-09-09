@@ -82,6 +82,7 @@ public:
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
     void set_max_kary_width(uint32_t w) { max_kary_width = w; }
+    void set_max_mux_chain(uint32_t k) { max_mux_chain = std::max<uint32_t>(1, k); }
 
 private:
     Solver& solver;
@@ -104,7 +105,7 @@ private:
 
     // Max MUX-chain fusion depth. Bounds the longest emitted clause (level+3
     // lits) so deep cegr ITE chains stay SAT-friendly while cutting helpers ~4×.
-    static constexpr uint32_t kMaxMuxChain = 8;
+    uint32_t max_mux_chain = 8;
 
     // Fanout counted by node identity. Leaf nodes are never helpers and
     // don't need fanout tracking.
@@ -809,12 +810,12 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     // k-way MUX-chain fusion: while the else-branch is a consumable ITE-shaped
     // AND (fanout ≤ 1, uncached), fold it in. 1 helper + 2(k+1) clauses vs the
     // k-1 helpers chained MUX3 spends (4× cut on cegr's deep chains). Capped
-    // at kMaxMuxChain to keep the longest clause (level+3) SAT-friendly.
+    // at max_mux_chain to keep the longest clause (level+3) SAT-friendly.
     {
         std::vector<std::pair<CMSat::Lit, aig_lit>> levels;  // (selector, then)
         levels.emplace_back(p.s_lit, p.t_aig);
         aig_lit base = p.e_aig;
-        while (levels.size() < kMaxMuxChain) {
+        while (levels.size() < max_mux_chain) {
             if (!base || base->type != AIGT::t_and || !base.neg) break;
             const AIG* bn = base.get();
             if (cache.find(bn) != cache.end()) break;
