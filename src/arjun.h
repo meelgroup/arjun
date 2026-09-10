@@ -1465,7 +1465,6 @@ struct SimpConf {
     int64_t backbone_ccnr_mems_limitM = 300;
     int bve_planner = 1;
     int bve_canon_ties = 1;
-    int64_t bve_plan_work = 30000000;
 };
 
 struct VarTypes {
