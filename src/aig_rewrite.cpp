@@ -331,7 +331,7 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
         }
 
         if (!pos.node) pos = try_and_of_ands(l, r);
-        if (!pos.node) pos = try_resolve_distribute(l, r);
+        if (!pos.node && do_distribute) pos = try_resolve_distribute(l, r);
         if (!pos.node) pos = make_canonical(l, r);
 
         cache[src] = pos;
@@ -1043,7 +1043,7 @@ void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb, bool balance) {
              << " defs: " << defs.size() << endl;
 
     // Chain compression first (needs the raw decision-list structure).
-    compress_cube_chains(defs);
+    if (do_chain) compress_cube_chains(defs);
     trace("chain_compress");
 
     // A single simplify sweep suffices; hash_cons last so new ANDs from

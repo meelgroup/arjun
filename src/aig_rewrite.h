@@ -59,9 +59,13 @@ public:
                      bool balance = false);
 
     const AIGRewriteStats& get_stats() const { return stats; }
+    void set_chain_compression(bool b) { do_chain = b; }
+    void set_distribute(bool b) { do_distribute = b; }
 
 private:
     AIGRewriteStats stats;
+    bool do_chain = true;
+    bool do_distribute = true;
 
     // Hash-cons for AND nodes keyed on the two signed child edges (nid+sign).
     // AND has no output sign (it lives on the referring edge), so it's not in the key.

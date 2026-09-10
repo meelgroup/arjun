@@ -88,6 +88,20 @@ timings (same variable permutation) those CNFs counted 15%-2x SLOWER, so 2/4
 are opt-in. puura's output size and ganak's time are both chaotic under
 variable renaming (±30%, 3x), so only paired comparisons are meaningful.
 
+Plaisted-Greenbaum inputs (`--cnfrwpg`, default on): for a variable that is
+not counted over (not in the sampling set, unweighted), the clauses of one
+polarity, say `(¬g ∨ C_i)`, may be taken as its definition `g ↔ ∧ OR(C_i)`
+without changing the projected count (∃g F is unchanged), so one-directional
+Tseitin/PG encodings lift as gates too. Such outputs are re-emitted
+one-directionally (`--cnfrwhalf`), and the encoder in that mode emits only the
+needed implication direction per helper (polarity-aware Tseitin), flattens
+fanout-1 OR conjuncts into single clauses, and duplicates small shared
+sub-terms when a helper would cost more (`--cnfrwdupw`). On
+mc2025_track3_103 (a pure PG circuit, 19.5k aux vars) `--cnfrw 2` removes
+23% of the variables and 12% of the clauses before puura; the AIGRewriter's
+cube-chain compression is off in this path (`--cnfrwchain 0`) because
+sharing clause tails through helper nodes shrinks the AIG but grows the CNF.
+
 Tooling:
 - `build/cnf_gate_stats [--puura 0/1] [--backward 0/1] file.cnf` — gate and
   AIG shape statistics (fanin histograms, cone shapes, NPN classes of small

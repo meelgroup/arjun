@@ -245,7 +245,7 @@ def main():
                     line += f" {name}: -"
                     continue
                 med = lambda k: statistics.median(r[k] for r in sel)
-                gt = [r["ganak_t"] for r in sel if r.get("status") == "ok"]
+                gt = [r["ganak_t"] for r in sel if r.get("status") == "ok" and "ganak_t" in r]
                 line += (f" {name}: v={med('vars'):.0f}[{min(r['vars'] for r in sel)}-{max(r['vars'] for r in sel)}]"
                          f" c={med('cls'):.0f} l={med('lits'):.0f}"
                          + (f" gT={statistics.median(gt):.1f}" if gt else "") + f" ({len(sel)}/{args.perms})")
