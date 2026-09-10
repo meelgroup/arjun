@@ -63,7 +63,7 @@ struct Config {
     std::string dump_restart_aig;
     uint32_t seed = 42;
     // CNF rewriting through AIG lifting (cnf_rewrite.cpp).
-    // 0 = off, 1 = after the first puura pass, 2 = before puura, 3 = both
+    // bitmask: 1 = after the first puura pass, 2 = before puura, 4 = portfolio of plain vs pre-rewrite
     int cnf_rewrite = 1;
     int cnfrw_max_gate_inputs = 1000000;
     int cnfrw_max_xor_size = 8;

@@ -255,8 +255,27 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf) {
     SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     cnf.remove_equiv_weights();
-    if (arjdata->conf.cnf_rewrite & 2) standalone_cnf_rewrite(cnf, "[pre-puura]");
-    cnf = standalone_get_simplified_cnf(cnf, simp_conf);
+    if (arjdata->conf.cnf_rewrite & 4) {
+        SimplifiedCNF alt = cnf;
+        const bool changed = standalone_cnf_rewrite(alt, "[pre-puura]");
+        cnf = standalone_get_simplified_cnf(cnf, simp_conf);
+        if (changed) {
+            alt = standalone_get_simplified_cnf(alt, simp_conf);
+            auto cost = [](const SimplifiedCNF& c) {
+                uint64_t lits = 0;
+                for (const auto& cl : c.get_clauses()) lits += cl.size();
+                return 4 * (uint64_t)c.nVars() + c.get_clauses().size() + lits / 4;
+            };
+            const bool take_alt = cost(alt) < cost(cnf);
+            verb_print2(1, "[cnfrw-portfolio] plain puura: vars " << cnf.nVars() << " cls " << cnf.get_clauses().size()
+                << " | rewrite+puura: vars " << alt.nVars() << " cls " << alt.get_clauses().size()
+                << " -> keeping " << (take_alt ? "rewrite+puura" : "plain puura"));
+            if (take_alt) cnf = alt;
+        }
+    } else {
+        if (arjdata->conf.cnf_rewrite & 2) standalone_cnf_rewrite(cnf, "[pre-puura]");
+        cnf = standalone_get_simplified_cnf(cnf, simp_conf);
+    }
     if (etof_conf.do_autarky) standalone_autarky(cnf);
     cnf.remove_equiv_weights();
     if (arjdata->conf.cnf_rewrite & 1) standalone_cnf_rewrite(cnf, "[post-puura]");
