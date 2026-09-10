@@ -70,13 +70,16 @@ struct Config {
     int cnfrw_max_xor_size = 8;
     int cnfrw_irreg = 1;
     int cnfrw_pg = 1;
+    int cnfrw_constr = 0;
     int cnfrw_half = 1;
     int cnfrw_dup_var_weight = 6;
     int cnfrw_chain = 0;
     int cnfrw_pareto = 1;
     int cnfrw_inline_fanout = 0;
     int cnfrw_distrib = 1;
-    int cnfrw_or_distrib = 0;
+    int cnfrw_cofactor = 48;
+    int cnfrw_cofactor_shared = 0;
+    int cnfrw_or_distrib = 1;
     std::string cnfrw_dump;
     int cnfrw_irreg_max_prod = 64;
     int cnfrw_irreg_max_vars = 14;

@@ -102,6 +102,17 @@ mc2025_track3_103 (a pure PG circuit, 19.5k aux vars) `--cnfrw 2` removes
 cube-chain compression is off in this path (`--cnfrwchain 0`) because
 sharing clause tails through helper nodes shrinks the AIG but grows the CNF.
 
+Other knobs (defaults chosen on 5-renaming medians of 033 and 103):
+`--cnfrwordistrib 1` distributes small nested ANDs into their OR clause when
+the fanout-amortised helper would cost more; `--cnfrwcofactor 48` is a new
+AIGRewriter rule AND(lit, f) -> AND(lit, f|lit=1) on unshared cones of at most
+48 nodes (`--cnfrwcofshared 1` also duplicates shared cones); `--cnfrwconstr 1`
+lifts non-gate clauses over removable gate outputs as asserted roots so the
+outputs can be inlined into the constraints (off: helped 033 slightly, cost
+103 its whole gain); `--cnfrwpareto N` allows N% clause/literal growth (1 =
+strict). Use `--cnfrwdump <prefix>` to write the CNF before/after each pass
+when debugging count changes (compare ganak counts of the two dumps).
+
 Tooling:
 - `build/cnf_gate_stats [--puura 0/1] [--backward 0/1] file.cnf` — gate and
   AIG shape statistics (fanin histograms, cone shapes, NPN classes of small

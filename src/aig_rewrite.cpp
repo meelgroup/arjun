@@ -17,6 +17,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace ArjunNS;
 using std::cout;
@@ -62,7 +63,7 @@ void AIGRewriteStats::print(int verb) const {
          << " (" << std::fixed << std::setprecision(1) << perc << "%)"
          << " p:" << total_passes
          << " cp:" << const_prop
-         << " cmp:" << complement_elim
+         << " cof:" << cofactor << " cmp:" << complement_elim
          << " idm:" << idempotent_elim
          << " abs:" << absorption
          << " dst:" << and_or_distrib
@@ -247,6 +248,68 @@ aig_lit AIGRewriter::try_resolve_distribute(const aig_lit& l, const aig_lit& r) 
     return ~make_canonical(~common, ~inner_and);
 }
 
+aig_lit AIGRewriter::cofactor_rebuild(const aig_lit& e, uint32_t var, bool val,
+                                      std::unordered_map<const AIG*, aig_lit>& memo) {
+    if (e->type == AIGT::t_const) return e;
+    if (e->type == AIGT::t_lit) {
+        if (e->var == var) return cached_const(val != e.neg);
+        return e;
+    }
+    auto it = memo.find(e.get());
+    aig_lit pos;
+    if (it != memo.end()) pos = it->second;
+    else {
+        const aig_lit l = cofactor_rebuild(e->l, var, val, memo);
+        const aig_lit r = cofactor_rebuild(e->r, var, val, memo);
+        if (l->type == AIGT::t_const) pos = l.neg ? cached_const(false) : r;
+        else if (r->type == AIGT::t_const) pos = r.neg ? cached_const(false) : l;
+        else if (l == r) pos = l;
+        else if (is_complement(l, r)) pos = cached_const(false);
+        else if (l == e->l && r == e->r) pos = aig_lit(e.node, false);
+        else pos = make_canonical(l, r);
+        memo[e.get()] = pos;
+    }
+    return aig_lit(pos.node, pos.neg ^ e.neg);
+}
+
+void AIGRewriter::count_src_refs(const std::vector<aig_lit>& defs) {
+    src_refs.clear();
+    std::vector<const AIG*> st;
+    std::unordered_set<const AIG*> seen;
+    for (const auto& d : defs) if (d) { src_refs[d.get()]++; st.push_back(d.get()); }
+    while (!st.empty()) {
+        const AIG* n = st.back(); st.pop_back();
+        if (n->type != AIGT::t_and || !seen.insert(n).second) continue;
+        for (const aig_lit* c : {&n->l, &n->r}) { src_refs[c->get()]++; st.push_back(c->get()); }
+    }
+}
+
+aig_lit AIGRewriter::try_cofactor(const aig_lit& lit, const aig_lit& r, uint32_t r_refs) {
+    if (cofactor_max_nodes == 0) return aig_lit();
+    if (!cofactor_shared && r_refs > 1) return aig_lit();
+    if (lit->type != AIGT::t_lit || r->type != AIGT::t_and) return aig_lit();
+    const uint32_t var = lit->var;
+    std::vector<const AIG*> st{r.get()};
+    std::unordered_set<const AIG*> seen;
+    bool found = false;
+    while (!st.empty()) {
+        const AIG* n = st.back(); st.pop_back();
+        if (!seen.insert(n).second) continue;
+        if (seen.size() > cofactor_max_nodes) return aig_lit();
+        for (const aig_lit* c : {&n->l, &n->r}) {
+            if ((*c)->type == AIGT::t_lit) { if ((*c)->var == var) found = true; }
+            else if ((*c)->type == AIGT::t_and) st.push_back(c->get());
+        }
+    }
+    if (!found) return aig_lit();
+    std::unordered_map<const AIG*, aig_lit> memo;
+    const aig_lit nr = cofactor_rebuild(r, var, !lit.neg, memo);
+    if (nr == r) return aig_lit();
+    stats.cofactor++;
+    if (nr->type == AIGT::t_const) return nr.neg ? cached_const(false) : lit;
+    return make_canonical(lit, nr);
+}
+
 aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
     if (!edge) return aig_lit();
 
@@ -332,6 +395,8 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
 
         if (!pos.node) pos = try_and_of_ands(l, r);
         if (!pos.node && do_distribute) pos = try_resolve_distribute(l, r);
+        if (!pos.node) pos = try_cofactor(l, r, src_refs.count(src->r.get()) ? src_refs.at(src->r.get()) : 1);
+        if (!pos.node) pos = try_cofactor(r, l, src_refs.count(src->l.get()) ? src_refs.at(src->l.get()) : 1);
         if (!pos.node) pos = make_canonical(l, r);
 
         cache[src] = pos;
@@ -1003,6 +1068,7 @@ aig_lit AIGRewriter::rewrite(const aig_lit& aig, bool balance) {
     aig_lit result = aig;
 
     // A single simplify + hash-cons sweep reaches the fixed point.
+    { std::vector<aig_lit> one{aig}; count_src_refs(one); }
     { NodeRebuildMap c; c.reserve(before); result = simplify_pass(result, c); }
     struct_hash.clear();
     struct_hash.reserve(before);
@@ -1049,6 +1115,7 @@ void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb, bool balance) {
     // A single simplify sweep suffices; hash_cons last so new ANDs from
     // OR/resolution rewrites also share.
     const size_t n = stats.nodes_before;
+    count_src_refs(defs);
     { NodeRebuildMap cache; cache.reserve(n);
       for (auto& d : defs) if (d) d = simplify_pass(d, cache); }
     trace("simplify_pass");
