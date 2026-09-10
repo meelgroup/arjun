@@ -974,7 +974,7 @@ bool AIGToCNF<Solver>::try_xor(const aig_lit& n, CMSat::Lit& out) {
     }
 
     CMSat::Lit h = new_helper();
-    set_cur(h, n.get(), true);
+    set_cur(h, n.get(), false);
     emit_xor(h, a_lit, b_lit);
     cur_h = CMSat::lit_Undef;
     stats.xor_patterns++;
