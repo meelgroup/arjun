@@ -70,6 +70,9 @@ public:
 
     CMSat::Lit encode(const aig_lit& root, bool force_helper = false);
     std::vector<CMSat::Lit> encode_batch(const std::vector<aig_lit>& roots);
+    std::vector<CMSat::Lit> encode_batch_half(const std::vector<aig_lit>& roots,
+                                              const std::vector<int>& half,
+                                              const std::vector<CMSat::Lit>& outs);
 
     void set_true_lit(CMSat::Lit t) { my_true_lit = t; my_has_true_lit = true; }
     [[nodiscard]] const AIG2CNFStats& get_stats() const { return stats; }
@@ -82,6 +85,8 @@ public:
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
     void set_max_kary_width(uint32_t w) { max_kary_width = w; }
+    void set_dup_var_weight(int w) { dup_var_weight = w; }
+    void set_or_distribute(bool b) { or_distribute = b; }
     void set_max_mux_chain(uint32_t k) { max_mux_chain = std::max<uint32_t>(1, k); }
 
 private:
@@ -115,6 +120,21 @@ private:
         }
     };
     std::unordered_map<const AIG*, uint32_t, AigNodeHash> fanout;
+    bool polarity_mode = false;
+    int dup_var_weight = -1;
+    bool or_distribute = true;
+    std::unordered_map<const AIG*, uint8_t, AigNodeHash> needs;
+    CMSat::Lit cur_h = CMSat::lit_Undef;
+    uint8_t cur_need = 3;
+    void set_cur(CMSat::Lit h, const AIG* n, bool h_is_neg_of_node) {
+        cur_h = h;
+        cur_need = 3;
+        if (!polarity_mode) return;
+        auto it = needs.find(n);
+        const uint8_t b = it == needs.end() ? 3 : it->second;
+        cur_need = h_is_neg_of_node ? (uint8_t)(((b & 1) << 1) | ((b & 2) >> 1)) : b;
+    }
+    void compute_needs(const std::vector<aig_lit>& roots, const std::vector<int>& half);
 
     // Encoding cache by node identity: the CNF literal for the AND node's
     // POSITIVE value (caller applies edge-sign). Leaves aren't cached.
@@ -167,6 +187,10 @@ private:
     // Collect k-ary AND conjuncts as signed edges. Only flatten through
     // positive-reference, fanout-1 AND nodes — else sharing would be lost.
     void collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out);
+    void collect_or_edges(const aig_lit& e, std::vector<aig_lit>& out);
+    void collect_and_edges_nodup(const aig_lit& e, std::vector<aig_lit>& out);
+    uint32_t flat_width(const aig_lit& e, bool as_or, uint32_t depth);
+    bool may_flatten(const aig_lit& e, bool as_or, bool allow_dup = true);
 
     // ITE pattern detection. `n` is an OR-gate ref (n.neg, t_and, l!=r)
     // decomposing as OR(AND_T, AND_E). If the two sub-ANDs share one
@@ -244,6 +268,14 @@ void AIGToCNF<Solver>::add_clause(const std::vector<CMSat::Lit>& cl) {
     tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
     for (size_t i = 1; i < tmp.size(); i++) {
         if (tmp[i].var() == tmp[i-1].var()) return; // tautology
+    }
+    if (polarity_mode && cur_h != CMSat::lit_Undef && cur_need != 3) {
+        for (const CMSat::Lit l : tmp) {
+            if (l.var() != cur_h.var()) continue;
+            const uint8_t side = (l.sign() != cur_h.sign()) ? 1 : 2;
+            if (!(cur_need & side)) return;
+            break;
+        }
     }
     solver.add_clause(tmp);
     stats.clauses_added++;
@@ -333,6 +365,45 @@ std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch(const std::vector<aig_lit
 }
 
 template<class Solver>
+void AIGToCNF<Solver>::compute_needs(const std::vector<aig_lit>& roots, const std::vector<int>& half) {
+    needs.clear();
+    std::vector<const AIG*> work;
+    auto add = [&](const AIG* n, uint8_t b) {
+        if (!n || n->type != AIGT::t_and || b == 0) return;
+        uint8_t& cur = needs[n];
+        if ((cur | b) == cur) return;
+        cur |= b;
+        work.push_back(n);
+    };
+    for (size_t i = 0; i < roots.size(); i++) {
+        const aig_lit& r = roots[i];
+        if (!r) continue;
+        uint8_t b = 3;
+        if (half[i] == 1) b = r.neg ? 2 : 1;
+        else if (half[i] == 2) b = r.neg ? 1 : 2;
+        add(r.get(), b);
+    }
+    while (!work.empty()) {
+        const AIG* n = work.back(); work.pop_back();
+        const uint8_t b = needs[n];
+        for (const aig_lit* e : {&n->l, &n->r}) {
+            uint8_t cb = 0;
+            if (b & 1) cb |= e->neg ? 2 : 1;
+            if (b & 2) cb |= e->neg ? 1 : 2;
+            add(e->get(), cb);
+        }
+    }
+}
+
+template<class Solver>
+std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch_half(const std::vector<aig_lit>& roots,
+        const std::vector<int>& half, const std::vector<CMSat::Lit>&) {
+    polarity_mode = true;
+    compute_needs(roots, half);
+    return encode_batch(roots);
+}
+
+template<class Solver>
 CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_lit& n) {
     stats.nodes_visited++;
     if (n->type == AIGT::t_const) {
@@ -418,6 +489,76 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
         if (conjunct_edges.size() == 1) return encode_edge(conjunct_edges[0]);
     }
 
+    if (polarity_mode) {
+        auto it_nb = needs.find(n);
+        const uint8_t nb = it_nb == needs.end() ? 3 : it_nb->second;
+        if (nb == 1 || nb == 2) {
+            std::vector<std::vector<aig_lit>> groups;
+            for (const auto& c : conjunct_edges) {
+                std::vector<aig_lit> d;
+                collect_or_edges(c, d);
+                groups.push_back(std::move(d));
+            }
+            CMSat::Lit h = new_helper();
+            stats.kary_and_count++;
+            stats.kary_and_width_total += conjunct_edges.size();
+            if (nb == 1) {
+                for (const auto& d : groups) {
+                    std::vector<std::vector<CMSat::Lit>> alts;
+                    size_t prod = 1;
+                    for (const auto& e : d) {
+                        std::vector<aig_lit> conj;
+                        if (or_distribute) collect_and_edges_nodup(e, conj);
+                        else conj.push_back(e);
+                        prod *= conj.size();
+                        alts.emplace_back();
+                        for (const auto& c : conj) alts.back().push_back(encode_edge(c));
+                    }
+                    if (prod > 4) {
+                        std::vector<CMSat::Lit> cl{~h};
+                        for (const auto& e : d) cl.push_back(encode_edge(e));
+                        add_clause(cl);
+                        continue;
+                    }
+                    std::vector<size_t> idx(alts.size(), 0);
+                    while (true) {
+                        std::vector<CMSat::Lit> cl{~h};
+                        for (size_t i = 0; i < alts.size(); i++) cl.push_back(alts[i][idx[i]]);
+                        add_clause(cl);
+                        size_t k = 0;
+                        while (k < idx.size() && ++idx[k] == alts[k].size()) { idx[k] = 0; k++; }
+                        if (k == idx.size()) break;
+                    }
+                }
+                return h;
+            }
+            size_t prod = 1;
+            for (const auto& d : groups) prod *= d.size();
+            if (prod <= 4) {
+                std::vector<std::vector<CMSat::Lit>> dl;
+                for (const auto& d : groups) {
+                    std::vector<CMSat::Lit> ls;
+                    for (const auto& e : d) ls.push_back(~encode_edge(e));
+                    dl.push_back(std::move(ls));
+                }
+                std::vector<size_t> idx(groups.size(), 0);
+                while (true) {
+                    std::vector<CMSat::Lit> cl{h};
+                    for (size_t i = 0; i < dl.size(); i++) cl.push_back(dl[i][idx[i]]);
+                    add_clause(cl);
+                    size_t k = 0;
+                    while (k < idx.size() && ++idx[k] == dl[k].size()) { idx[k] = 0; k++; }
+                    if (k == idx.size()) break;
+                }
+                return h;
+            }
+            std::vector<CMSat::Lit> cl{h};
+            for (const auto& c : conjunct_edges) cl.push_back(~encode_edge(c));
+            add_clause(cl);
+            return h;
+        }
+    }
+
     // Encode each conjunct. Also apply basic constant / dedup normalisation.
     std::vector<CMSat::Lit> inputs;
     inputs.reserve(conjunct_edges.size());
@@ -466,7 +607,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
     // a duplicate.
     if (group_cse) {
         canon_sort_lits(inputs);
-        auto it_cse = and_group_cse.find(inputs);
+        auto it_cse = polarity_mode ? and_group_cse.end() : and_group_cse.find(inputs);
         if (it_cse != and_group_cse.end()) {
             return it_cse->second;
         }
@@ -499,7 +640,9 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
     }
 
     CMSat::Lit h = new_helper();
+    set_cur(h, n, false);
     emit_and_equiv(h, inputs);
+    cur_h = CMSat::lit_Undef;
     stats.kary_and_count++;
     stats.kary_and_width_total += inputs.size();
     if (group_cse) and_group_cse[inputs] = h;
@@ -511,18 +654,55 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
 // AND with complemented children is the De Morgan pattern, implicit here
 // because negation lives on edges.
 template<class Solver>
+uint32_t AIGToCNF<Solver>::flat_width(const aig_lit& e, bool as_or, uint32_t depth) {
+    if (e->type == AIGT::t_and && e.neg == as_or && e->l != e->r && depth < 16
+        && fanout[e.get()] <= 1 && cache.find(e.get()) == cache.end()) {
+        return flat_width(as_or ? ~e->l : e->l, as_or, depth + 1)
+             + flat_width(as_or ? ~e->r : e->r, as_or, depth + 1);
+    }
+    return 1;
+}
+
+template<class Solver>
+bool AIGToCNF<Solver>::may_flatten(const aig_lit& e, bool as_or, bool allow_dup) {
+    if (e->type != AIGT::t_and || e.neg != as_or || e->l == e->r) return false;
+    if (cache.find(e.get()) != cache.end()) return false;
+    const uint32_t f = fanout[e.get()];
+    if (f <= 1) return true;
+    if (!allow_dup || dup_var_weight < 0) return false;
+    const uint32_t m = flat_width(as_or ? ~e->l : e->l, as_or, 0) + flat_width(as_or ? ~e->r : e->r, as_or, 0);
+    return f * m <= m + 1 + f + (uint32_t)dup_var_weight;
+}
+
+template<class Solver>
 void AIGToCNF<Solver>::collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out) {
-    if (child->type == AIGT::t_and
-        && !child.neg
-        && child->l != child->r
-        && fanout[child.get()] <= 1
-        && cache.find(child.get()) == cache.end())
+    if (may_flatten(child, false))
     {
         collect_and_edges(child->l, out);
         collect_and_edges(child->r, out);
         return;
     }
     out.push_back(child);
+}
+
+template<class Solver>
+void AIGToCNF<Solver>::collect_and_edges_nodup(const aig_lit& e, std::vector<aig_lit>& out) {
+    if (may_flatten(e, false, false)) {
+        collect_and_edges_nodup(e->l, out);
+        collect_and_edges_nodup(e->r, out);
+        return;
+    }
+    out.push_back(e);
+}
+
+template<class Solver>
+void AIGToCNF<Solver>::collect_or_edges(const aig_lit& e, std::vector<aig_lit>& out) {
+    if (may_flatten(e, true)) {
+        collect_or_edges(~e->l, out);
+        collect_or_edges(~e->r, out);
+        return;
+    }
+    out.push_back(e);
 }
 
 template<class Solver>
@@ -794,7 +974,9 @@ bool AIGToCNF<Solver>::try_xor(const aig_lit& n, CMSat::Lit& out) {
     }
 
     CMSat::Lit h = new_helper();
+    set_cur(h, n.get(), true);
     emit_xor(h, a_lit, b_lit);
+    cur_h = CMSat::lit_Undef;
     stats.xor_patterns++;
     // h = XOR(x1, x2) = XNOR(a, b) = node's POSITIVE value.
     // encode_edge wants the negative-view literal (OR-gate view = XOR(a, b)).
@@ -845,14 +1027,16 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
             key.push_back(0xFFFFFFFFu);  // separator: selectors | then-values
             for (auto l : t_lits) key.push_back(pack(l));
             key.push_back(pack(base_lit));
-            auto it_cse = mux_chain_cse.find(key);
+            auto it_cse = polarity_mode ? mux_chain_cse.end() : mux_chain_cse.find(key);
             if (it_cse != mux_chain_cse.end()) {
                 out = it_cse->second;
                 return true;
             }
 
             CMSat::Lit h = new_helper();
+            set_cur(h, n.get(), true);
             emit_mux_chain(h, sels, t_lits, base_lit);
+            cur_h = CMSat::lit_Undef;
             stats.mux3_patterns++;
             stats.mux_chain_levels_total += levels.size();
             mux_chain_cse[key] = h;
@@ -892,14 +1076,16 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
         if (s.sign()) { s = ~s; std::swap(t, e); }
         auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
         IteKey key{pack(s), pack(t), pack(e)};
-        auto it = ite_cse.find(key);
+        auto it = polarity_mode ? ite_cse.end() : ite_cse.find(key);
         if (it != ite_cse.end()) {
             stats.ite_patterns++;
             out = it->second;
             return true;
         }
         CMSat::Lit h = new_helper();
+        set_cur(h, n.get(), true);
         emit_ite(h, s, t, e);
+        cur_h = CMSat::lit_Undef;
         ite_cse[key] = h;
         stats.ite_patterns++;
         out = h;
@@ -1162,7 +1348,7 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
         for (uint32_t i = 0; i < num_inputs; i++) key.push_back(slot_lits[order[i]].var());
         key.push_back(final_tt);
 
-        auto it_cse = cut_cse.find(key);
+        auto it_cse = polarity_mode ? cut_cse.end() : cut_cse.find(key);
         if (it_cse != cut_cse.end()) {
             stats.cut_cnf_cse_hits++;
             out = use_compl ? ~it_cse->second : it_cse->second;
@@ -1198,6 +1384,7 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
         });
 
         CMSat::Lit h = new_helper();
+        set_cur(h, n.get(), n.neg);
         for (const auto& c : min_cnf.clauses) {
             std::vector<CMSat::Lit> cl;
             cl.reserve(num_inputs + 1);
@@ -1209,6 +1396,7 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
             cl.push_back(c.g_sign ? ~h : h);
             add_clause(cl);
         }
+        cur_h = CMSat::lit_Undef;
         stats.cut_cnf_patterns++;
         stats.cut_cnf_clauses += min_cnf.clauses.size();
         // h is the lit for the cone's function; the key stores the lit for

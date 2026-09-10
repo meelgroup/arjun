@@ -35,6 +35,7 @@ const char* ArjunInt::gate_type_name(GateType t) {
         case GateType::ITE: return "ITE";
         case GateType::EQUIV: return "EQUIV";
         case GateType::IRREG: return "IRREG";
+        case GateType::PG: return "PG";
         default: return "?";
     }
 }
@@ -96,7 +97,7 @@ void CnfRwStats::print(int verb, const string& prefix) const {
        << " max-fanin " << max_fanin;
     line(s4);
     std::ostringstream s5;
-    s5 << "[cnfrw] roots " << roots << " -> helper " << roots_helper
+    s5 << "[cnfrw] roots " << roots << " -> helper " << roots_helper << " half " << roots_half
        << " shared " << roots_shared << " leaf " << roots_leaf << " dead-gates " << dead_gates
        << " | comps accepted " << comp_accepted << " (gain " << comp_gain_cost
        << ") rejected " << comp_rejected << " (would lose " << comp_rej_cost << ")"
@@ -168,6 +169,7 @@ void CnfRewrite::reset() {
     bin_map.clear();
     tern_map.clear();
     dont_elim.clear();
+    counted.clear();
     cl_used.clear();
     cands.clear();
     gate_of_var.clear();
@@ -207,6 +209,8 @@ void CnfRewrite::setup_dont_elim(const SimplifiedCNF& cnf) {
     if (cnf.get_weighted()) {
         for (uint32_t v = 0; v < nvars; v++) if (cnf.weight_set(v)) dont_elim[v] = 1;
     }
+    counted = dont_elim;
+    for (const uint32_t v : cnf.get_opt_sampl_vars()) counted[v] = 1;
 }
 
 void CnfRewrite::detect_and_gates() {
@@ -392,6 +396,33 @@ bool CnfRewrite::irreg_check(uint32_t v, Gate& g) {
     return true;
 }
 
+void CnfRewrite::detect_pg_gates() {
+    if (!conf.cnfrw_pg) return;
+    for (uint32_t v = 0; v < nvars; v++) {
+        if (dont_elim[v]) continue;
+        const auto& N = occ[Lit(v, true).toInt()];
+        const auto& P = occ[Lit(v, false).toInt()];
+        if (N.empty() && P.empty()) continue;
+        const bool use_n = !N.empty();
+        Gate g;
+        g.type = GateType::PG;
+        g.out = Lit(v, !use_n);
+        std::set<uint32_t> ins;
+        for (const uint32_t ci : (use_n ? N : P)) {
+            vector<Lit> term;
+            for (const Lit l : cls[ci]) if (l.var() != v) { term.push_back(l); ins.insert(l.var()); }
+            if (term.empty()) { g.cls.clear(); break; }
+            g.terms.push_back(std::move(term));
+            g.cls.push_back(ci);
+        }
+        if (g.cls.empty()) continue;
+        for (const uint32_t x : ins) g.ins.push_back(Lit(x, false));
+        stats.cand_gates[(size_t)g.type]++;
+        stats.cand_inputs[(size_t)g.type] += g.ins.size();
+        cands.push_back(std::move(g));
+    }
+}
+
 void CnfRewrite::detect_irreg_gates() {
     if (!conf.cnfrw_irreg) return;
     vector<char> has_cand(nvars, 0);
@@ -430,6 +461,7 @@ bool CnfRewrite::gate_eval(const Gate& g, const std::function<bool(Lit)>& val) c
         case GateType::ITE:
             f = val(g.ins[0]) ? val(g.ins[1]) : val(g.ins[2]);
             break;
+        case GateType::PG:
         case GateType::IRREG:
             f = true;
             for (const auto& term : g.terms) {
@@ -447,6 +479,7 @@ void CnfRewrite::verify_gates() const {
     for (uint32_t v = 0; v < nvars; v++) {
         if (gate_of_var[v] == -1) continue;
         const Gate& g = cands[gate_of_var[v]];
+        if (g.type == GateType::PG) continue;
         vector<uint32_t> vars;
         vars.push_back(v);
         for (const Lit l : g.ins) vars.push_back(l.var());
@@ -480,6 +513,7 @@ uint32_t CnfRewrite::Gate::priority() const {
         case GateType::ITE: p += 3; break;
         case GateType::AND: p += 2; break;
         case GateType::EQUIV: p += 1; break;
+        case GateType::PG: p = cls.size() * 8; break;
         default: break;
     }
     return p;
@@ -561,6 +595,7 @@ aig_lit CnfRewrite::gate_aig(const Gate& g, const vector<aig_lit>& var_aig) cons
             res = AIG::new_ite(in(g.ins[1]), in(g.ins[2]), in(g.ins[0]));
             break;
         }
+        case GateType::PG:
         case GateType::IRREG: {
             for (const auto& term : g.terms) {
                 aig_lit t = in(term[0]);
@@ -576,8 +611,15 @@ aig_lit CnfRewrite::gate_aig(const Gate& g, const vector<aig_lit>& var_aig) cons
 
 void CnfRewrite::compute_removable(vector<char>& removable) const {
     removable.assign(nvars, 0);
+    vector<uint32_t> consumers(nvars, 0);
+    if (conf.cnfrw_inline_fanout > 0)
+        for (uint32_t v = 0; v < nvars; v++) {
+            if (gate_of_var[v] == -1) continue;
+            for (const Lit l : cands[gate_of_var[v]].ins) consumers[l.var()]++;
+        }
     for (uint32_t v = 0; v < nvars; v++) {
         if (gate_of_var[v] == -1 || dont_elim[v]) continue;
+        if (conf.cnfrw_inline_fanout > 0 && consumers[v] > (uint32_t)conf.cnfrw_inline_fanout) continue;
         bool all_in_gates = true;
         for (const uint32_t ci : occ[Lit(v, false).toInt()]) if (!cl_used[ci]) { all_in_gates = false; break; }
         if (all_in_gates)
@@ -685,6 +727,7 @@ CnfRewrite::Lifted CnfRewrite::lift_only(const SimplifiedCNF& cnf) {
     detect_xor_gates();
     detect_ite_gates();
     detect_irreg_gates();
+    detect_pg_gates();
     select_gates();
     break_cycles();
     for (uint32_t v = 0; v < nvars; v++) {
@@ -706,13 +749,41 @@ CnfRewrite::Lifted CnfRewrite::lift_only(const SimplifiedCNF& cnf) {
     return out;
 }
 
+int CnfRewrite::root_half_mode(uint32_t v) const {
+    if (!conf.cnfrw_half || counted[v]) return 0;
+    const Gate& g = cands[gate_of_var[v]];
+    std::unordered_set<uint32_t> own(g.cls.begin(), g.cls.end());
+    bool neg_in = true, pos_in = true;
+    for (const uint32_t ci : occ[Lit(v, true).toInt()]) if (!own.count(ci)) { neg_in = false; break; }
+    for (const uint32_t ci : occ[Lit(v, false).toInt()]) if (!own.count(ci)) { pos_in = false; break; }
+    if (neg_in) return 1;
+    if (pos_in) return 2;
+    return 0;
+}
+
 CnfRewrite::EncResult CnfRewrite::encode_component(const vector<aig_lit>& croots,
-        const vector<uint32_t>& cvars, bool use_mapper) {
+        const vector<uint32_t>& cvars, bool use_mapper, const vector<int>& half) {
     EncResult er;
     ClauseCollector cc;
     cc.nv = nvars;
     vector<Lit> root_lits;
-    if (use_mapper) {
+    bool any_half = false;
+    for (const int h : half) any_half |= h != 0;
+    if (any_half && !use_mapper) {
+        AIGToCNF<ClauseCollector> enc(cc);
+        enc.set_group_cse(conf.cnfrw_group_cse);
+        enc.set_cut_cnf(conf.cnfrw_cut_cnf);
+        enc.set_detect_ite(conf.cnfrw_detect_ite);
+        enc.set_detect_xor(conf.cnfrw_detect_xor);
+        enc.set_kary_fusion(conf.cnfrw_kary_fusion);
+        enc.set_max_kary_width(conf.cnfrw_max_kary);
+        enc.set_max_mux_chain(conf.cnfrw_max_mux_chain);
+        enc.set_dup_var_weight(conf.cnfrw_dup_var_weight);
+        enc.set_or_distribute(conf.cnfrw_or_distrib);
+        vector<Lit> outs;
+        for (size_t i = 0; i < croots.size(); i++) outs.push_back(Lit(cvars[i], false));
+        root_lits = enc.encode_batch_half(croots, half, outs);
+    } else if (use_mapper) {
         AIGCnfMapper<ClauseCollector> enc(cc);
         enc.set_max_leaves(conf.cnfrw_map_leaves);
         enc.set_max_cuts(conf.cnfrw_map_cuts);
@@ -729,6 +800,8 @@ CnfRewrite::EncResult CnfRewrite::encode_component(const vector<aig_lit>& croots
         enc.set_kary_fusion(conf.cnfrw_kary_fusion);
         enc.set_max_kary_width(conf.cnfrw_max_kary);
         enc.set_max_mux_chain(conf.cnfrw_max_mux_chain);
+        enc.set_dup_var_weight(conf.cnfrw_dup_var_weight);
+        enc.set_or_distribute(conf.cnfrw_or_distrib);
         root_lits = enc.encode_batch(croots);
     }
     er.nv = cc.nv;
@@ -736,6 +809,7 @@ CnfRewrite::EncResult CnfRewrite::encode_component(const vector<aig_lit>& croots
     for (size_t i = 0; i < croots.size(); i++) {
         const uint32_t g = cvars[i];
         const Lit r = root_lits[i];
+        if (r == lit_Undef) { er.n_half++; continue; }
         if (r.var() >= nvars) {
             if (er.helper_map[r.var()] == lit_Undef) { er.helper_map[r.var()] = Lit(g, r.sign()); er.n_helper++; }
             else {
@@ -777,6 +851,7 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
     detect_xor_gates();
     detect_ite_gates();
     detect_irreg_gates();
+    detect_pg_gates();
     stats.t_detect = cpuTime() - t;
 
     t = cpuTime();
@@ -837,6 +912,8 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
     t = cpuTime();
     if (conf.cnfrw_rewrite) {
         AIGRewriter rw;
+        rw.set_chain_compression(conf.cnfrw_chain);
+        rw.set_distribute(conf.cnfrw_distrib);
         rw.rewrite_all(roots, conf.verb >= 2 ? conf.verb : 0, conf.cnfrw_balance);
     }
     stats.aig_nodes_after = AIG::count_aig_nodes_fast(roots);
@@ -908,11 +985,13 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
             vector<aig_lit> croots;
             vector<uint32_t> cvars;
             for (const uint32_t i : rit->second) { croots.push_back(roots[i]); cvars.push_back(root_vars[i]); }
-            if (conf.cnfrw_encoder == 0) er = encode_component(croots, cvars, false);
-            else if (conf.cnfrw_encoder == 1) er = encode_component(croots, cvars, true);
+            vector<int> half;
+            for (const uint32_t v : cvars) half.push_back(root_half_mode(v));
+            if (conf.cnfrw_encoder == 0) er = encode_component(croots, cvars, false, half);
+            else if (conf.cnfrw_encoder == 1) er = encode_component(croots, cvars, true, half);
             else {
-                er = encode_component(croots, cvars, false);
-                EncResult em = encode_component(croots, cvars, true);
+                er = encode_component(croots, cvars, false, half);
+                EncResult em = encode_component(croots, cvars, true, half);
                 const int64_t c0 = er.lits + conf.cnfrw_cls_weight * er.cls.size() + conf.cnfrw_var_weight * er.helpers;
                 const int64_t c1 = em.lits + conf.cnfrw_cls_weight * em.cls.size() + conf.cnfrw_var_weight * em.helpers;
                 if (c1 < c0) { er = std::move(em); stats.enc_mapper_won++; } else stats.enc_aig2cnf_won++;
@@ -929,10 +1008,19 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
                 for (const auto& cl : comp_cls) if ((int)cl.size() > conf.cnfrw_max_cls_len) { too_long = true; break; }
             if (collect_comp_info) {
                 info.new_lits = add_lits; info.new_cls = comp_cls.size(); info.helpers = helpers;
-                info.accepted = !((conf.cnfrw_guard && add_cost + conf.cnfrw_min_gain >= rem_cost) || too_long);
+                info.accepted = !((conf.cnfrw_guard && (conf.cnfrw_pareto
+                    ? !(helpers <= rem_vars && comp_cls.size() <= rem_cls && add_lits <= rem_lits
+                        && (helpers < rem_vars || comp_cls.size() < rem_cls || add_lits < rem_lits))
+                    : add_cost + conf.cnfrw_min_gain >= rem_cost)) || too_long);
                 comp_info.push_back(info);
             }
-            if ((conf.cnfrw_guard && add_cost + conf.cnfrw_min_gain >= rem_cost) || too_long) {
+            bool reject = conf.cnfrw_guard && add_cost + conf.cnfrw_min_gain >= rem_cost;
+            if (conf.cnfrw_guard && conf.cnfrw_pareto) {
+                const bool le = helpers <= rem_vars && comp_cls.size() <= rem_cls && add_lits <= rem_lits;
+                const bool lt = helpers < rem_vars || comp_cls.size() < rem_cls || add_lits < rem_lits;
+                reject = !(le && lt);
+            }
+            if (reject || too_long) {
                 stats.comp_rej_cost += add_cost - rem_cost;
                 stats.comp_rejected++;
                 for (const uint32_t v : gates) {
@@ -943,6 +1031,7 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
             }
             stats.comp_gain_cost += rem_cost - add_cost;
             stats.roots_helper += n_helper;
+            stats.roots_half += er.n_half;
             stats.roots_shared += n_shared;
             stats.roots_leaf += n_leaf;
             stats.equiv_bins_added += 2 * (n_shared + n_leaf);

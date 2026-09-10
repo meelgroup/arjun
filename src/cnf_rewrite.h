@@ -33,7 +33,7 @@
 
 namespace ArjunInt {
 
-enum class GateType : uint8_t { AND = 0, XOR, ITE, EQUIV, IRREG, NUM };
+enum class GateType : uint8_t { AND = 0, XOR, ITE, EQUIV, IRREG, PG, NUM };
 CNFRW_PUBLIC const char* gate_type_name(GateType t);
 CNFRW_PUBLIC const char* fanin_bucket_name(uint32_t b);
 constexpr uint32_t kFaninBuckets = 8;
@@ -65,6 +65,7 @@ struct CNFRW_PUBLIC CnfRwStats {
     uint64_t roots_leaf = 0;
     uint64_t roots_shared = 0;
     uint64_t roots_helper = 0;
+    uint64_t roots_half = 0;
     uint64_t comp_accepted = 0;
     uint64_t comp_rejected = 0;
     uint64_t dead_gates = 0;
@@ -139,6 +140,7 @@ private:
     std::unordered_map<uint64_t, uint32_t> bin_map;
     std::unordered_map<uint64_t, uint32_t> tern_map;
     std::vector<char> dont_elim;
+    std::vector<char> counted;
     std::vector<char> cl_used;
     std::vector<Gate> cands;
     std::vector<int32_t> gate_of_var;
@@ -151,6 +153,8 @@ private:
     void detect_xor_gates();
     void detect_ite_gates();
     void detect_irreg_gates();
+    void detect_pg_gates();
+    int root_half_mode(uint32_t v) const;
     void select_gates();
     void break_cycles();
     bool irreg_check(uint32_t v, Gate& g);
@@ -170,11 +174,12 @@ private:
     struct EncResult {
         std::vector<std::vector<CMSat::Lit>> cls;
         std::vector<CMSat::Lit> helper_map;
-        uint32_t nv = 0, helpers = 0, n_helper = 0, n_shared = 0, n_leaf = 0;
+        uint32_t nv = 0, helpers = 0, n_helper = 0, n_shared = 0, n_leaf = 0, n_half = 0;
         uint64_t lits = 0;
     };
     EncResult encode_component(const std::vector<ArjunNS::aig_lit>& croots,
-                               const std::vector<uint32_t>& cvars, bool use_mapper);
+                               const std::vector<uint32_t>& cvars, bool use_mapper,
+                               const std::vector<int>& half);
     void build_aigs(const std::vector<char>& removable, std::vector<ArjunNS::aig_lit>& var_aig,
                     std::vector<uint32_t>& root_vars, std::vector<ArjunNS::aig_lit>& roots);
     void reset();
