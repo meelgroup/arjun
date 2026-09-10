@@ -101,7 +101,7 @@ void CnfRwStats::print(int verb, const string& prefix) const {
        << " shared " << roots_shared << " leaf " << roots_leaf << " dead-gates " << dead_gates
        << " | comps accepted " << comp_accepted << " (gain " << comp_gain_cost
        << ") rejected " << comp_rejected << " (would lose " << comp_rej_cost << ")"
-       << " | enc won: aig2cnf " << enc_aig2cnf_won << " mapper " << enc_mapper_won
+       << " | enc won: aig2cnf " << enc_aig2cnf_won << " mapper " << enc_mapper_won << " reorder " << enc_tries_won << " (gain " << enc_tries_gain << ")"
        << " | aig nodes " << aig_nodes_before << " -> " << aig_nodes_after
        << " (" << std::fixed << std::setprecision(1)
        << (aig_nodes_before ? 100.0 * (1.0 - (double)aig_nodes_after / (double)aig_nodes_before) : 0.0)
@@ -1099,14 +1099,38 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
                 }
                 for (const uint32_t v : gates) if (removable[v]) { cout << "c o [cnfrw-inlined] "; print_gate(cands[gate_of_var[v]]); }
             }
-            if (conf.cnfrw_encoder == 0) er = encode_component(croots, cvars, false, half);
-            else if (conf.cnfrw_encoder == 1) er = encode_component(croots, cvars, true, half);
+            auto enc_cost = [&](const EncResult& e) {
+                return (int64_t)e.lits + conf.cnfrw_cls_weight * (int64_t)e.cls.size() + conf.cnfrw_var_weight * (int64_t)e.helpers;
+            };
+            auto enc_tries = [&](bool use_mapper) {
+                EncResult best = encode_component(croots, cvars, use_mapper, half);
+                if (croots.size() < 2) return best;
+                int64_t best_cost = enc_cost(best);
+                const int64_t first_cost = best_cost;
+                vector<uint32_t> perm(croots.size());
+                for (uint32_t i = 0; i < perm.size(); i++) perm[i] = i;
+                uint64_t rng = 0x9e3779b97f4a7c15ULL * (croots.size() + 1);
+                for (int t = 1; t < conf.cnfrw_tries; t++) {
+                    if (t == 1) std::reverse(perm.begin(), perm.end());
+                    else for (uint32_t i = perm.size() - 1; i > 0; i--) {
+                        rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+                        std::swap(perm[i], perm[(rng >> 33) % (i + 1)]);
+                    }
+                    vector<aig_lit> r2; vector<uint32_t> v2; vector<int> h2;
+                    for (const uint32_t i : perm) { r2.push_back(croots[i]); v2.push_back(cvars[i]); h2.push_back(half[i]); }
+                    EncResult e = encode_component(r2, v2, use_mapper, h2);
+                    const int64_t c = enc_cost(e);
+                    if (c < best_cost) { best = std::move(e); best_cost = c; }
+                }
+                if (best_cost < first_cost) { stats.enc_tries_won++; stats.enc_tries_gain += first_cost - best_cost; }
+                return best;
+            };
+            if (conf.cnfrw_encoder == 0) er = enc_tries(false);
+            else if (conf.cnfrw_encoder == 1) er = enc_tries(true);
             else {
-                er = encode_component(croots, cvars, false, half);
-                EncResult em = encode_component(croots, cvars, true, half);
-                const int64_t c0 = er.lits + conf.cnfrw_cls_weight * er.cls.size() + conf.cnfrw_var_weight * er.helpers;
-                const int64_t c1 = em.lits + conf.cnfrw_cls_weight * em.cls.size() + conf.cnfrw_var_weight * em.helpers;
-                if (c1 < c0) { er = std::move(em); stats.enc_mapper_won++; } else stats.enc_aig2cnf_won++;
+                er = enc_tries(false);
+                EncResult em = enc_tries(true);
+                if (enc_cost(em) < enc_cost(er)) { er = std::move(em); stats.enc_mapper_won++; } else stats.enc_aig2cnf_won++;
             }
             vector<vector<Lit>>& comp_cls = er.cls;
             vector<Lit>& helper_map = er.helper_map;
@@ -1130,6 +1154,11 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
                 info.accepted = !(reject || too_long);
                 comp_info.push_back(info);
             }
+            if (conf.verb >= 2)
+                cout << "c o " << prefix << "[cnfrw-comp] " << (reject || too_long ? "REJ " : "acc ")
+                     << "roots " << croots.size() << " gates " << gates.size() << " rem-vars " << rem_vars
+                     << " cls " << rem_cls << "->" << comp_cls.size() << " lits " << rem_lits << "->" << add_lits
+                     << " vars -" << rem_vars << "+" << helpers << " cost " << rem_cost << "->" << add_cost << endl;
             if (reject || too_long) {
                 stats.comp_rej_cost += add_cost - rem_cost;
                 stats.comp_rejected++;

@@ -125,6 +125,34 @@ Tooling:
 - `../count_fuzzer/fuzz.py` randomizes the `--cnfrw*` flags; it is the
   count-preservation fuzzer for this module.
 
+## BVE elimination-order planners (`--bveplanner`, `--bvecanonties`)
+
+CryptoMiniSat's BVE heap breaks score ties by variable index, so puura's
+output size is chaotic under variable renaming. CMS now has
+`conf.varelim_planner` (arjun `--bveplanner`, ganak too, CMS's own default
+stays 0): 0 = pos*neg score (old), 1 = literal-growth score, 2 = "no clause
+growth" tier first then literal growth, 3 = min-degree, 4 = bounded min-fill
+on the primal graph, 5 = dry-run 0-4 on a clause model
+(`cryptominisat/src/bve_plan.cpp`, prints `[bve-plan]` lines with simulated
+elimed/cls/lits per heuristic) and pick the best. `--bvecanonties 1` breaks
+ties by a neighbourhood hash instead of the index (renaming-invariant).
+Arjun's SimpConf defaults are planner 1 + canonical ties: on 3-renaming
+medians of t3_033/095/103 it is slightly better than the old order in
+vars, cls and lits; planner 2 gives the fewest vars on 033 but 13% more
+lits; 3/4/5 are not better. No planner alone removes the chaos on t3_103.
+
+The bigger source of chaos on t3_103 was cnfrw itself: its four largest
+gate components sit on the knife-edge of the strict Pareto rule (re-encoded
+literals within 0.1-2% of the original), and the encoder's result depends
+on the order of the component's roots, so a renaming flips a component
+between accepted and rejected and moves 600-800 pre-puura variables (and
+the puura result between ~1650 and ~1820 vars). `--cnfrwtries K` (default
+6) encodes each multi-root component in K root orders (original, reversed,
+seeded shuffles) and keeps the cheapest; it costs K times the encode time
+(0.08 -> 0.4 s on 103) and made the 103 result 1622-1657 vars over 3
+renamings (was 1648-1815). `[cnfrw-comp]` lines at `--verb 2` show each
+component's accept/reject decision with its before/after sizes.
+
 ## Source layout (`src/`)
 
 - `arjun.{h,cpp}` — public API, the `AIG` class, and the `SimplifiedCNF`

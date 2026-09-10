@@ -213,6 +213,7 @@ void add_arjun_options() {
     myopt("--cnfrwmaxkary", conf.cnfrw_max_kary, fc_int, "cnfrw: max width of a fused k-ary AND");
     myopt("--cnfrwmaxmux", conf.cnfrw_max_mux_chain, fc_int, "cnfrw: max fused MUX chain length (1 = plain ITEs)");
     myopt("--cnfrwmingain", conf.cnfrw_min_gain, fc_int, "cnfrw: minimum cost gain for accepting a rewritten gate group");
+    myopt("--cnfrwtries", conf.cnfrw_tries, fc_int, "cnfrw: encode each gate group in this many root orders, keep the cheapest");
     myopt("--cnfrwmaxclslen", conf.cnfrw_max_cls_len, fc_int, "cnfrw: reject a rewritten gate group with a clause longer than this. 0 = no limit");
     myopt("--cnfrwpfgain", conf.cnfrw_portfolio_min_gain, fc_double, "cnfrw portfolio: run the second puura only if the rewrite removed at least this percent of literals");
     myopt("--cnfrwenc", conf.cnfrw_encoder, fc_int, "cnfrw: encoder: 0 = AIGToCNF, 1 = cut mapper, 2 = both, keep the cheaper per gate group");
@@ -359,6 +360,9 @@ void add_arjun_options() {
     myopt("--bveocclim", simp_conf.bve_occ_cutoff, fc_int, "BVE: refuse a var whose more frequent polarity occurs more than this often (CaDiCaL's elimocclim). 0 = no such limit");
     myopt("--bveprodlim", simp_conf.bve_occ_prod_cutoff, fc_int, "BVE: refuse a var whose pos*neg occurrence product is over this. This is the bound on resolution work");
     myopt("--bveclsmaxsz", simp_conf.bve_cls_max_size, fc_int, "BVE: refuse a var that occurs in a clause longer than this. 0 = no limit");
+    myopt("--bveplanner", simp_conf.bve_planner, fc_int, "BVE elimination order: 0 = pos*neg score, 1 = literal growth, 2 = no-clause-growth tiers then literal growth, 3 = min-degree, 4 = min-fill, 5 = simulate 0-4 on a clause model and pick the best");
+    myopt("--bvecanonties", simp_conf.bve_canon_ties, fc_int, "BVE: break score ties by a neighbourhood hash instead of the variable index (renaming-invariant)");
+    myopt("--bveplanwork", simp_conf.bve_plan_work, fc_int, "BVE planner 5: literal-operation budget per simulated heuristic");
     myopt("--bveschedtouched", simp_conf.bve_sched_only_touched, fc_int, "BVE: only schedule vars whose clauses changed since BVE last looked. 0 = schedule every eligible var");
     myopt("--ccnrbudget", simp_conf.backbone_ccnr_mems_limitM, fc_int, "Mems budget, in millions, for each CCNR local search try that pre-filters backbone candidates. If no model is found, cadiback must test every variable");
     myopt("--puuradistill", simp_conf.puura_distill, fc_int, "Distillation inside Puura's simplification strategy. 1 = as scheduled, 0 = drop every distill token, 2 = drop only the ones that run before the first occ-bve");
@@ -446,6 +450,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_cnfrw_max_kary(conf.cnfrw_max_kary);
     arj->set_cnfrw_max_mux_chain(conf.cnfrw_max_mux_chain);
     arj->set_cnfrw_min_gain(conf.cnfrw_min_gain);
+    arj->set_cnfrw_tries(conf.cnfrw_tries);
     arj->set_cnfrw_max_cls_len(conf.cnfrw_max_cls_len);
     arj->set_cnfrw_encoder(conf.cnfrw_encoder);
     arj->set_cnfrw_map_leaves(conf.cnfrw_map_leaves);
