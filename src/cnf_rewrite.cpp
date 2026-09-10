@@ -6,7 +6,6 @@
 
 #include "cnf_rewrite.h"
 #include "aig_rewrite.h"
-#include "aig_fraig.h"
 #include "aig_to_cnf.h"
 #include "aig_cnf_map.h"
 #include "constants.h"
@@ -101,7 +100,6 @@ void CnfRwStats::print(int verb, const string& prefix) const {
        << " shared " << roots_shared << " leaf " << roots_leaf << " dead-gates " << dead_gates
        << " | comps accepted " << comp_accepted << " (gain " << comp_gain_cost
        << ") rejected " << comp_rejected << " (would lose " << comp_rej_cost << ")"
-       << " | fraig eq " << fraig_eq << " const " << fraig_const
        << " | enc won: aig2cnf " << enc_aig2cnf_won << " mapper " << enc_mapper_won
        << " | aig nodes " << aig_nodes_before << " -> " << aig_nodes_after
        << " (" << std::fixed << std::setprecision(1)
@@ -837,17 +835,6 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
     stats.t_build = cpuTime() - t;
 
     t = cpuTime();
-    if (conf.cnfrw_fraig) {
-        AIGFraigConf fc;
-        fc.max_confl_per_check = conf.cnfrw_fraig_confl;
-        fc.max_confl_total = conf.cnfrw_fraig_confl_total;
-        fc.max_time = conf.cnfrw_fraig_time;
-        fc.verb = conf.verb;
-        AIGFraig fr(fc);
-        fr.fraig(roots);
-        stats.fraig_eq = fr.get_stats().proved_eq;
-        stats.fraig_const = fr.get_stats().proved_const;
-    }
     if (conf.cnfrw_rewrite) {
         AIGRewriter rw;
         rw.rewrite_all(roots, conf.verb >= 2 ? conf.verb : 0, conf.cnfrw_balance);

@@ -2138,14 +2138,10 @@ public:
     void set_cnfrw_max_mux_chain(int cnfrw_max_mux_chain);
     void set_cnfrw_min_gain(int cnfrw_min_gain);
     void set_cnfrw_max_cls_len(int cnfrw_max_cls_len);
-    void set_cnfrw_fraig(int cnfrw_fraig);
-    void set_cnfrw_fraig_confl(int cnfrw_fraig_confl);
-    void set_cnfrw_fraig_confl_total(int cnfrw_fraig_confl_total);
     void set_cnfrw_encoder(int cnfrw_encoder);
     void set_cnfrw_map_leaves(int cnfrw_map_leaves);
     void set_cnfrw_map_cuts(int cnfrw_map_cuts);
     void set_cnfrw_map_helper_w(double cnfrw_map_helper_w);
-    void set_cnfrw_fraig_time(double cnfrw_fraig_time);
     void set_cnfrw_portfolio_min_gain(double cnfrw_portfolio_min_gain);
 
     //Get config
@@ -2198,14 +2194,10 @@ public:
     [[nodiscard]] int get_cnfrw_max_mux_chain() const;
     [[nodiscard]] int get_cnfrw_min_gain() const;
     [[nodiscard]] int get_cnfrw_max_cls_len() const;
-    [[nodiscard]] int get_cnfrw_fraig() const;
-    [[nodiscard]] int get_cnfrw_fraig_confl() const;
-    [[nodiscard]] int get_cnfrw_fraig_confl_total() const;
     [[nodiscard]] int get_cnfrw_encoder() const;
     [[nodiscard]] int get_cnfrw_map_leaves() const;
     [[nodiscard]] int get_cnfrw_map_cuts() const;
     [[nodiscard]] double get_cnfrw_map_helper_w() const;
-    [[nodiscard]] double get_cnfrw_fraig_time() const;
     [[nodiscard]] double get_cnfrw_portfolio_min_gain() const;
 
 private:

@@ -85,10 +85,6 @@ struct Config {
     int cnfrw_max_mux_chain = 8;
     int cnfrw_min_gain = 0;
     int cnfrw_max_cls_len = 0;
-    int cnfrw_fraig = 1;
-    int cnfrw_fraig_confl = 300;
-    int cnfrw_fraig_confl_total = 100000;
-    double cnfrw_fraig_time = 20.0;
     int cnfrw_encoder = 0;
     int cnfrw_map_leaves = 5;
     int cnfrw_map_cuts = 8;
