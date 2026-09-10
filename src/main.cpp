@@ -182,7 +182,7 @@ void add_arjun_options() {
           "input list is exhausted. 0 = inputs only");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     // CNF rewrite via AIG lifting
-    myopt("--cnfrw", conf.cnf_rewrite, fc_int, "CNF rewriting through AIG lifting, bitmask: 1 = after the first puura pass (safe, default), 2 = before puura (smaller CNFs on circuit-like inputs but measured slower ganak counting), 4 = portfolio: run the first puura pass with and without the pre-puura rewrite and keep the smaller result");
+    myopt("--cnfrw", conf.cnf_rewrite, fc_int, "CNF rewriting through AIG lifting, bitmask: 1 = after the first puura pass (nearly a no-op), 2 = before puura (default), 4 = portfolio: run the first puura pass with and without the pre-puura rewrite and keep the smaller result");
     myopt("--cnfrwmaxin", conf.cnfrw_max_gate_inputs, fc_int, "cnfrw: max inputs of an AND/OR gate");
     myopt("--cnfrwmaxxor", conf.cnfrw_max_xor_size, fc_int, "cnfrw: max clause size for XOR gate detection");
     myopt("--cnfrwirreg", conf.cnfrw_irreg, fc_int, "cnfrw: detect irregular gates (all clauses of a var define it)");
