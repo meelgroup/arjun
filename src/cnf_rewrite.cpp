@@ -173,6 +173,8 @@ void CnfRewrite::reset() {
     cl_used.clear();
     cands.clear();
     gate_of_var.clear();
+    mark_buf.clear();
+    pos_buf.clear();
 }
 
 void CnfRewrite::build_occ(const SimplifiedCNF& cnf) {
@@ -334,7 +336,8 @@ bool CnfRewrite::irreg_check(uint32_t v, Gate& g) {
     if (P.empty() || N.empty()) return false;
     if (P.size() * N.size() > (size_t)conf.cnfrw_irreg_max_prod) { stats.irreg_too_big++; return false; }
     stats.irreg_tried++;
-    vector<char> mark(2 * nvars, 0);
+    if (mark_buf.size() < 2 * nvars) mark_buf.assign(2 * nvars, 0);
+    vector<char>& mark = mark_buf;
     for (const uint32_t pi : P) {
         for (const Lit l : cls[pi]) mark[l.toInt()] = 1;
         for (const uint32_t ni : N) {
@@ -354,7 +357,8 @@ bool CnfRewrite::irreg_check(uint32_t v, Gate& g) {
     std::sort(lv.begin(), lv.end());
     lv.erase(std::unique(lv.begin(), lv.end()), lv.end());
     if (lv.size() > (size_t)conf.cnfrw_irreg_max_vars) { stats.irreg_too_big++; return false; }
-    vector<uint32_t> pos_of(nvars, 0);
+    if (pos_buf.size() < nvars) pos_buf.assign(nvars, 0);
+    vector<uint32_t>& pos_of = pos_buf;
     for (uint32_t i = 0; i < lv.size(); i++) pos_of[lv[i]] = i;
     const uint32_t n = lv.size();
     auto cl_sat = [&](const vector<Lit>& c, uint64_t asg) {

@@ -144,6 +144,8 @@ private:
     std::vector<char> cl_used;
     std::vector<Gate> cands;
     std::vector<int32_t> gate_of_var;
+    std::vector<char> mark_buf;
+    std::vector<uint32_t> pos_buf;
 
     void build_occ(const ArjunNS::SimplifiedCNF& cnf);
     void setup_dont_elim(const ArjunNS::SimplifiedCNF& cnf);
