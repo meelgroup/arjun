@@ -202,10 +202,6 @@ void add_arjun_options() {
     myopt("--cnfrwmaxmux", conf.cnfrw_max_mux_chain, fc_int, "cnfrw: max fused MUX chain length (1 = plain ITEs)");
     myopt("--cnfrwmingain", conf.cnfrw_min_gain, fc_int, "cnfrw: minimum cost gain for accepting a rewritten gate group");
     myopt("--cnfrwmaxclslen", conf.cnfrw_max_cls_len, fc_int, "cnfrw: reject a rewritten gate group with a clause longer than this. 0 = no limit");
-    myopt("--cnfrwfraig", conf.cnfrw_fraig, fc_int, "cnfrw: SAT-sweep (FRAIG) the lifted AIG before rewriting");
-    myopt("--cnfrwfraigconfl", conf.cnfrw_fraig_confl, fc_int, "cnfrw: FRAIG conflict limit per equivalence check");
-    myopt("--cnfrwfraigconfltot", conf.cnfrw_fraig_confl_total, fc_int, "cnfrw: FRAIG total conflict budget");
-    myopt("--cnfrwfraigtime", conf.cnfrw_fraig_time, fc_double, "cnfrw: FRAIG time budget in seconds");
     myopt("--cnfrwpfgain", conf.cnfrw_portfolio_min_gain, fc_double, "cnfrw portfolio: run the second puura only if the rewrite removed at least this percent of literals");
     myopt("--cnfrwenc", conf.cnfrw_encoder, fc_int, "cnfrw: encoder: 0 = AIGToCNF, 1 = cut mapper, 2 = both, keep the cheaper per gate group");
     myopt("--cnfrwmapleaves", conf.cnfrw_map_leaves, fc_int, "cnfrw: cut mapper max cut leaves (2..5)");
@@ -427,14 +423,10 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_cnfrw_max_mux_chain(conf.cnfrw_max_mux_chain);
     arj->set_cnfrw_min_gain(conf.cnfrw_min_gain);
     arj->set_cnfrw_max_cls_len(conf.cnfrw_max_cls_len);
-    arj->set_cnfrw_fraig(conf.cnfrw_fraig);
-    arj->set_cnfrw_fraig_confl(conf.cnfrw_fraig_confl);
-    arj->set_cnfrw_fraig_confl_total(conf.cnfrw_fraig_confl_total);
     arj->set_cnfrw_encoder(conf.cnfrw_encoder);
     arj->set_cnfrw_map_leaves(conf.cnfrw_map_leaves);
     arj->set_cnfrw_map_cuts(conf.cnfrw_map_cuts);
     arj->set_cnfrw_map_helper_w(conf.cnfrw_map_helper_w);
-    arj->set_cnfrw_fraig_time(conf.cnfrw_fraig_time);
     arj->set_cnfrw_portfolio_min_gain(conf.cnfrw_portfolio_min_gain);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);

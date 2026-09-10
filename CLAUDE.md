@@ -75,7 +75,7 @@ All must pass before reporting a change as complete.
 
 `src/cnf_rewrite.{h,cpp}` recovers gates (AND/OR k-ary, XOR, ITE, EQUIV,
 irregular) syntactically from the clause set, lifts them into an AIG,
-SAT-sweeps it (`src/aig_fraig.{h,cpp}`), rewrites it with `AIGRewriter`, and
+rewrites it with `AIGRewriter`, and
 re-encodes it with `AIGToCNF` (or the cut mapper `src/aig_cnf_map.h`, see
 `--cnfrwenc`). Each connected gate group is only replaced when its cost
 (lits + `--cnfrwclsw`*cls + `--cnfrwvarw`*vars) drops. Sampling vars and
@@ -91,7 +91,7 @@ variable renaming (±30%, 3x), so only paired comparisons are meaningful.
 Tooling:
 - `build/cnf_gate_stats [--puura 0/1] [--backward 0/1] file.cnf` — gate and
   AIG shape statistics (fanin histograms, cone shapes, NPN classes of small
-  cones, simulation-equivalence candidates, per-component rewrite table).
+  cones, per-component rewrite table).
 - `scripts/cnfrw_bench.py --configs "base:--cnfrw 0" "pre:--cnfrw 2" [--perms 3] files…`
   — A/B on output size and ganak count time; counts must agree across configs.
   puura's output size is chaotic under variable renaming (±20%), so compare
@@ -118,8 +118,8 @@ Tooling:
 - `aig_to_cnf.{h,cpp}` — Tseitin encoding with fanout-based helper
   suppression, k-ary AND/OR fusion, ITE / MUX3 detection.
 - `puura.{h,cpp}` — SharpSAT-td-derived simplification.
-- `cnf_rewrite.{h,cpp}`, `aig_fraig.{h,cpp}`, `aig_cnf_map.h` — CNF gate
-  lifting / SAT sweeping / cut-based CNF mapping (see `--cnfrw` above).
+- `cnf_rewrite.{h,cpp}`, `aig_cnf_map.h` — CNF gate lifting / cut-based CNF
+  mapping (see `--cnfrw` above).
 - `cnf_gate_stats.cpp` — gate/AIG shape analyzer binary.
 - `autarky.cpp`, `backward.cpp`, `extend.cpp`, `minimize.cpp`,
   `unate_def.cpp` — independent-set extraction passes.

@@ -16,7 +16,6 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
-#include <random>
 #include <memory>
 #include <set>
 #include <unordered_map>
@@ -332,74 +331,6 @@ void comp_table(const vector<CnfRewrite::CompInfo>& comps, int top) {
     row("TOTAL-rejected", tot_rej);
 }
 
-void sim_equiv_candidates(const vector<aig_lit>& roots, uint32_t nvars) {
-    constexpr uint32_t W = 8;
-    std::mt19937_64 rng(12345);
-    vector<std::array<uint64_t, W>> leaf_sig(nvars);
-    for (auto& a : leaf_sig) for (auto& w : a) w = rng();
-    std::unordered_map<const AIG*, std::array<uint64_t, W>> sig;
-    struct Frame { const AIG* n; bool done; };
-    vector<Frame> st;
-    auto edge_sig = [&](const aig_lit& e) {
-        std::array<uint64_t, W> r;
-        if (e->type == AIGT::t_lit) r = leaf_sig[e->var];
-        else if (e->type == AIGT::t_const) r.fill(~0ULL);
-        else r = sig.at(e.get());
-        if (e.neg) for (auto& w : r) w = ~w;
-        return r;
-    };
-    for (const auto& root : roots) {
-        if (!root || root->type != AIGT::t_and) continue;
-        st.push_back({root.get(), false});
-        while (!st.empty()) {
-            Frame f = st.back(); st.pop_back();
-            if (sig.count(f.n) || f.n->type != AIGT::t_and) continue;
-            if (!f.done) {
-                st.push_back({f.n, true});
-                if (f.n->l->type == AIGT::t_and && !sig.count(f.n->l.get())) st.push_back({f.n->l.get(), false});
-                if (f.n->r->type == AIGT::t_and && !sig.count(f.n->r.get())) st.push_back({f.n->r.get(), false});
-                continue;
-            }
-            auto a = edge_sig(f.n->l), b = edge_sig(f.n->r);
-            for (uint32_t i = 0; i < W; i++) a[i] &= b[i];
-            sig[f.n] = a;
-        }
-    }
-    std::map<std::array<uint64_t, W>, vector<const AIG*>> classes;
-    uint32_t consts = 0;
-    for (const auto& [n, sg] : sig) {
-        bool all0 = true, all1 = true;
-        for (auto w : sg) { if (w) all0 = false; if (~w) all1 = false; }
-        if (all0 || all1) { consts++; continue; }
-        auto key = sg;
-        if (key[0] & 1) for (auto& w : key) w = ~w;
-        classes[key].push_back(n);
-    }
-    std::unordered_set<const AIG*> root_nodes;
-    for (const auto& r : roots) if (r && r->type == AIGT::t_and) root_nodes.insert(r.get());
-    uint32_t ncls = 0, nodes_in = 0, roots_in = 0, root_pairs = 0;
-    for (const auto& [k, v] : classes) {
-        if (v.size() < 2) continue;
-        ncls++; nodes_in += v.size();
-        uint32_t rc = 0;
-        for (const AIG* n : v) if (root_nodes.count(n)) rc++;
-        roots_in += rc;
-        if (rc >= 2) root_pairs += rc - 1;
-    }
-    for (const auto& [k, v] : classes) {
-        if (v.size() < 2) continue;
-        for (const AIG* n : v) if (root_nodes.count(n)) { roots_in += 0; break; }
-    }
-    uint32_t root_in_any = 0;
-    for (const auto& [k, v] : classes) {
-        if (v.size() < 2) continue;
-        for (const AIG* n : v) if (root_nodes.count(n)) root_in_any++;
-    }
-    cout << "c sim-equiv (512 random patterns): AND nodes " << sig.size() << " const-candidates " << consts
-         << " nontrivial classes " << ncls << " nodes in them " << nodes_in
-         << " roots in them " << root_in_any << " (mergeable root pairs " << root_pairs << ")" << endl;
-}
-
 void report(const string& title, const vector<aig_lit>& roots, const vector<uint32_t>& root_vars,
             uint32_t nvars, int top) {
     cout << "c ===== " << title << " =====" << endl;
@@ -450,7 +381,6 @@ void report(const string& title, const vector<aig_lit>& roots, const vector<uint
              << ":" << cl[i].first;
     }
     cout << endl;
-    sim_equiv_candidates(roots, nvars);
     std::sort(biggest.rbegin(), biggest.rend());
     cout << "c biggest cones:";
     for (int i = 0; i < std::min<int>(top, biggest.size()); i++) {
