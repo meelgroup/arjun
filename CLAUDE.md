@@ -80,7 +80,13 @@ re-encodes it with `AIGToCNF` (or the cut mapper `src/aig_cnf_map.h`, see
 `--cnfrwenc`). Each connected gate group is only replaced when its cost
 (lits + `--cnfrwclsw`*cls + `--cnfrwvarw`*vars) drops. Sampling vars and
 weighted vars are never removed. Runs inside `standalone_elim_to_file`;
-`--cnfrw` is a bitmask: 1 = after the first puura pass, 2 = before puura.
+`--cnfrw` is a bitmask: 1 = after the first puura pass (default; nearly a
+no-op since puura leaves few gates), 2 = before puura, 4 = portfolio (first
+puura pass with and without the pre-rewrite, keep the smaller). Mode 2 gives
+10-15% smaller final CNFs on circuit-like instances, but in paired ganak
+timings (same variable permutation) those CNFs counted 15%-2x SLOWER, so 2/4
+are opt-in. puura's output size and ganak's time are both chaotic under
+variable renaming (±30%, 3x), so only paired comparisons are meaningful.
 
 Tooling:
 - `build/cnf_gate_stats [--puura 0/1] [--backward 0/1] file.cnf` — gate and

@@ -2146,6 +2146,7 @@ public:
     void set_cnfrw_map_cuts(int cnfrw_map_cuts);
     void set_cnfrw_map_helper_w(double cnfrw_map_helper_w);
     void set_cnfrw_fraig_time(double cnfrw_fraig_time);
+    void set_cnfrw_portfolio_min_gain(double cnfrw_portfolio_min_gain);
 
     //Get config
     [[nodiscard]] uint32_t get_verb() const;
@@ -2205,6 +2206,7 @@ public:
     [[nodiscard]] int get_cnfrw_map_cuts() const;
     [[nodiscard]] double get_cnfrw_map_helper_w() const;
     [[nodiscard]] double get_cnfrw_fraig_time() const;
+    [[nodiscard]] double get_cnfrw_portfolio_min_gain() const;
 
 private:
     ArjPrivateData* arjdata = nullptr;

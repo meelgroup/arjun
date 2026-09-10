@@ -182,7 +182,7 @@ void add_arjun_options() {
           "input list is exhausted. 0 = inputs only");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     // CNF rewrite via AIG lifting
-    myopt("--cnfrw", conf.cnf_rewrite, fc_int, "CNF rewriting through AIG lifting, bitmask: 1 = after the first puura pass, 2 = before puura, 4 = portfolio: run the first puura pass with and without the pre-puura rewrite and keep the smaller result");
+    myopt("--cnfrw", conf.cnf_rewrite, fc_int, "CNF rewriting through AIG lifting, bitmask: 1 = after the first puura pass (safe, default), 2 = before puura (smaller CNFs on circuit-like inputs but measured slower ganak counting), 4 = portfolio: run the first puura pass with and without the pre-puura rewrite and keep the smaller result");
     myopt("--cnfrwmaxin", conf.cnfrw_max_gate_inputs, fc_int, "cnfrw: max inputs of an AND/OR gate");
     myopt("--cnfrwmaxxor", conf.cnfrw_max_xor_size, fc_int, "cnfrw: max clause size for XOR gate detection");
     myopt("--cnfrwirreg", conf.cnfrw_irreg, fc_int, "cnfrw: detect irregular gates (all clauses of a var define it)");
@@ -206,6 +206,7 @@ void add_arjun_options() {
     myopt("--cnfrwfraigconfl", conf.cnfrw_fraig_confl, fc_int, "cnfrw: FRAIG conflict limit per equivalence check");
     myopt("--cnfrwfraigconfltot", conf.cnfrw_fraig_confl_total, fc_int, "cnfrw: FRAIG total conflict budget");
     myopt("--cnfrwfraigtime", conf.cnfrw_fraig_time, fc_double, "cnfrw: FRAIG time budget in seconds");
+    myopt("--cnfrwpfgain", conf.cnfrw_portfolio_min_gain, fc_double, "cnfrw portfolio: run the second puura only if the rewrite removed at least this percent of literals");
     myopt("--cnfrwenc", conf.cnfrw_encoder, fc_int, "cnfrw: encoder: 0 = AIGToCNF, 1 = cut mapper, 2 = both, keep the cheaper per gate group");
     myopt("--cnfrwmapleaves", conf.cnfrw_map_leaves, fc_int, "cnfrw: cut mapper max cut leaves (2..5)");
     myopt("--cnfrwmapcuts", conf.cnfrw_map_cuts, fc_int, "cnfrw: cut mapper max cuts per node");
@@ -434,6 +435,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_cnfrw_map_cuts(conf.cnfrw_map_cuts);
     arj->set_cnfrw_map_helper_w(conf.cnfrw_map_helper_w);
     arj->set_cnfrw_fraig_time(conf.cnfrw_fraig_time);
+    arj->set_cnfrw_portfolio_min_gain(conf.cnfrw_portfolio_min_gain);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
     arj->set_extend_max_confl(conf.extend_max_confl);
