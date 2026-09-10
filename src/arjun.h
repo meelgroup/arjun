@@ -2130,6 +2130,7 @@ public:
     void set_cnfrw_inline_fanout(int cnfrw_inline_fanout);
     void set_cnfrw_distrib(int cnfrw_distrib);
     void set_cnfrw_or_distrib(int cnfrw_or_distrib);
+    void set_cnfrw_dump(std::string cnfrw_dump);
     void set_cnfrw_irreg_max_prod(int cnfrw_irreg_max_prod);
     void set_cnfrw_irreg_max_vars(int cnfrw_irreg_max_vars);
     void set_cnfrw_rewrite(int cnfrw_rewrite);
@@ -2194,6 +2195,7 @@ public:
     [[nodiscard]] int get_cnfrw_inline_fanout() const;
     [[nodiscard]] int get_cnfrw_distrib() const;
     [[nodiscard]] int get_cnfrw_or_distrib() const;
+    [[nodiscard]] std::string get_cnfrw_dump() const;
     [[nodiscard]] int get_cnfrw_irreg_max_prod() const;
     [[nodiscard]] int get_cnfrw_irreg_max_vars() const;
     [[nodiscard]] int get_cnfrw_rewrite() const;

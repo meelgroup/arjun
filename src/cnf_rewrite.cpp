@@ -954,6 +954,59 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
             }
         }
     }
+    vector<int> half_of(nvars, 0);
+    {
+        std::unordered_map<const AIG*, uint32_t> node_root;
+        vector<char> is_root(nvars, 0);
+        for (const uint32_t v : root_vars) is_root[v] = 1;
+        for (size_t i = 0; i < roots.size(); i++) half_of[root_vars[i]] = root_half_mode(root_vars[i]);
+        for (size_t i = 0; i < roots.size(); i++) {
+            const uint32_t v = root_vars[i];
+            if (roots[i] && roots[i]->type == AIGT::t_lit && is_root[roots[i]->var]) half_of[roots[i]->var] = 0;
+            if (!roots[i] || roots[i]->type != AIGT::t_and) { half_of[v] = 0; continue; }
+            auto it = node_root.find(roots[i].get());
+            if (it != node_root.end()) { half_of[v] = 0; half_of[it->second] = 0; }
+            else node_root[roots[i].get()] = v;
+        }
+        for (int iter = 0; iter < 8; iter++) {
+            std::unordered_map<const AIG*, uint8_t> need;
+            vector<uint8_t> leaf_need(nvars, 0);
+            vector<const AIG*> work;
+            auto add = [&](const aig_lit& e, uint8_t b) {
+                if (!e || b == 0) return;
+                if (e->type == AIGT::t_lit) { leaf_need[e->var] |= b; return; }
+                if (e->type != AIGT::t_and) return;
+                uint8_t& cur = need[e.get()];
+                if ((cur | b) == cur) return;
+                cur |= b;
+                work.push_back(e.get());
+            };
+            for (size_t i = 0; i < roots.size(); i++) {
+                const int m = half_of[root_vars[i]];
+                uint8_t b = 3;
+                if (m == 1) b = roots[i].neg ? 2 : 1;
+                else if (m == 2) b = roots[i].neg ? 1 : 2;
+                add(aig_lit(roots[i].node, false), b);
+            }
+            while (!work.empty()) {
+                const AIG* n = work.back(); work.pop_back();
+                const uint8_t b = need[n];
+                for (const aig_lit* e : {&n->l, &n->r}) {
+                    uint8_t cb = 0;
+                    if (b & 1) cb |= e->neg ? 2 : 1;
+                    if (b & 2) cb |= e->neg ? 1 : 2;
+                    add(*e, cb);
+                }
+            }
+            bool changed = false;
+            for (const uint32_t v : root_vars) {
+                if (half_of[v] == 1 && (leaf_need[v] & 2)) { half_of[v] = 0; changed = true; }
+                else if (half_of[v] == 2 && (leaf_need[v] & 1)) { half_of[v] = 0; changed = true; }
+            }
+            if (!changed) break;
+            if (iter == 7) for (const uint32_t v : root_vars) half_of[v] = 0;
+        }
+    }
     std::map<uint32_t, vector<uint32_t>> comp_roots;
     std::map<uint32_t, vector<uint32_t>> comp_gates;
     for (uint32_t v = 0; v < nvars; v++) if (gate_of_var[v] != -1) comp_gates[find(v)].push_back(v);
@@ -986,7 +1039,14 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
             vector<uint32_t> cvars;
             for (const uint32_t i : rit->second) { croots.push_back(roots[i]); cvars.push_back(root_vars[i]); }
             vector<int> half;
-            for (const uint32_t v : cvars) half.push_back(root_half_mode(v));
+            for (const uint32_t v : cvars) half.push_back(half_of[v]);
+            if (conf.verb >= 3) {
+                for (size_t i = 0; i < cvars.size(); i++) {
+                    cout << "c o [cnfrw-root] x" << cvars[i] + 1 << " half " << half[i] << " aig " << croots[i] << endl;
+                    print_gate(cands[gate_of_var[cvars[i]]]);
+                }
+                for (const uint32_t v : gates) if (removable[v]) { cout << "c o [cnfrw-inlined] "; print_gate(cands[gate_of_var[v]]); }
+            }
             if (conf.cnfrw_encoder == 0) er = encode_component(croots, cvars, false, half);
             else if (conf.cnfrw_encoder == 1) er = encode_component(croots, cvars, true, half);
             else {
@@ -1088,6 +1148,11 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
 
     vector<Lit> removed_lits;
     for (uint32_t v = 0; v < nvars; v++) if (removable[v]) removed_lits.push_back(Lit(v, false));
+    if (conf.verb >= 3) {
+        cout << "c o [cnfrw-removed]";
+        for (const Lit l : removed_lits) cout << " " << l.var() + 1;
+        cout << endl;
+    }
     cnf.remove_sampling_vars(removed_lits);
     cnf.set_all_clauses(std::move(new_cls), std::move(new_red));
     cnf.renumber_vars(vmap, new_nvars);

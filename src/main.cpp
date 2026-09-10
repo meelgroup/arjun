@@ -193,6 +193,7 @@ void add_arjun_options() {
     myopt("--cnfrwchain", conf.cnfrw_chain, fc_int, "cnfrw: AIGRewriter cube-chain compression (shares clause tails through helper nodes)");
     myopt("--cnfrwdistrib", conf.cnfrw_distrib, fc_int, "cnfrw: AIGRewriter resolution/distribution rule");
     myopt("--cnfrwordistrib", conf.cnfrw_or_distrib, fc_int, "cnfrw encoder: distribute small nested ANDs into the clause of their OR group instead of a helper");
+    myopt("--cnfrwdump", conf.cnfrw_dump, fc_string, "cnfrw: write the CNF right after each rewrite pass to <prefix><tag>.cnf (debug)");
     myopt("--cnfrwhalf", conf.cnfrw_half, fc_int, "cnfrw: re-emit non-counted gate outputs one-directionally when the other polarity only occurs inside the gate");
     myopt("--cnfrwirregprod", conf.cnfrw_irreg_max_prod, fc_int, "cnfrw: irregular gates: max pos*neg occurrence product");
     myopt("--cnfrwirregvars", conf.cnfrw_irreg_max_vars, fc_int, "cnfrw: irregular gates: max local vars for the brute-force definition check");
@@ -423,6 +424,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_cnfrw_inline_fanout(conf.cnfrw_inline_fanout);
     arj->set_cnfrw_distrib(conf.cnfrw_distrib);
     arj->set_cnfrw_or_distrib(conf.cnfrw_or_distrib);
+    arj->set_cnfrw_dump(conf.cnfrw_dump);
     arj->set_cnfrw_irreg_max_prod(conf.cnfrw_irreg_max_prod);
     arj->set_cnfrw_irreg_max_vars(conf.cnfrw_irreg_max_vars);
     arj->set_cnfrw_rewrite(conf.cnfrw_rewrite);

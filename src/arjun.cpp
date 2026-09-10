@@ -140,7 +140,10 @@ DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
 
 DLL_PUBLIC bool Arjun::standalone_cnf_rewrite(SimplifiedCNF& cnf, const std::string& tag) {
     CnfRewrite rw(arjdata->conf);
-    return rw.run(cnf, tag);
+    if (!arjdata->conf.cnfrw_dump.empty()) cnf.write_simpcnf(arjdata->conf.cnfrw_dump + tag + "-in.cnf", true);
+    const bool ret = rw.run(cnf, tag);
+    if (!arjdata->conf.cnfrw_dump.empty()) cnf.write_simpcnf(arjdata->conf.cnfrw_dump + tag + ".cnf", true);
+    return ret;
 }
 
 DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const InterpConf& iconf) {
@@ -2836,6 +2839,7 @@ set_get_macro(int, cnfrw_pareto)
 set_get_macro(int, cnfrw_inline_fanout)
 set_get_macro(int, cnfrw_distrib)
 set_get_macro(int, cnfrw_or_distrib)
+set_get_macro(std::string, cnfrw_dump)
 set_get_macro(int, cnfrw_irreg_max_prod)
 set_get_macro(int, cnfrw_irreg_max_vars)
 set_get_macro(int, cnfrw_rewrite)

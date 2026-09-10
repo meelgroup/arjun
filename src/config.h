@@ -77,6 +77,7 @@ struct Config {
     int cnfrw_inline_fanout = 0;
     int cnfrw_distrib = 1;
     int cnfrw_or_distrib = 0;
+    std::string cnfrw_dump;
     int cnfrw_irreg_max_prod = 64;
     int cnfrw_irreg_max_vars = 14;
     int cnfrw_rewrite = 1;
