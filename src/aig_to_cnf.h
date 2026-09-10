@@ -70,6 +70,8 @@ public:
 
     CMSat::Lit encode(const aig_lit& root, bool force_helper = false);
     std::vector<CMSat::Lit> encode_batch(const std::vector<aig_lit>& roots);
+    std::vector<CMSat::Lit> encode_batch_keep_fanout(const std::vector<aig_lit>& all_roots,
+                                                     const std::vector<aig_lit>& to_encode);
     std::vector<CMSat::Lit> encode_batch_half(const std::vector<aig_lit>& roots,
                                               const std::vector<int>& half,
                                               const std::vector<CMSat::Lit>& outs);
@@ -189,6 +191,8 @@ private:
     void collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out);
     void collect_or_edges(const aig_lit& e, std::vector<aig_lit>& out);
     void collect_and_edges_nodup(const aig_lit& e, std::vector<aig_lit>& out);
+    void assert_edge(const aig_lit& e);
+    void emit_or_group(const std::vector<CMSat::Lit>& prefix, const std::vector<aig_lit>& d);
     uint32_t flat_width(const aig_lit& e, bool as_or, uint32_t depth);
     bool may_flatten(const aig_lit& e, bool as_or, bool allow_dup = true);
 
@@ -379,7 +383,7 @@ void AIGToCNF<Solver>::compute_needs(const std::vector<aig_lit>& roots, const st
         const aig_lit& r = roots[i];
         if (!r) continue;
         uint8_t b = 3;
-        if (half[i] == 1) b = r.neg ? 2 : 1;
+        if (half[i] == 1 || half[i] == 3) b = r.neg ? 2 : 1;
         else if (half[i] == 2) b = r.neg ? 1 : 2;
         add(r.get(), b);
     }
@@ -396,11 +400,110 @@ void AIGToCNF<Solver>::compute_needs(const std::vector<aig_lit>& roots, const st
 }
 
 template<class Solver>
+std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch_keep_fanout(const std::vector<aig_lit>& all_roots,
+        const std::vector<aig_lit>& to_encode) {
+    fanout.clear();
+    std::unordered_set<const AIG*, AigNodeHash> visited;
+    std::function<void(const AIG*)> dfs = [&](const AIG* n) {
+        if (!n || n->type != AIGT::t_and) return;
+        if (!visited.insert(n).second) return;
+        if (n->l && n->l->type == AIGT::t_and) {
+            fanout[n->l.get()]++;
+            dfs(n->l.get());
+        }
+        if (n->r && n->r.get() != n->l.get()) {
+            if (n->r->type == AIGT::t_and) fanout[n->r.get()]++;
+            dfs(n->r.get());
+        }
+    };
+    for (const auto& r : all_roots) {
+        if (!r) continue;
+        if (r->type == AIGT::t_and) fanout[r.get()]++;
+        dfs(r.get());
+    }
+    std::vector<CMSat::Lit> result;
+    for (const auto& r : to_encode) {
+        if (!r) { result.emplace_back(0, false); continue; }
+        result.push_back(encode_edge(r));
+    }
+    return result;
+}
+
+template<class Solver>
+void AIGToCNF<Solver>::emit_or_group(const std::vector<CMSat::Lit>& prefix, const std::vector<aig_lit>& d) {
+    std::vector<std::vector<aig_lit>> alts;
+    size_t prod = 1;
+    uint64_t helper_cost = 0;
+    if (or_distribute) {
+        for (const auto& e : d) {
+            std::vector<aig_lit> conj;
+            if (may_flatten(e, false, true)) { collect_and_edges(e->l, conj); collect_and_edges(e->r, conj); }
+            else conj.push_back(e);
+            if (conj.size() > 1) {
+                const uint32_t f = std::max<uint32_t>(1, fanout[e.get()]);
+                helper_cost += (3 * conj.size() + (dup_var_weight < 0 ? 6 : dup_var_weight) + f - 1) / f;
+            }
+            prod *= conj.size();
+            alts.push_back(std::move(conj));
+            if (prod > 16) break;
+        }
+    }
+    const uint64_t L0 = prefix.size() + d.size();
+    const bool distribute = or_distribute && prod > 1 && prod <= 16 && alts.size() == d.size()
+        && prod * L0 + prod < L0 + 1 + helper_cost;
+    if (!distribute) {
+        std::vector<CMSat::Lit> cl(prefix);
+        for (const auto& e : d) cl.push_back(encode_edge(e));
+        add_clause(cl);
+        return;
+    }
+    std::vector<std::vector<CMSat::Lit>> lits;
+    for (const auto& conj : alts) {
+        lits.emplace_back();
+        for (const auto& c : conj) lits.back().push_back(encode_edge(c));
+    }
+    std::vector<size_t> idx(lits.size(), 0);
+    while (true) {
+        std::vector<CMSat::Lit> cl(prefix);
+        for (size_t i = 0; i < lits.size(); i++) cl.push_back(lits[i][idx[i]]);
+        add_clause(cl);
+        size_t k = 0;
+        while (k < idx.size() && ++idx[k] == lits[k].size()) { idx[k] = 0; k++; }
+        if (k == idx.size()) break;
+    }
+}
+
+template<class Solver>
+void AIGToCNF<Solver>::assert_edge(const aig_lit& e) {
+    if (e->type == AIGT::t_const) { if (e.neg) add_clause({~get_true_lit()}); return; }
+    if (e->type == AIGT::t_lit) { add_clause({CMSat::Lit(e->var, e.neg)}); return; }
+    if (may_flatten(e, false, false)) { assert_edge(e->l); assert_edge(e->r); return; }
+    if (e.neg && cache.find(e.get()) == cache.end()) {
+        std::vector<aig_lit> d;
+        collect_or_edges(~e->l, d);
+        collect_or_edges(~e->r, d);
+        emit_or_group({}, d);
+        return;
+    }
+    add_clause({encode_edge(e)});
+}
+
+template<class Solver>
 std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch_half(const std::vector<aig_lit>& roots,
         const std::vector<int>& half, const std::vector<CMSat::Lit>&) {
     polarity_mode = true;
     compute_needs(roots, half);
-    return encode_batch(roots);
+    std::vector<aig_lit> plain;
+    for (size_t i = 0; i < roots.size(); i++) if (half[i] != 3) plain.push_back(roots[i]);
+    std::vector<CMSat::Lit> plain_lits = encode_batch_keep_fanout(roots, plain);
+    std::vector<CMSat::Lit> result;
+    size_t k = 0;
+    for (size_t i = 0; i < roots.size(); i++) {
+        if (half[i] != 3) { result.push_back(plain_lits[k++]); continue; }
+        if (roots[i]) assert_edge(roots[i]);
+        result.push_back(CMSat::lit_Undef);
+    }
+    return result;
 }
 
 template<class Solver>
@@ -503,33 +606,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
             stats.kary_and_count++;
             stats.kary_and_width_total += conjunct_edges.size();
             if (nb == 1) {
-                for (const auto& d : groups) {
-                    std::vector<std::vector<CMSat::Lit>> alts;
-                    size_t prod = 1;
-                    for (const auto& e : d) {
-                        std::vector<aig_lit> conj;
-                        if (or_distribute) collect_and_edges_nodup(e, conj);
-                        else conj.push_back(e);
-                        prod *= conj.size();
-                        alts.emplace_back();
-                        for (const auto& c : conj) alts.back().push_back(encode_edge(c));
-                    }
-                    if (prod > 4) {
-                        std::vector<CMSat::Lit> cl{~h};
-                        for (const auto& e : d) cl.push_back(encode_edge(e));
-                        add_clause(cl);
-                        continue;
-                    }
-                    std::vector<size_t> idx(alts.size(), 0);
-                    while (true) {
-                        std::vector<CMSat::Lit> cl{~h};
-                        for (size_t i = 0; i < alts.size(); i++) cl.push_back(alts[i][idx[i]]);
-                        add_clause(cl);
-                        size_t k = 0;
-                        while (k < idx.size() && ++idx[k] == alts[k].size()) { idx[k] = 0; k++; }
-                        if (k == idx.size()) break;
-                    }
-                }
+                for (const auto& d : groups) emit_or_group({~h}, d);
                 return h;
             }
             size_t prod = 1;

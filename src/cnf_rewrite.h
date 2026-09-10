@@ -66,6 +66,8 @@ struct CNFRW_PUBLIC CnfRwStats {
     uint64_t roots_shared = 0;
     uint64_t roots_helper = 0;
     uint64_t roots_half = 0;
+    uint64_t constr_lifted = 0;
+    uint64_t constr_accepted = 0;
     uint64_t comp_accepted = 0;
     uint64_t comp_rejected = 0;
     uint64_t dead_gates = 0;
@@ -145,6 +147,8 @@ private:
     std::vector<Gate> cands;
     std::vector<int32_t> gate_of_var;
     std::vector<char> mark_buf;
+    std::vector<uint32_t> constr_cls;
+    void lift_constraints(std::vector<char>& removable);
     std::vector<uint32_t> pos_buf;
 
     void build_occ(const ArjunNS::SimplifiedCNF& cnf);
@@ -174,7 +178,7 @@ private:
     struct EncResult {
         std::vector<std::vector<CMSat::Lit>> cls;
         std::vector<CMSat::Lit> helper_map;
-        uint32_t nv = 0, helpers = 0, n_helper = 0, n_shared = 0, n_leaf = 0, n_half = 0;
+        uint32_t nv = 0, helpers = 0, n_helper = 0, n_shared = 0, n_leaf = 0, n_half = 0, n_constr = 0;
         uint64_t lits = 0;
     };
     EncResult encode_component(const std::vector<ArjunNS::aig_lit>& croots,
