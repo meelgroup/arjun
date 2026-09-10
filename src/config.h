@@ -65,6 +65,7 @@ struct Config {
     // CNF rewriting through AIG lifting (cnf_rewrite.cpp).
     // bitmask: 1 = after the first puura pass, 2 = before puura, 4 = portfolio of plain vs pre-rewrite
     int cnf_rewrite = 1;
+    double cnfrw_portfolio_min_gain = 3.0;
     int cnfrw_max_gate_inputs = 1000000;
     int cnfrw_max_xor_size = 8;
     int cnfrw_irreg = 1;

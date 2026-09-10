@@ -256,8 +256,19 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     cnf.remove_equiv_weights();
     if (arjdata->conf.cnf_rewrite & 4) {
+        auto lits_of = [](const SimplifiedCNF& c) {
+            uint64_t lits = 0;
+            for (const auto& cl : c.get_clauses()) lits += cl.size();
+            return lits;
+        };
         SimplifiedCNF alt = cnf;
-        const bool changed = standalone_cnf_rewrite(alt, "[pre-puura]");
+        const uint64_t lits_before = lits_of(cnf);
+        bool changed = standalone_cnf_rewrite(alt, "[pre-puura]");
+        if (changed && lits_of(alt) > lits_before * (1.0 - arjdata->conf.cnfrw_portfolio_min_gain / 100.0)) {
+            verb_print2(1, "[cnfrw-portfolio] rewrite gain below " << arjdata->conf.cnfrw_portfolio_min_gain
+                << "% of literals, not running the second puura");
+            changed = false;
+        }
         cnf = standalone_get_simplified_cnf(cnf, simp_conf);
         if (changed) {
             alt = standalone_get_simplified_cnf(alt, simp_conf);
@@ -2841,3 +2852,4 @@ set_get_macro(int, cnfrw_map_leaves)
 set_get_macro(int, cnfrw_map_cuts)
 set_get_macro(double, cnfrw_map_helper_w)
 set_get_macro(double, cnfrw_fraig_time)
+set_get_macro(double, cnfrw_portfolio_min_gain)
