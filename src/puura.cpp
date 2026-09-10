@@ -162,7 +162,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_backbone_ccnr_mems_limitM(simp_conf.backbone_ccnr_mems_limitM);
     solver->set_varelim_planner(simp_conf.bve_planner);
     solver->set_varelim_canon_ties(simp_conf.bve_canon_ties);
-    solver->set_varelim_plan_work(simp_conf.bve_plan_work);
 #endif
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
