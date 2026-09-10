@@ -1463,6 +1463,9 @@ struct SimpConf {
     int64_t bve_cls_max_size = 0;
     int bve_sched_only_touched = 0;
     int64_t backbone_ccnr_mems_limitM = 300;
+    int bve_planner = 1;
+    int bve_canon_ties = 1;
+    int64_t bve_plan_work = 30000000;
 };
 
 struct VarTypes {
@@ -2149,6 +2152,7 @@ public:
     void set_cnfrw_max_kary(int cnfrw_max_kary);
     void set_cnfrw_max_mux_chain(int cnfrw_max_mux_chain);
     void set_cnfrw_min_gain(int cnfrw_min_gain);
+    void set_cnfrw_tries(int cnfrw_tries);
     void set_cnfrw_max_cls_len(int cnfrw_max_cls_len);
     void set_cnfrw_encoder(int cnfrw_encoder);
     void set_cnfrw_map_leaves(int cnfrw_map_leaves);
@@ -2217,6 +2221,7 @@ public:
     [[nodiscard]] int get_cnfrw_max_kary() const;
     [[nodiscard]] int get_cnfrw_max_mux_chain() const;
     [[nodiscard]] int get_cnfrw_min_gain() const;
+    [[nodiscard]] int get_cnfrw_tries() const;
     [[nodiscard]] int get_cnfrw_max_cls_len() const;
     [[nodiscard]] int get_cnfrw_encoder() const;
     [[nodiscard]] int get_cnfrw_map_leaves() const;

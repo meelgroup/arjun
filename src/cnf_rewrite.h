@@ -74,6 +74,8 @@ struct CNFRW_PUBLIC CnfRwStats {
     int64_t comp_gain_cost = 0;
     uint64_t enc_aig2cnf_won = 0;
     uint64_t enc_mapper_won = 0;
+    uint64_t enc_tries_won = 0;
+    int64_t enc_tries_gain = 0;
     int64_t comp_rej_cost = 0;
     uint64_t max_fanin = 0;
     uint64_t aig_nodes_before = 0;
