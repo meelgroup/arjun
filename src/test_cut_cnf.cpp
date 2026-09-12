@@ -64,9 +64,8 @@ int main() {
             if (check_tt(k, tt)) fails++;
         }
     }
-    // k = 5: 32-bit truth tables — 4 billion is too many to enumerate, so
-    // sample randomly plus a few structured functions (parity, majority,
-    // a projection, a constant) that stress the prime-cover code paths.
+    // k = 5: 32-bit truth tables are too many to enumerate; sample randomly
+    // plus structured functions (parity, majority, projection, constant).
     for (uint32_t i = 0; i < 4000; i++) {
         uint32_t tt = ((uint32_t)rand() << 17) ^ ((uint32_t)rand() << 2) ^ (uint32_t)rand();
         if (check_tt(5, tt)) fails++;

@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "manthan.h"
+#include "cegr.h"
 
 
 // These ask mlpack to give more info & warnings
@@ -34,24 +34,29 @@
 
 namespace ArjunInt {
 
-class ManthanLearn {
+class CegrLearn {
 public:
-    ManthanLearn(Manthan& _manthan, const Config& _conf, const ArjunNS::Arjun::ManthanConf& _mconf) :
-        m(_manthan), conf(_conf), mconf(_mconf) {
+    CegrLearn(Cegr& _cegr, const Config& _conf, const ArjunNS::Arjun::CegrConf& _mconf) :
+        m(_cegr), conf(_conf), mconf(_mconf) {
             point_0.zeros(m.cnf.nVars());
             point_1.ones(m.cnf.nVars());
         }
     void full_train();
 private:
+    std::vector<sample> get_cmsgen_samples(uint32_t samples);
     double train(const std::vector<sample>& orig_samples, const uint32_t v);
-    void verify_aig_error_rate(const std::vector<const sample*>& samples, uint32_t v, double train_error);
-    FHolder<MetaSolver2>::Formula recur(
+#ifdef SLOW_DEBUG
+    void verify_aig_matches_tree(mlpack::tree::DecisionTree<>* r,
+            const std::vector<const sample*>& samples, uint32_t v,
+            const std::vector<uint32_t>& used_vars, double train_error);
+#endif
+    FHolder<MetaSolver>::Formula recur(
             mlpack::tree::DecisionTree<>* node, const uint32_t learned_v, const std::vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
     arma::vec point_0;
     arma::vec point_1;
 
-    Manthan& m;
+    Cegr& m;
     const Config& conf;
-    const ArjunNS::Arjun::ManthanConf& mconf;
+    const ArjunNS::Arjun::CegrConf& mconf;
 };
 }

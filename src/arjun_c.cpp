@@ -349,8 +349,9 @@ DLL_PUBLIC int arjun_standalone_minimize_indep(arjun_arjun_t* a,
                                     arjun_simpcnf_t* cnf,
                                     int all_indep) {
     clear_error();
+    ArjunNS::Arjun::InterpConf iconf;
     try {
-        a->a->standalone_minimize_indep(*cnf->cnf, all_indep != 0);
+        a->a->standalone_minimize_indep(*cnf->cnf, iconf, all_indep != 0);
         return 0;
     } catch (const std::exception& e) { set_error(e.what()); return -1; }
 }
@@ -360,7 +361,8 @@ DLL_PUBLIC int arjun_standalone_elim_to_file(arjun_arjun_t* a, arjun_simpcnf_t* 
     try {
         Arjun::ElimToFileConf etof;
         SimpConf simp;
-        a->a->standalone_elim_to_file(*cnf->cnf, etof, simp);
+        Arjun::InterpConf iconf;
+        a->a->standalone_elim_to_file(*cnf->cnf, etof, simp, iconf);
         return 0;
     } catch (const std::exception& e) { set_error(e.what()); return -1; }
 }

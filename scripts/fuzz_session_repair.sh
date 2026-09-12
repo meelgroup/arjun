@@ -1,29 +1,26 @@
-#\!/bin/bash
+#!/bin/bash
 #
-# Create a tmux session with multiple fuzzing windows running the
-# fuzz_interp_repair.py (Craig-interpolant repair).
+# Create a tmux session with multiple fuzzing windows running fuzz_repair.py
 #
 # Usage:
-#   ./fuzz_session_interp_repair.sh [--num N] [fuzzer options]
+#   ./fuzz_session_repair.sh [--num N] [fuzz_repair.py options]
 #
 # Options:
 #   --num N    Number of tmux windows to create (default: 24)
 #
 # Examples:
-#   ./fuzz_session_interp_repair.sh                 # 24 windows, default options
-#   ./fuzz_session_interp_repair.sh --num 16        # 16 windows, default options
+#   ./fuzz_session_repair.sh                           # 24 windows, default options
+#   ./fuzz_session_repair.sh --num 8                   # 8 windows, default options
 #
-# Run from the build/ directory. All arguments (except a leading --num,
-# which sets the window count) are forwarded to the fuzzer in each window.
+# All arguments (except --num) are forwarded to fuzz_repair.py in each window.
 
-SESSION="fuzzing interp repair"
-# Directory the script was invoked from (build/), not the symlink target.
-DIR="$(cd "$(dirname "$0")" && pwd)"
+SESSION="fuzzing repair"
+DIR="$(pwd)"
 NUM_WINDOWS=24
 
 # Parse --num argument if present
 if [ "$1" = "--num" ]; then
-  if [ -z "$2" ] || \! [[ "$2" =~ ^[0-9]+$ ]]; then
+  if [ -z "$2" ] || ! [[ "$2" =~ ^[0-9]+$ ]]; then
     echo "Error: --num requires a positive integer argument"
     exit 1
   fi
@@ -31,7 +28,7 @@ if [ "$1" = "--num" ]; then
   shift 2
 fi
 
-CMD="../scripts/fuzz_interp_repair.py $@"
+CMD="../scripts/fuzz_repair.py $@"
 
 # Attach if session already exists
 if tmux has-session -t "$SESSION" 2>/dev/null; then

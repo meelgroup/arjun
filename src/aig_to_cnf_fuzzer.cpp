@@ -42,14 +42,11 @@ using std::map;
 
 static AIGManager aig_mng;
 
-// -----------------------------------------------------------------------------
-// Random AIG generation.  The actual generators live in aig_fuzz_gen.h so the
-// aig_rewrite fuzzer sees the same corpus and the same shape distribution.
-// Local wrappers below preserve the previous file-local call sites.
-// -----------------------------------------------------------------------------
+// Random AIG generators live in aig_fuzz_gen.h (shared corpus/shape
+// distribution). Local using-declarations below keep the old call sites.
 
 using fuzz::gen_random_aig;
-using fuzz::gen_manthan_aig;
+using fuzz::gen_cegr_aig;
 using fuzz::gen_deep_ite_chain_aig;
 using fuzz::gen_dnf_cover_aig;
 using fuzz::gen_pure_and_chain;
@@ -68,8 +65,8 @@ struct NaiveStats {
     uint64_t helpers = 0;
 };
 
-static Lit naive_encode(const aig_ptr& aig, SATSolver& solver,
-                         map<aig_ptr, Lit>& cache, NaiveStats& ns,
+static Lit naive_encode(const aig_lit& aig, SATSolver& solver,
+                         map<aig_lit, Lit>& cache, NaiveStats& ns,
                          Lit& true_lit, bool& true_lit_set)
 {
     // Use AIG::transform so we don't touch AIG's private members directly.
@@ -104,17 +101,10 @@ static Lit naive_encode(const aig_ptr& aig, SATSolver& solver,
 
 // Check A <-> B using SAT. Adds a fresh XOR gadget forcing A != B; UNSAT = equal.
 static bool sat_equivalent(SATSolver& s, Lit a, Lit b) {
-    // Save state; use assumptions so we don't mutate the solver permanently.
-    // But CMSat's add_clause is permanent. Use assumptions via auxiliary lit.
+    // add_clause is permanent, so gate everything on a fresh activation lit:
+    // act -> (a != b), encoded as (¬act∨a∨b) ∧ (¬act∨¬a∨¬b).
     s.new_var();
     Lit act = Lit(s.nVars() - 1, false);
-    // (act) -> (a XOR b)
-    // XOR encoding:
-    //   (¬act ∨ a ∨ b)
-    //   (¬act ∨ ¬a ∨ ¬b)
-    //   ... we only need: if act true, then a and b differ.
-    // Equivalent: (act -> a != b). This holds iff
-    //   (¬act ∨ a ∨ b) ∧ (¬act ∨ ¬a ∨ ¬b)   // at least one is true and at least one is false
     s.add_clause({~act, a, b});
     s.add_clause({~act, ~a, ~b});
     vector<Lit> assumps{act};
@@ -124,16 +114,13 @@ static bool sat_equivalent(SATSolver& s, Lit a, Lit b) {
     return ret == l_False;
 }
 
-// Per-assignment equivalence using brute-force AIG evaluation on the input
-// AIG, versus the *solved* model of the CNF encoding (ensuring the CNF
-// correctly models the AIG). For every input assignment we fix all input
-// vars as assumptions, solve, and check the model's value of the output lit
-// matches the AIG's value on that assignment.
-static bool cnf_matches_aig(SATSolver& s, const aig_ptr& aig, Lit out_lit,
+// Per-assignment check: for each input assignment, fix inputs as assumptions,
+// solve, and verify the CNF model's output lit matches AIG::evaluate.
+static bool cnf_matches_aig(SATSolver& s, const aig_lit& aig, Lit out_lit,
                              uint32_t num_vars)
 {
     if (num_vars > 12) return true; // too expensive
-    vector<aig_ptr> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, aig_lit());
     for (uint32_t mask = 0; mask < (1u << num_vars); mask++) {
         vector<lbool> vals(num_vars);
         vector<Lit> assumps;
@@ -142,13 +129,11 @@ static bool cnf_matches_aig(SATSolver& s, const aig_ptr& aig, Lit out_lit,
             vals[v] = b ? l_True : l_False;
             assumps.emplace_back(v, !b); // force var v = b
         }
-        map<aig_ptr, lbool> ca;
+        map<aig_lit, lbool> ca;
         lbool expected = AIG::evaluate(vals, aig, defs, ca);
         lbool ret = s.solve(&assumps);
         if (ret != l_True) {
-            // The CNF encoding should be satisfiable for *any* input assignment.
-            // If the AIG evaluates to undef (shouldn't happen with all inputs
-            // set), skip. Otherwise this is a bug.
+            // The CNF must be SAT for any full input assignment; UNSAT is a bug.
             cerr << "  cnf_matches_aig: solver UNSAT on assignment mask="
                  << mask << " (expected "
                  << (expected == l_True ? "T" : expected == l_False ? "F" : "U")
@@ -175,7 +160,6 @@ struct FuzzStats {
     uint64_t opt_clauses_total = 0;
     uint64_t opt_helpers_total = 0;
     uint64_t opt_kary_and = 0, opt_kary_and_width = 0;
-    uint64_t opt_kary_or = 0, opt_kary_or_width = 0;
     uint64_t opt_ite = 0;
     uint64_t opt_mux3 = 0;
     double total_time_s = 0;
@@ -201,10 +185,6 @@ struct FuzzStats {
              << " (avg width "
              << (opt_kary_and ? (double)opt_kary_and_width / opt_kary_and : 0.0)
              << ")" << endl;
-        cout << "k-ary ORs:  " << opt_kary_or
-             << " (avg width "
-             << (opt_kary_or ? (double)opt_kary_or_width / opt_kary_or : 0.0)
-             << ")" << endl;
         cout << "ITE patterns detected: " << opt_ite << endl;
         cout << "MUX3 patterns detected: " << opt_mux3 << endl;
         cout << "Time: " << std::fixed << std::setprecision(1)
@@ -212,7 +192,7 @@ struct FuzzStats {
     }
 };
 
-static void report_failure(const aig_ptr& aig, uint32_t num_vars,
+static void report_failure(const aig_lit& aig, uint32_t num_vars,
                             uint64_t seed, uint64_t iter, const char* phase)
 {
     cerr << "\n!!! FAILURE in phase '" << phase << "' at iter " << iter << " !!!" << endl;
@@ -220,7 +200,7 @@ static void report_failure(const aig_ptr& aig, uint32_t num_vars,
     cerr << "AIG: " << aig << endl;
 }
 
-static bool run_one(const aig_ptr& aig, uint32_t num_vars,
+static bool run_one(const aig_lit& aig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, FuzzStats& fs,
                     bool verbose)
 {
@@ -233,7 +213,7 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     // 1. Naive encoding
     NaiveStats ns;
     Lit true_lit_unused; bool true_set = false;
-    map<aig_ptr, Lit> naive_cache;
+    map<aig_lit, Lit> naive_cache;
     Lit naive_out = naive_encode(aig, solver, naive_cache, ns, true_lit_unused, true_set);
 
     // 2. Optimized encoding (into the same solver, in a fresh variable range)
@@ -254,7 +234,6 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
              << "  ratio=" << std::fixed << std::setprecision(2) << cls_ratio
              << "/" << hlp_ratio
              << "  kAND=" << es.kary_and_count
-             << " kOR=" << es.kary_or_count
              << " ITE=" << es.ite_patterns
              << " MUX3=" << es.mux3_patterns
              << " XOR=" << es.xor_patterns
@@ -268,8 +247,6 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     fs.opt_helpers_total += es.helpers_added;
     fs.opt_kary_and += es.kary_and_count;
     fs.opt_kary_and_width += es.kary_and_width_total;
-    fs.opt_kary_or += es.kary_or_count;
-    fs.opt_kary_or_width += es.kary_or_width_total;
     fs.opt_ite += es.ite_patterns;
     fs.opt_mux3 += es.mux3_patterns;
 
@@ -296,7 +273,6 @@ enum class Feature {
     NONE,               // baseline: all features on
     NORMALIZE_INPUTS,   // dedup/complementary/const fold in k-ary groups
     GROUP_CSE,          // content-hashed CSE for AND/OR/ITE groups
-    DEMORGAN_FLATTEN,   // flatten k-ary through NOT-wrappers
     ITE_SUB_SELECTOR,   // ITE detection with non-literal sub-AIG selectors
     DETECT_ITE,         // ITE detection entirely
     KARY_FUSION,        // k-ary AND/OR fusion
@@ -307,7 +283,6 @@ static const char* feature_name(Feature f) {
         case Feature::NONE:             return "baseline (all on)";
         case Feature::NORMALIZE_INPUTS: return "normalize_inputs";
         case Feature::GROUP_CSE:        return "group_cse";
-        case Feature::DEMORGAN_FLATTEN: return "demorgan_flatten";
         case Feature::ITE_SUB_SELECTOR: return "ite_sub_selector";
         case Feature::DETECT_ITE:       return "detect_ite";
         case Feature::KARY_FUSION:      return "kary_fusion";
@@ -322,13 +297,13 @@ struct MeasureResult {
 };
 
 // Encode all aigs with a single feature disabled and collect totals.
-static MeasureResult run_measure_pass(const std::vector<aig_ptr>& aigs,
+static MeasureResult run_measure_pass(const std::vector<aig_lit>& aigs,
                                        const std::vector<uint32_t>& nvars,
                                        Feature disabled)
 {
     MeasureResult r;
     for (size_t i = 0; i < aigs.size(); i++) {
-        const aig_ptr& aig = aigs[i];
+        const aig_lit& aig = aigs[i];
         if (!aig) continue;
         SATSolver solver;
         solver.set_verbosity(0);
@@ -338,7 +313,6 @@ static MeasureResult run_measure_pass(const std::vector<aig_ptr>& aigs,
             case Feature::NONE: break;
             case Feature::NORMALIZE_INPUTS: enc.set_normalize_inputs(false); break;
             case Feature::GROUP_CSE:        enc.set_group_cse(false); break;
-            case Feature::DEMORGAN_FLATTEN: enc.set_demorgan_flatten(false); break;
             case Feature::ITE_SUB_SELECTOR: enc.set_ite_sub_selector(false); break;
             case Feature::DETECT_ITE:       enc.set_detect_ite(false); break;
             case Feature::KARY_FUSION:      enc.set_kary_fusion(false); break;
@@ -358,11 +332,10 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
                              uint32_t max_vars, uint32_t max_depth,
                              uint32_t max_nodes_cfg)
 {
-    // Pre-generate a fixed set of AIGs -- the measurement must be on an
-    // identical corpus for every feature toggle, otherwise random variance
-    // dwarfs the effect we're trying to see.
+    // Pre-generate a fixed corpus: every feature toggle must measure the same
+    // AIGs, else random variance dwarfs the effect.
     std::mt19937 rng(seed);
-    std::vector<aig_ptr> aigs;
+    std::vector<aig_lit> aigs;
     std::vector<uint32_t> nvars;
     aigs.reserve(num_iters);
     nvars.reserve(num_iters);
@@ -371,7 +344,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
         uint32_t num_vars = 2 + rng() % (max_vars - 1);
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
-        aig_ptr aig;
+        aig_lit aig;
         uint32_t shape = rng() % 16;
         if (shape < 4) {
             uint32_t d = 50 + rng() % 450;
@@ -383,7 +356,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
             uint32_t bw = 2 + rng() % 6;
             aig = gen_dnf_cover_aig(aig_mng, rng, num_vars, nb, bw);
         } else if (shape < 7) {
-            aig = gen_manthan_aig(aig_mng, rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
+            aig = gen_cegr_aig(aig_mng, rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
         } else if (shape < 8) {
             aig = gen_random_aig(aig_mng, rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {
@@ -399,7 +372,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
         } else {
             uint32_t d = 50 + rng() % 200;
             uint32_t bw = 2 + rng() % 6;
-            aig_ptr raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
+            aig_lit raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
             if (raw) { AIGRewriter rw; aig = rw.rewrite(raw); }
         }
         if (!aig) continue;
@@ -436,7 +409,6 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
     Feature features[] = {
         Feature::NORMALIZE_INPUTS,
         Feature::GROUP_CSE,
-        Feature::DEMORGAN_FLATTEN,
         Feature::ITE_SUB_SELECTOR,
         Feature::DETECT_ITE,
         Feature::KARY_FUSION,
@@ -472,13 +444,13 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
 
 // -----------------------------------------------------------------------------
 // Benchmark AIGRewriter::rewrite_all on a batch of deep-chain AIGs -- the
-// path that was measured at ~15s on the manthan genbuf8b4n rebuild step.
+// path that was measured at ~15s on the cegr genbuf8b4n rebuild step.
 // -----------------------------------------------------------------------------
 static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
                                     uint32_t max_vars, uint32_t chain_depth)
 {
     std::mt19937 rng(seed);
-    std::vector<aig_ptr> aigs;
+    std::vector<aig_lit> aigs;
     aigs.reserve(num_aigs);
     cout << "Generating " << num_aigs << " deep-chain AIGs "
          << "(seed " << seed << ", depth " << chain_depth
@@ -488,7 +460,7 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
     for (uint64_t i = 0; i < num_aigs; i++) {
         uint32_t num_vars = 4 + rng() % max_vars;
         uint32_t bw = 2 + rng() % 6;
-        aig_ptr a = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, chain_depth, bw);
+        aig_lit a = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, chain_depth, bw);
         if (a) {
             aigs.push_back(a);
             total_raw_nodes += ArjunNS::AIG::count_aig_nodes_fast(a);
@@ -503,7 +475,7 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
     cout << "\nRunning AIGRewriter::rewrite_all..." << std::endl;
     auto t_rw = std::chrono::steady_clock::now();
     AIGRewriter rewriter;
-    rewriter.rewrite_all(aigs, 1);
+    rewriter.rewrite_all(aigs, 1, true);
     double rw_s = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t_rw).count();
     cout << "rewrite_all wall-clock: " << std::fixed << std::setprecision(2)
@@ -517,12 +489,9 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
         if (!a) continue;
         CMSat::SATSolver s;
         s.set_verbosity(0);
-        // Pre-allocate enough solver vars for the highest lit var used
-        // by this AIG. AIG::get_dependent_vars does a full DFS collecting
-        // literal vars; it's enough for sizing.
+        // Size solver vars from the highest lit var (full DFS via get_dependent_vars).
         std::set<uint32_t> vars_seen;
-        // Use the sentinel none_var (=UINT32_MAX) as the "self" guard so
-        // the assertion inside get_dependent_vars cannot fire.
+        // Sentinel none_var (UINT32_MAX) as self-guard so the assert can't fire.
         AIG::get_dependent_vars(a, vars_seen,
             std::numeric_limits<uint32_t>::max());
         s.new_vars(vars_seen.empty() ? 1u : *vars_seen.rbegin() + 1);
@@ -606,14 +575,12 @@ int main(int argc, char** argv) {
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
 
-        aig_ptr aig;
-        // Weight the shape distribution so the deep linear ITE chain --
-        // the *actual* manthan Skolem-function shape with aig_depth 200+
-        // -- is the dominant case, but also cover pure k-ary AND/OR chains
-        // (the target for large single-gate fusion).
+        aig_lit aig;
+        // Weight shapes toward the deep linear ITE chain (the real cegr
+        // Skolem shape), while still covering pure k-ary AND/OR chains.
         uint32_t shape = rng() % 16;
         if (shape < 4) {
-            // Deep linear ITE chain (primary manthan workload).
+            // Deep linear ITE chain (primary cegr workload).
             uint32_t d = 50 + rng() % 450;
             if (rng() % 20 == 0) d = 500 + rng() % 500; // very deep
             uint32_t bw = 2 + rng() % 8;
@@ -624,27 +591,25 @@ int main(int argc, char** argv) {
             uint32_t bw = 2 + rng() % 6;
             aig = gen_dnf_cover_aig(aig_mng, rng, num_vars, nb, bw);
         } else if (shape < 7) {
-            // Shallow manthan-style tree (exponential, keep depth tiny).
+            // Shallow cegr-style tree (exponential, keep depth tiny).
             uint32_t d = 2 + rng() % 4;
             uint32_t bw = 2 + rng() % 6;
-            aig = gen_manthan_aig(aig_mng, rng, num_vars, d, bw);
+            aig = gen_cegr_aig(aig_mng, rng, num_vars, d, bw);
         } else if (shape < 8) {
             aig = gen_random_aig(aig_mng, rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {
             aig = gen_chain_aig(aig_mng, rng, num_vars, 5 + rng() % 25);
         } else if (shape < 11) {
-            // Pure big-AND chain of distinct literal inputs: canonical target
-            // for k-ary AND fusion. Length 10..800 to also exercise the width
-            // cap path.
+            // Pure big-AND chain of distinct lits: canonical k-ary AND fusion
+            // target. Length 10..800 also exercises the width cap.
             uint32_t len = 10 + rng() % 790;
             aig = gen_pure_and_chain(aig_mng, rng, num_vars, len);
         } else if (shape < 13) {
             uint32_t len = 10 + rng() % 790;
             aig = gen_pure_or_chain(aig_mng, rng, num_vars, len);
         } else if (shape < 14) {
-            // Balanced AND tree: same semantics as a pure big-AND but
-            // built bottom-up, so the encoder has to flatten through internal
-            // AND nodes.
+            // Balanced AND tree: pure big-AND built bottom-up, forcing the
+            // encoder to flatten through internal AND nodes.
             uint32_t len = 8 + rng() % 500;
             aig = gen_balanced_and_tree(aig_mng, rng, num_vars, len);
         } else if (shape < 15) {
@@ -655,7 +620,7 @@ int main(int argc, char** argv) {
             // rewritten AIGs (closest to the real pipeline).
             uint32_t d = 50 + rng() % 200;
             uint32_t bw = 2 + rng() % 6;
-            aig_ptr raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
+            aig_lit raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
             if (raw) {
                 AIGRewriter rw;
                 aig = rw.rewrite(raw);
@@ -681,7 +646,6 @@ int main(int argc, char** argv) {
                  << "  cls_ratio=" << std::setprecision(2) << ratio_cls
                  << "  hlp_ratio=" << ratio_h
                  << "  kAND=" << fs.opt_kary_and
-                 << " kOR=" << fs.opt_kary_or
                  << " ITE=" << fs.opt_ite
                  << " MUX3=" << fs.opt_mux3
                  << endl;

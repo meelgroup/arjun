@@ -33,7 +33,6 @@
 #include "constants.h"
 #include "metasolver.h"
 #include <cryptominisat5/solvertypesmini.h>
-#include "formula.h"
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -70,9 +69,9 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     verb_print(2, "[synth-extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
 
     // set up interpolant
-    Interpolant interp(conf, cnf.nVars());
+    Interpolant interp(conf, iconf, cnf.nVars());
     interp.fill_from_solver(solver.get(), orig_num_vars, cnf.get_aig_mng(),
-            input_vars);
+            input_vars, var_to_indic);
 
     //Initially, all of non-opt sampling set is unknown
     for(const auto& x: seen) assert(x == 0);
@@ -93,8 +92,9 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     vector<Lit> assumptions;
     uint32_t num_done = 0;
     uint32_t num_unsat = 0;
+    uint32_t num_skipped = 0;
     while(!unknown.empty()) {
-        if (num_done % 100 == 99) {
+        if (num_done % 100 == 99 || conf.verb >= 2) {
             verb_print(1, "[synth-extend] done: " << setw(4) << num_done
                     << " unsat: " << setw(4) << num_unsat
                     << " left: " << setw(4) << unknown.size()
@@ -126,18 +126,21 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
         ret = solver->solve(&assumptions);
         num_done++;
 
-        if (ret == l_False) verb_print(5, "[synth-extend] extend solve(): False");
-        else if (ret == l_True) {verb_print(5, "[synth-extend] extend solve(): True");num_sat++;}
-        else if (ret == l_Undef) {verb_print(5, "[synth-extend] extend solve(): Undef"); num_unknown++;}
+        if (ret == l_False) verb_print(3, "[synth-extend] extend solve(): False");
+        else if (ret == l_True) {verb_print(3, "[synth-extend] extend solve(): True");num_sat++;}
+        else if (ret == l_Undef) {verb_print(3, "[synth-extend] extend solve(): Undef"); num_unknown++;}
 
         if (ret == l_False) {
             num_unsat++;
-            // Dependent fully on `indep`
-            interp.generate_interpolant(assumptions, test_var);
-            solver->add_clause({Lit(indic, false)});
-            interp.add_unit_cl({Lit(indic, false)});
-            cnf.add_opt_sampl_var(test_var);
-            input_vars.insert(test_var);
+            // Dependent fully on `indep`; skip if the interpolant blew budget.
+            if (interp.generate_interpolant(assumptions, test_var)) {
+                solver->add_clause({Lit(indic, false)});
+                interp.add_unit_cl({Lit(indic, false)});
+                cnf.add_opt_sampl_var(test_var);
+                input_vars.insert(test_var);
+            } else {
+                num_skipped++;
+            }
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
             for(uint32_t v = 0; v < orig_num_vars; v++) {
@@ -174,6 +177,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     verb_print(1, COLRED "[synth-extend] Done. "
             << " True: " << num_sat
             << " Unkn: " << num_unknown
+            << " skipped(confl): " << num_skipped
             << " defined: " << to_define.size()-to_define2.size()
             << " still to-define: " << to_define2.size()
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
@@ -343,6 +347,8 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
                 << " erased: " << ccnr_erased << " T: " << (cpuTime() - ccnr_time));
     }
 
+    uint32_t extend_max_confl = conf.extend_max_confl;
+
     while(!unknown.empty()) {
         uint32_t test_var = unknown.back();
         unknown.pop_back();
@@ -364,9 +370,8 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             }
             verb_print(1, "[arjun] extend: after " << done_thr
                 << " still lots left. Lowering conflict limit by /" << divisor);
-            conf.extend_max_confl /= divisor;
+            extend_max_confl = conf.extend_max_confl / divisor;
         }
-        /* cout << "num_done: " << num_done << " unknown_set.size(): " << unknown_set.size() << " confl: " << (double)solver->get_sum_conflicts()/((double)num_done*conf.extend_max_confl) << endl; */
 
         assert(test_var < orig_num_vars);
         verb_print(5, "Testing: " << test_var+1);
@@ -378,7 +383,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
         lbool ret = l_Undef;
-        csolver.set_max_confl(conf.extend_max_confl);
+        csolver.set_max_confl(extend_max_confl);
         ret = csolver.solve(&assumptions);
         if (ret == l_False) {
             verb_print(5, "[arjun] extend solve(): False var: " << test_var+1);
@@ -439,11 +444,9 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     if (conf.verb >= 4) solver->print_stats();
 }
 
-// Checks that every variable in opt_sampl_vars that is NOT in sampl_vars
-// is functionally determined by sampl_vars given the clauses.
-// The construction doubles the formula and shares sampl_vars across both copies;
-// then for each extra opt_sampl var v, asks: can v differ across two satisfying
-// assignments that agree on all sampl_vars? Should be UNSAT if extend was correct.
+// Checks each opt_sampl var not in sampl_vars is determined by sampl_vars:
+// double the formula sharing sampl_vars, then ask if v can differ across two
+// assignments agreeing on sampl_vars. UNSAT iff extend was correct.
 bool Extend::check_extend(const SimplifiedCNF& cnf) {
     const auto& sampl_vars = cnf.get_sampl_vars();
     const auto& opt_sampl_vars  = cnf.get_opt_sampl_vars();

@@ -46,18 +46,16 @@ set(libfiles
     unate_def.cpp
     unate_def_common.cpp
     autarky.cpp
-    ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
-    manthan.cpp
+    cegr.cpp
     brute_force_synth.cpp
     aig_rewrite.cpp
     aig_to_cnf.cpp
     interpolant.cpp
-    interp_repair.cpp
 )
 
 if(EXTRA_SYNTH)
-    list(APPEND libfiles manthan_learn.cpp)
+    list(APPEND libfiles cegr_learn.cpp)
 endif()
 
 add_library(arjun ${libfiles})
@@ -107,6 +105,15 @@ add_executable(arjun-example example.cpp)
 add_executable(fuzz_aig aig_fuzzer.cpp)
 add_executable(fuzz_aig_to_cnf aig_to_cnf_fuzzer.cpp)
 add_executable(fuzz_aig_rewrite aig_rewrite_fuzzer.cpp)
+add_executable(aig_chain_stats aig_chain_stats.cpp)
+target_link_libraries(aig_chain_stats PRIVATE arjun cryptominisat5)
+target_include_directories(aig_chain_stats PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+set_target_properties(aig_chain_stats PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
@@ -184,22 +191,20 @@ set_target_properties(fuzz_aig_rewrite PROPERTIES
 
 # Test executables are built only when ENABLE_TESTING is ON. With
 # ENABLE_TESTING OFF the top-level CMakeLists builds the library with
-# -fvisibility=hidden, which hides the internal ArjunInt symbols (e.g.
-# InterpRepair) that test-interp-repair links against, so these targets
-# cannot link in that configuration.
+# -fvisibility=hidden, which hides the internal ArjunInt symbols that
+# these tests link against, so these targets cannot link in that
+# configuration.
 if(ENABLE_TESTING)
     add_executable(test-synth test-synth.cpp)
     add_executable(test-aig-rewrite test_aig_rewrite.cpp)
     add_executable(test-aig-to-cnf test_aig_to_cnf.cpp)
     add_executable(test-cut-cnf test_cut_cnf.cpp)
-    add_executable(test-interp-repair test_interp_repair.cpp)
 
     target_link_libraries(test-synth PRIVATE arjun cadical cryptominisat5)
     target_link_libraries(test-aig-rewrite PRIVATE arjun)
     target_link_libraries(test-aig-to-cnf PRIVATE arjun cryptominisat5)
-    target_link_libraries(test-interp-repair PRIVATE arjun cadical cryptominisat5)
 
-    foreach(tgt test-synth test-aig-rewrite test-aig-to-cnf test-cut-cnf test-interp-repair)
+    foreach(tgt test-synth test-aig-rewrite test-aig-to-cnf test-cut-cnf)
         target_include_directories(${tgt} PRIVATE
             ${PROJECT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}
@@ -232,12 +237,6 @@ if(ENABLE_TESTING)
         COMMAND test-aig-rewrite
         WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     )
-    add_test(
-        NAME test-interp-repair
-        COMMAND test-interp-repair
-        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-    )
-
     # Verilog emitter must not produce blank lines.
     add_test(
         NAME test-verilog-no-blank-lines

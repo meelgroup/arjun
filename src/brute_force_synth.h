@@ -1,12 +1,8 @@
 /*
  Arjun
 
- brute_force_synth.h — Brute-force synthesis. Enumerate every
- consistent input pattern via a forbid-clause SAT loop, record each
- undet y per model, build per-y decision trees over the orig sampling
- vars. Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold
- (after the optional minim pre-pass); otherwise returns the CNF
- unchanged so the caller falls back to Manthan.
+ brute_force_synth.h — Brute-force synthesis: enumerate every consistent
+ input pattern via a forbid-clause SAT loop and build per-y decision trees.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 
@@ -43,14 +39,16 @@ namespace ArjunInt {
 class BruteForceSynth {
 public:
     BruteForceSynth(const ArjunInt::Config& _conf,
-                 const ArjunNS::Arjun::ManthanConf& _mconf,
+                 const ArjunNS::Arjun::CegrConf& _mconf,
+                 const ArjunNS::Arjun::InterpConf& _iconf,
                  ArjunNS::SimplifiedCNF&& _cnf);
 
     ArjunNS::SimplifiedCNF do_synth();
 
 private:
     const ArjunInt::Config& conf;
-    const ArjunNS::Arjun::ManthanConf& mconf;
+    const ArjunNS::Arjun::CegrConf& mconf;
+    const ArjunNS::Arjun::InterpConf& iconf;
     ArjunNS::SimplifiedCNF cnf;
 
     // `input` includes extend-defined vars; `orig_sampl_cnf` is the
@@ -60,11 +58,11 @@ private:
     std::set<uint32_t> backward_defined;
     std::set<uint32_t> orig_sampl_cnf;
 
-    std::vector<ArjunNS::aig_ptr> skol;
+    std::vector<ArjunNS::aig_lit> skol;
 
     void maybe_minimize_enum_set();
     void synth_complete_with_models();
-    ArjunNS::aig_ptr build_decision_tree(const std::vector<bool>& table,
+    ArjunNS::aig_lit build_decision_tree(const std::vector<bool>& table,
                                         const std::vector<uint32_t>& sorted_inputs);
 
     template<typename S>

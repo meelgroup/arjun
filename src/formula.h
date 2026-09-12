@@ -30,7 +30,7 @@
 #include <iostream>
 #include <iomanip>
 #include "arjun.h"
-#include "metasolver2.h"
+#include "metasolver.h"
 namespace ArjunInt {
 
 struct CL {
@@ -52,16 +52,12 @@ public:
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
         std::vector<CL> clauses;
-        // Index hint: clauses[0..uninserted_start) are guaranteed to have
-        // already been pushed to the cex_solver. inject_formulas walks from
-        // this index forward and sets it to clauses.size() at the end,
-        // turning the per-iteration "skip already-inserted" linear scan
-        // into a tight tail-iteration. Clauses are only ever appended (in
-        // perform_repair / compose_or-move), so the prefix invariant
-        // holds automatically.
+        // clauses[0..uninserted_start) are already pushed to cex_solver;
+        // inject_formulas resumes from here and bumps it to clauses.size().
+        // Valid because clauses are only ever appended.
         uint32_t uninserted_start = 0;
         CMSat::Lit out = CMSat::lit_Error;
-        ArjunNS::aig_ptr aig = nullptr;
+        ArjunNS::aig_lit aig;
     };
 
     std::set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {
@@ -108,10 +104,8 @@ public:
         return ret;
     }
 
-    // Direct AND encoding: out ↔ (left AND right).
-    // Caller passes a `helpers` set so the fresh Tseitin var gets tracked;
-    // Manthan::check_functions_for_y_vars otherwise asserts on the
-    // unregistered literal appearing in a formula clause.
+    // Direct AND encoding: out ↔ (left AND right). `helpers` tracks the fresh
+    // Tseitin var, else check_functions_for_y_vars asserts on it.
     Formula compose_and(const Formula& fleft, const Formula& fright, std::set<uint32_t>& helpers) {
         // AND(FALSE, x) = FALSE, AND(x, FALSE) = FALSE
         if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fleft;
@@ -140,11 +134,9 @@ public:
         return ret;
     }
 
-    // Move-aware overload: takes ownership of fright (typically the
-    // accumulated big formula in perform_repair). Avoids copying
-    // |fright.clauses| every iteration — over a long repair sequence the
-    // const-ref version was O(N²) in clauses copied (each repair copies
-    // every previously-accumulated clause).
+    // Move-aware overload: takes ownership of fright (the accumulated formula
+    // in perform_repair), avoiding the O(N²) clause copying of the const-ref
+    // version.
     Formula compose_and(const Formula& fleft, Formula&& fright, std::set<uint32_t>& helpers) {
         // Constant-fold cases: defer to copy-overload to avoid surprising
         // moved-from semantics on degenerate inputs.
@@ -154,9 +146,8 @@ public:
         if (fright.out == my_true_lit && fright.clauses.empty()) return fleft;
 
         Formula ret;
-        // Move fright's clauses, append fleft's. The OR/AND helper clauses
-        // get appended at the end. This makes the per-call cost O(|fleft|)
-        // instead of O(|fleft| + |fright|).
+        // Move fright's clauses, append fleft's + helpers; per-call cost
+        // O(|fleft|) instead of O(|fleft| + |fright|).
         const uint32_t fright_uninserted = fright.uninserted_start;
         ret.clauses = std::move(fright.clauses);
         ret.clauses.reserve(ret.clauses.size() + fleft.clauses.size() + 3);
@@ -171,9 +162,8 @@ public:
         ret.clauses.push_back(CL({~l, fright.out}));
         ret.clauses.push_back(CL({l, ~fleft.out, ~fright.out}));
         ret.out = l;
-        // Carry over the prefix-inserted invariant from fright. Anything we
-        // appended (fleft's copy + 3 helpers) is freshly emitted and not yet
-        // pushed to cex_solver.
+        // Carry over fright's prefix-inserted invariant; appended clauses
+        // (fleft + 3 helpers) are not yet pushed to cex_solver.
         ret.uninserted_start = fright_uninserted;
 
         assert(fleft.aig != nullptr);
@@ -283,7 +273,7 @@ private:
     CMSat::Lit my_true_lit = CMSat::lit_Error;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const FHolder<ArjunInt::MetaSolver2>::Formula& f) {
+inline std::ostream& operator<<(std::ostream& os, const FHolder<ArjunInt::MetaSolver>::Formula& f) {
     os << " === Formula out: " << f.out << " === " << std::endl;
     for (const auto& cl : f.clauses) {
         for (const auto& l : cl.lits) os << std::setw(6) << l;

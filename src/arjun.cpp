@@ -41,7 +41,7 @@
 #include "constants.h"
 #include "autarky.h"
 #include "unate_def.h"
-#include "manthan.h"
+#include "cegr.h"
 #include "brute_force_synth.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
@@ -93,12 +93,6 @@ using std::ifstream;
 using std::ofstream;
 using std::numeric_limits;
 
-void check_duplicated(bool duplicated) {
-    if (!duplicated) return;
-    cout << "ERROR: manipulating the solver AFTER call to indep support manipulation" << endl;
-    release_assert(false && "solver manipulation after indep support manipulation");
-}
-
 DLL_PUBLIC Arjun::Arjun() { arjdata = new ArjPrivateData; }
 DLL_PUBLIC Arjun::~Arjun() { delete arjdata; }
 DLL_PUBLIC string Arjun::get_sbva_version_sha1() {
@@ -128,13 +122,13 @@ DLL_PUBLIC string Arjun::get_compilation_env() {
     return ArjunIntNS::get_compilation_env();
 }
 
-DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep) {
-    Minimize common(arjdata->conf);
+DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep) {
+    Minimize common(arjdata->conf, iconf);
     common.run_minimize(cnf, all_indep);
 }
 
-DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep) {
-    Minimize common(arjdata->conf);
+DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep) {
+    Minimize common(arjdata->conf, iconf);
     return common.run_minimize_info(cnf, all_indep);
 }
 
@@ -143,25 +137,25 @@ DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
     autarky.find_autarkies(cnf);
 }
 
-DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const ManthanConf& mconf) {
-    Backward common(arjdata->conf);
-    common.backward_round_synth(cnf, mconf);
+DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const InterpConf& iconf) {
+    Backward common(arjdata->conf, iconf);
+    common.backward_round_synth(cnf);
 }
 
-DLL_PUBLIC void Arjun::standalone_unsat_define(SimplifiedCNF& cnf) {
-    Extend extend(arjdata->conf);
+DLL_PUBLIC void Arjun::standalone_extend_synth(SimplifiedCNF& cnf, const InterpConf& iconf) {
+    Extend extend(arjdata->conf, iconf);
     extend.extend_synth(cnf);
 }
 
-DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf)
+DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf, const InterpConf& iconf)
 {
-    Extend extend(arjdata->conf);
+    Extend extend(arjdata->conf, iconf);
     extend.extend_round(cnf);
 }
 
-DLL_PUBLIC bool Arjun::standalone_check_extend(const SimplifiedCNF& cnf)
+DLL_PUBLIC bool Arjun::standalone_check_extend(const SimplifiedCNF& cnf, const InterpConf& iconf)
 {
-    Extend extend(arjdata->conf);
+    Extend extend(arjdata->conf, iconf);
     return extend.check_extend(cnf);
 }
 
@@ -172,15 +166,62 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
     return puura.get_fully_simplified_renumbered_cnf(cnf, simp_conf);
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& mconf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& mconf)
 {
-    Manthan manthan(arjdata->conf, mconf, std::move(cnf));
-    return manthan.do_manthan();
+    // Restart loop: each round exits after "restart" repairs; its AIGs
+    // seeds the next round (compacted, re-encoded). max_repairs is cumulative.
+    std::map<uint32_t, aig_lit> guess;
+    uint32_t round = 0;
+    CegrStats cumul_stats;
+    while (true) {
+        CegrConf round_mconf = mconf;
+        if (mconf.max_repairs != std::numeric_limits<int32_t>::max()) {
+            assert(mconf.max_repairs > cumul_stats.tot_repaired);
+            round_mconf.max_repairs = mconf.max_repairs - cumul_stats.tot_repaired;
+        }
+
+        // Run
+        Cegr cegr(arjdata->conf, round_mconf, std::move(cnf));
+        if (!guess.empty()) cegr.set_guess(std::move(guess));
+        cnf = cegr.do_cegr();
+
+        // Stats
+        CegrStats stats = cegr.get_stats();
+        if (round == 0) cumul_stats = stats;
+        else cumul_stats += stats;
+
+        // Check if done
+        if (!cegr.restart_requested()) break;
+        guess = cegr.export_formula_aigs();
+        round++;
+        verb_print2(1, COLYEL "[cegr-restart] round " << round
+            << " done, tot repairs so far: " << cumul_stats.tot_repaired
+            << "; compacting " << guess.size() << " AIGs and re-entering");
+
+        // Debug dump AIGs
+        if (!arjdata->conf.dump_restart_aig.empty()) {
+            // deep_clone so map_aigs_to_orig does not disturb the live guess.
+            SimplifiedCNF dcnf = cnf;
+            std::vector<aig_lit> aigs(cnf.nVars(), aig_lit());
+            for (const auto& [y, a] : guess) aigs[y] = a;
+            auto aigs_copy = AIG::deep_clone_vec(aigs);
+            dcnf.map_aigs_to_orig(aigs_copy, cnf.nVars());
+            const std::string base = arjdata->conf.dump_restart_aig
+                + "-restart" + std::to_string(round);
+            dcnf.write_aig_defs_to_file(base + ".aig");
+            dcnf.write_aig_def_to_verilog(base + ".v");
+        }
+    }
+
+    if (arjdata->conf.verb >= 1 && cnf.synth_done()) {
+        cumul_stats.print_stats(COLRED " Done. ");
+    }
+    return cnf;
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& mconf, const InterpConf& iconf)
 {
-    BruteForceSynth ss(arjdata->conf, mconf, std::move(cnf));
+    BruteForceSynth ss(arjdata->conf, mconf, iconf, std::move(cnf));
     return ss.do_synth();
 }
 
@@ -205,7 +246,7 @@ DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
 }
 
 DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
-        const ElimToFileConf& etof_conf, const SimpConf& simp_conf) {
+        const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf) {
     SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     cnf.remove_equiv_weights();
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
@@ -216,7 +257,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     simp_conf2.bve_grow_iter2 = 0;
     simp_conf2.iter1 = 1;
     simp_conf2.iter2 = 1;
-    simp_conf2.bve_too_large_resolvent = 4;
+    simp_conf2.bve_too_large_resolvent = simp_conf.bve_too_large_resolvent2;
     cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
     if (etof_conf.num_sbva_steps > 0)
         standalone_sbva(cnf, etof_conf.num_sbva_steps,
@@ -229,7 +270,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         cnf.set_opt_sampl_vars(all_vars);
     } else {
         if (etof_conf.do_extend_indep && cnf.get_opt_sampl_vars().size() != cnf.nVars())
-            standalone_extend_sampl_set(cnf);
+            standalone_extend_sampl_set(cnf, iconf);
     }
     cnf.remove_equiv_weights();
     if (etof_conf.do_renumber) cnf.renumber_sampling_vars_for_ganak();
@@ -284,7 +325,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         bool sign = neg > pos;
 
-        aig_ptr overall = nullptr;
+        aig_lit overall;
         for(const auto& cl: orig_def) {
             auto current = scnf.aig_mng.new_const(true);
 
@@ -321,11 +362,8 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
     }
 
-    // Check if any are like [... orig sampl var...] -> replaced by some non-orig sampl var
-    // In these cases, we make SURE the orig sampl var is the one defining the others.
-    // ->> Once we flipped it around, we need to add this new replacing var as if it was "elimed"
-    //     since it's an orig var, that's fine, it can always define other vars.
-    // Annoying as hell.
+    // If an orig sampl var got replaced by a non-orig sampl var, flip it around so
+    // the orig var defines the others, then add the new replacing var as "elimed".
     vector<uint32_t> add_elimed;
     for(const auto& elimed: elimed_vars) {
         const auto orig_replacing = new_to_orig_var.at(elimed);
@@ -350,7 +388,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         new_replaced.emplace_back(elimed, bad_lit.sign());
         var_to_lits_it_replaced[bad_lit.var()] = new_replaced;
-        scnf.defs[elimed] = nullptr;
+        scnf.defs[elimed] = aig_lit();
         add_elimed.push_back(bad_lit.var());
     }
     for(const auto& v: add_elimed) elimed_vars.push_back(v);
@@ -394,7 +432,14 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
         if (l.var() >= nVars()) continue;
         Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
-        assert(scnf.defs[orig_lit.var()] == nullptr && "Variable must not already have a definition");
+        // scnf inherits defs, so a repeated round can revisit an already-fixed
+        // var. It must carry exactly the constant we are about to set.
+        const auto& cur = scnf.defs[orig_lit.var()];
+        if (cur != nullptr) {
+            assert(cur->type == AIGT::t_const && "Already-defined fixed var must be a constant");
+            assert(cur.neg == orig_lit.sign() && "Already-defined fixed var has the wrong value");
+            continue;
+        }
         scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
     }
 }
@@ -410,20 +455,15 @@ DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
     }
 }
 
-DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig, const uint32_t max_num_vars,
+DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_lit>& aigs_orig, const uint32_t max_num_vars,
             std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();
-    // Rebuild each AIG: t_lit nodes are replaced with remapped variables, and
-    // any sign flip introduced by the remapping is propagated onto the edges
-    // that reach those t_lits. Because signs live on edges (aig_lit.neg) and
-    // not on nodes, remapping a variable with a sign flip means producing
-    // fresh aig_lits with XOR'd edge signs — so a full rebuild.
+    // Full rebuild: remap t_lit vars, propagating any sign flip onto edges
+    // (signs live on edges, not nodes).
     std::unordered_map<const AIG*, aig_lit> cache;
 
-    // Iterative post-order rebuild. The cache stores the rebuilt
-    // positive-edge form per source node; outer edge sign is applied
-    // on the way out. Iterative because proof-driven interpolant AIGs
-    // can be deep enough that the recursive form overflows the stack.
+    // Iterative post-order rebuild (recursion can overflow on deep interpolant
+    // AIGs). Cache holds the rebuilt positive-edge form; outer sign applied on exit.
     auto build_node = [&](const AIG* src) {
         aig_lit pos_result;
         if (src->type == AIGT::t_lit) {
@@ -452,7 +492,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
         cache[src] = pos_result;
     };
 
-    auto rebuild_iter = [&](const aig_ptr& aig) -> aig_lit {
+    auto rebuild_iter = [&](const aig_lit& aig) -> aig_lit {
         if (aig == nullptr) return aig_lit();
         if (!cache.count(aig.get())) {
             struct Frame { const AIG* src; bool children_done; };
@@ -480,7 +520,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
         return aig_lit(pos_result.node, pos_result.neg ^ aig.neg);
     };
 
-    vector<aig_ptr> aigs;
+    vector<aig_lit> aigs;
     aigs.reserve(aigs_orig.size());
     for (const auto& a : aigs_orig) aigs.push_back(rebuild_iter(a));
 
@@ -536,7 +576,7 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         for(const auto& l: orig_sampl_vars) orig_vals[l] = model[l];
         auto vals = orig_vals;
 
-        map<aig_ptr, CMSat::lbool> cache;
+        map<aig_lit, CMSat::lbool> cache;
         for(uint32_t v = 0; v < defs.size(); ++v) {
             if (orig_sampl_vars.count(v)) continue;
             if (defs[v] == nullptr) continue;
@@ -563,14 +603,9 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
 }
 
 DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
-    // Full semantic correctness check matching test-synth's UNSAT-verify:
-    // build a solver with orig_clauses, then Tseitin-encode each def[v] into
-    // a fresh "y_hat_v" var (distinct from v) with def leaves substituted via
-    // y_hat_w when w is also defined (chain through the def graph). Require
-    // that every defined var's y_hat equals the orig var, under a per-miter
-    // activation lit that we flip on one at a time. If *all* y_hat=v miters
-    // are forced on simultaneously the solver should become UNSAT; if any
-    // single miter flip reveals SAT, that def is semantically wrong.
+    // Full semantic check (test-synth UNSAT-verify style): Tseitin-encode each
+    // def[v] into a fresh y_hat_v (leaves substituted by y_hat_w for defined w),
+    // then check F(x) ∧ ¬F(x, y_hat) is UNSAT. SAT means some def is wrong.
     SATSolver s;
     s.new_vars(defs.size());
     for (const auto& cl : orig_clauses) s.add_clause(cl);
@@ -579,9 +614,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
         return -1;
     }
 
-    // Build one solver that has: orig clauses + y_hat_v for every defined v,
-    // with y_hat_v = def[v] where leaves are y_hat_w for defined w and raw
-    // sampl vars otherwise. Record y_hat_v for each defined v.
+    // Solver with orig clauses + a y_hat_v per defined v (= def[v], leaves mapped
+    // to y_hat_w for defined w, raw sampl vars otherwise).
     SATSolver check;
     check.new_vars(defs.size());
     for (const auto& cl : orig_clauses) check.add_clause(cl);
@@ -591,12 +625,9 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     Lit true_lit;
     bool true_lit_set = false;
 
-    // Topological encode: for each defined v, encode def[v] with leaves
-    // mapped via y_hat[leaf_var] when that var is also defined. This
-    // requires DAG traversal not just per-def trees, to reuse shared
-    // sub-AIGs. Simpler: one Tseitin per def, with a recursive encode.
-    std::function<Lit(const aig_ptr&, std::map<aig_ptr, Lit>&)> enc =
-      [&](const aig_ptr& a, std::map<aig_ptr, Lit>& cache) -> Lit {
+    // Recursive Tseitin encode of a def, mapping leaves to y_hat[leaf] when defined.
+    std::function<Lit(const aig_lit&, std::map<aig_lit, Lit>&)> enc =
+      [&](const aig_lit& a, std::map<aig_lit, Lit>& cache) -> Lit {
         assert(a != nullptr);
         auto it = cache.find(a);
         if (it != cache.end()) return it->second;
@@ -647,8 +678,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
             // Check deps: walk def[v] collecting lit-vars, skip if any
             // dep is also defined but not yet encoded.
             std::set<uint32_t> deps;
-            std::function<void(const aig_ptr&, std::set<const AIG*>&)> collect =
-              [&](const aig_ptr& a, std::set<const AIG*>& seen) {
+            std::function<void(const aig_lit&, std::set<const AIG*>&)> collect =
+              [&](const aig_lit& a, std::set<const AIG*>& seen) {
                 if (!a || !seen.insert(a.get()).second) return;
                 if (a->type == AIGT::t_lit) {
                     deps.insert(a->var);
@@ -667,7 +698,7 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
             if (!ready) continue;
             check.new_var();
             y_hat[v] = Lit(check.nVars() - 1, false);
-            std::map<aig_ptr, Lit> cache;
+            std::map<aig_lit, Lit> cache;
             Lit out = enc(defs[v], cache);
             // y_hat_v <-> out
             check.add_clause({~y_hat[v], out});
@@ -684,10 +715,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
         }
     }
 
-    // test-synth-style check: build ¬F(x, y_hat) via a cls-indic trick on a
-    // SEPARATE copy of orig_clauses where every defined orig var is
-    // substituted by its y_hat. Then assert "at least one substituted clause
-    // is unsatisfied". F(x) ∧ ¬F(x, y_hat) UNSAT ⇔ defs correct.
+    // Build ¬F(x, y_hat): substitute defined orig vars by y_hat in each clause,
+    // add a per-clause indicator, and assert at least one substituted clause is unsat.
     vector<Lit> cl_indics;
     for (const auto& cl_orig : orig_clauses) {
         // Substitute defined orig vars with their y_hat.
@@ -760,46 +789,6 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
         return 0; // signal failure (don't know exact var)
     }
     return -1;
-}
-
-DLL_PUBLIC void SimplifiedCNF::import_candidate_functions(const string& fname, int verb) {
-    ArjunNS::SimplifiedCNF cand(fg);
-    cand.read_aig_defs_from_file(fname);
-    if (!cand.get_need_aig()) {
-        cout << "ERROR: candidate file does not contain AIG data: " << fname << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    vector<ArjunNS::aig_ptr> aigs(nVars(), nullptr);
-    uint32_t imported = 0;
-    uint32_t skipped_already_defined = 0;
-    uint32_t skipped_missing = 0;
-    const auto& orig_inputs = get_orig_sampl_vars();
-    for (const auto& [orig_v, new_lit] : get_orig_to_new_var()) {
-        if (orig_inputs.count(orig_v)) continue;
-        if (defined(orig_v)) {
-            skipped_already_defined++;
-            continue;
-        }
-        if (orig_v >= cand.num_defs()) {
-            skipped_missing++;
-            continue;
-        }
-        const auto& cand_aig = cand.get_def(orig_v);
-        if (cand_aig == nullptr) {
-            skipped_missing++;
-            continue;
-        }
-        aigs[new_lit.var()] = cand_aig;
-        imported++;
-    }
-
-    map_aigs_to_orig(aigs, nVars(), get_orig_to_new_var());
-    if (verb)
-        cout << "c o [synth] imported candidate defs from '" << fname << "'"
-             << " imported: " << imported
-             << " skipped-already-defined: " << skipped_already_defined
-             << " skipped-missing: " << skipped_missing << endl;
 }
 
 DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
@@ -1049,9 +1038,8 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
     in.read((char*)&num_nodes, sizeof(num_nodes));
     cout << "c o [aig-io] Reading " << num_nodes << " AIG nodes from file." << endl;
 
-    // Read all nodes. Format stores each AND node as (type, var, l_id, l_neg,
-    // r_id, r_neg). For leaves only (type, var) is stored; sign lives on the
-    // referring edge and so is written as part of the def block below.
+    // AND nodes stored as (type, var, l_id, l_neg, r_id, r_neg); leaves as
+    // (type, var) only, their sign living on the referring edge (def block below).
     vector<aig_node_ptr> id_to_node(num_nodes, nullptr);
     for (uint32_t i = 0; i < num_nodes; i++) {
         auto node = make_shared<AIG>();
@@ -1085,7 +1073,7 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
         uint32_t id;
         in.read((char*)&id, sizeof(id));
         if (id == UINT32_MAX) {
-            defs[i] = nullptr;
+            defs[i] = aig_lit();
             continue;
         }
         bool edge_neg;
@@ -1093,16 +1081,6 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
         assert(id < num_nodes);
         assert(id_to_node[id] != nullptr);
         defs[i] = aig_lit(id_to_node[id], edge_neg);
-    }
-
-    // Read skolem_defined_vars set (vars committed via set_def_skolem).
-    uint32_t num_skolem;
-    in.read((char*)&num_skolem, sizeof(num_skolem));
-    skolem_defined_vars.clear();
-    for (uint32_t i = 0; i < num_skolem; i++) {
-        uint32_t v;
-        in.read((char*)&v, sizeof(v));
-        skolem_defined_vars.insert(v);
     }
 }
 
@@ -1179,7 +1157,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
     uint32_t next_id = 0;
     vector<uint32_t> order;
 
-    function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
+    function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
         if (!aig || node_to_id.count(aig.get())) return;
         uint32_t id = next_id++;
         node_to_id[aig.get()] = id;
@@ -1199,9 +1177,8 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
     cout << "c o [aig-io] Writing " << num_nodes << " AIG nodes to file." << endl;
     out.write((char*)&num_nodes, sizeof(num_nodes));
 
-    // 3. Write each node (postorder: children before parents). AND nodes
-    //    carry their two signed child edges; leaves carry no sign (it moves
-    //    to the referring edge in the defs block below).
+    // 3. Write each node postorder (children first). AND nodes carry their two
+    //    signed child edges; leaf sign moves to the referring edge (defs block below).
     for (auto id : order) {
         AIG* node = id_to_node[id];
         out.write((char*)&id, sizeof(id));
@@ -1233,16 +1210,6 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
         bool edge_neg = aig.neg;
         out.write((char*)&id, sizeof(id));
         out.write((char*)&edge_neg, sizeof(edge_neg));
-    }
-
-    // 5. Write skolem_defined_vars (vars committed as Skolem replacements,
-    //    not unique-defining functions). Read by check_pre_post_backward
-    //    _round_synth (test-synth verification entry point) to skip the
-    //    only-orig-sampl invariant for them.
-    uint32_t num_skolem = skolem_defined_vars.size();
-    out.write((char*)&num_skolem, sizeof(num_skolem));
-    for (const auto& v : skolem_defined_vars) {
-        out.write((char*)&v, sizeof(v));
     }
 }
 
@@ -1291,7 +1258,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     vector<AIG*> topo_order;
     uint32_t next_id = 0;
 
-    function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
+    function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
         if (!aig || node_to_id.count(aig.get())) return;
         if (aig->type == AIGT::t_and) {
             collect(aig->l);
@@ -1310,9 +1277,8 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         outputs.push_back(v);
     }
 
-    // Fanout count: children from other AND nodes + uses as an output root.
-    // AND nodes with fanout 1 are inlined into their sole user instead of
-    // being emitted as a named wire.
+    // Fanout = uses by other AND nodes + output roots. Fanout-1 AND nodes are
+    // inlined into their sole user rather than emitted as a named wire.
     map<const AIG*, uint32_t> fanout;
     for (const auto* node : topo_order) {
         if (node->type != AIGT::t_and) continue;
@@ -1327,10 +1293,8 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     // compound and need parenthesizing when further composed.
     map<const AIG*, string> inline_expr;
     set<const AIG*> inline_compound;
-    // Render a signed edge (aig_lit). The node gives the base expression; the
-    // edge sign prepends '~' or flips the const's polarity. Leaf nodes are
-    // unsigned in the new representation, so their sign lives entirely on the
-    // referring edge.
+    // Render a signed edge (aig_lit): node gives the base expr, edge sign prepends
+    // '~' or flips the const. Leaves are unsigned, so their sign lives on the edge.
     auto edge_expr_raw = [&](const aig_lit& e) -> string {
         if (e->type == AIGT::t_const) return e.neg ? "1'b0" : "1'b1";
         if (e->type == AIGT::t_lit)
@@ -1413,9 +1377,8 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const string& fname) {
     in.close();
 }
 
-// In this case, *this is the CNF that has been processed. "s" is the original CNF
-// Notice that *this can have a "defs" that is LARGER than the original CNF
-// Since we can add vars via BVA
+// *this is the processed CNF, "s" the original. *this may have more defs than
+// the original CNF, since BVA can add vars.
 DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat::lbool>& s, const bool relaxed) const {
     SLOW_DEBUG_DO(assert(get_need_aig() && defs_invariant()));
     assert(s.size() <= defs.size() && "Sample size must be at least the number of variables. BVA could add vars");
@@ -1433,7 +1396,7 @@ DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat:
     vector<lbool> vals(defs.size(), l_Undef);
     for(const auto& v: orig_sampl_vars) vals[v] = s[v];
 
-    map<aig_ptr, CMSat::lbool> cache;
+    map<aig_lit, CMSat::lbool> cache;
     for(uint32_t v = 0; v < defs.size(); v++) {
         if (defs[v] == nullptr) continue;
         auto val = AIG::evaluate(s, defs[v], defs, cache);
@@ -1469,11 +1432,11 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(vector<int>& ret, uint32_t n
 // input variables are NOT included in the dependencies
 DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_dependencies(const set<uint32_t>& vars) const {
     auto new_to_orig_var = get_new_to_orig_var();
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     map<uint32_t, set<uint32_t>> ret;
     for(const auto& n: vars) {
         const auto orig_v = new_to_orig_var.at(n).var();
-        const auto ret_orig = get_dependent_vars_recursive(orig_v, cache);
+        const auto& ret_orig = get_dependent_vars_recursive(orig_v, cache);
         set<uint32_t> ret_new;
         for(const auto& ov: ret_orig) {
             if(!orig_to_new_var.count(ov)) continue;
@@ -1718,24 +1681,19 @@ DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) cons
     outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << endl;
 }
 
-void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_ptr& def) {
+void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_lit& def) {
     assert(need_aig);
     assert(v_orig < defs.size());
     assert(defs[v_orig] == nullptr);
     defs[v_orig] = def;
 #ifdef VERBOSE_DEBUG
     std::cout << "setting def for orig var " << v_orig << endl;
-    map<uint32_t, vector<uint32_t>> cache;
-    auto s = get_dependent_vars_recursive(v_orig, cache);
+    DepCache cache;
+    const auto& s = get_dependent_vars_recursive(v_orig, cache);
     cout << "Dependent vars: ";
     for(const auto& d: s) cout << d+1 << " ";
     cout << endl;
 #endif
-}
-
-DLL_PUBLIC void SimplifiedCNF::set_def_skolem(const uint32_t v_orig, const aig_ptr& def) {
-    set_def(v_orig, def);
-    skolem_defined_vars.insert(v_orig);
 }
 
 // Returns NEW vars, i.e. < nVars()
@@ -1784,13 +1742,13 @@ DLL_PUBLIC VarTypes
     set<uint32_t> bve_defined_vars_orig;
     set<uint32_t> forced_vars_orig;
     set<uint32_t> scc_vars_orig;
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     for (uint32_t orig = 0; orig < num_defs(); orig++) {
         if (get_orig_sampl_vars().count(orig)) continue;
         if (!orig_to_new_var.count(orig)) {
             // Eliminated already from the CNF: either BVE, SCC, or forced
             assert(defs[orig] != nullptr && "if it is not in the CNF, it must be defined");
-            const auto s = get_dependent_vars_recursive(orig, cache);
+            const auto& s = get_dependent_vars_recursive(orig, cache);
             if (s.empty()) forced_vars_orig.insert(orig);
             else if (s.size() == 1) scc_vars_orig.insert(orig);
             else bve_defined_vars_orig.insert(orig);
@@ -1799,7 +1757,7 @@ DLL_PUBLIC VarTypes
 
         // This var is NOT input and IS in the CNF
         if (!defined(orig)) continue;
-        auto s = get_dependent_vars_recursive(orig, cache);
+        const auto& s = get_dependent_vars_recursive(orig, cache);
         bool only_input_deps = true;
         for(const auto& d: s) {
             if (!get_orig_sampl_vars().count(d)) {
@@ -1810,13 +1768,7 @@ DLL_PUBLIC VarTypes
 
         const uint32_t new_var = orig_to_new_var.at(orig).var();
         assert(new_var < nVars());
-        // Skolem-committed vars are never
-        // extend-defined: their AIG is just one valid Skolem choice, not
-        // the unique value F forces, so Manthan must build a formula
-        // for them and run the y_hat propagation. Categorizing them as
-        // extend-defined would let Manthan treat them as inputs, silently
-        // dropping the constraint a later commit's miter relied on.
-        if (only_input_deps && !skolem_defined_vars.count(orig)) {
+        if (only_input_deps) {
             extend_defined_vars.insert({orig,new_var});
         } else {
             backw_synth_defined_vars.insert({orig,new_var});
@@ -1911,22 +1863,6 @@ DLL_PUBLIC VarTypes
     }
     assert(input.size() + to_define.size() + extend_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
 
-    // SLOW_DEBUG: a Skolem-committed var (see set_def_skolem) must never be
-    // categorized as extend-defined. The whole point of the Skolem flag is
-    // to keep such vars in backward_synth_defined_vars even when their AIG
-    // happens to be input-only or a constant: extend-defined gets treated
-    // as an input by Manthan, dropping the y_test = H_test commit
-    // constraint that downstream code (later commits, find_better_ctx) may
-    // rely on. If this assert ever fires, the categorization branch above
-    // (`only_input_deps && !skolem_defined_vars.count(orig)`) has been
-    // changed and the bug is back.
-    SLOW_DEBUG_DO({
-        for (const auto& v : extend_defined_vars) {
-            assert(!skolem_defined_vars.count(v.o)
-                && "Skolem-committed var landed in extend_defined_vars");
-        }
-    });
-
     // extend-defined vars can be treateed as input vars
     for(const auto& v: extend_defined_vars) input.insert(v.n);
 
@@ -1939,7 +1875,7 @@ DLL_PUBLIC VarTypes
     return VarTypes{input, to_define_new, backw_synth_defined_new};
 }
 
-DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const vector<CMSat::lbool>& vals, uint32_t var, map<aig_ptr, CMSat::lbool>& cache) const {
+DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const vector<CMSat::lbool>& vals, uint32_t var, map<aig_lit, CMSat::lbool>& cache) const {
     assert(var < defs.size());
     assert(vals.size() == defs.size());
     for(uint32_t i = 0; i < vals.size(); i++) {
@@ -1992,52 +1928,41 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     release_assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via extend_synth in extend.cpp");
     release_assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
     assert(check_orig_sampl_vars_undefined());
-    // Cycle check must run BEFORE check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars
-    // and check_self_dependency, since those use get_dependent_vars_recursive
+    // Cycle check must run first: the checks below use get_dependent_vars_recursive,
     // which infinite-loops on cycles rather than detecting them.
     assert(check_aig_cycles());
     assert(check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars());
     check_pre_post_backward_round_synth();
     check_all_vars_accounted_for();
     check_self_dependency();
-    // skolem_defined_vars set well-formedness: every entry must point at a
-    // valid, currently-defined, non-orig-sampl var. A violation usually
-    // means set_def_skolem was called with the wrong arg or
-    // clear_orig_sampl_defs / a copy/move forgot to keep the set in sync
-    // with `defs`.
-    for (uint32_t v : skolem_defined_vars) {
-        release_assert(v < defs.size()
-            && "skolem_defined_vars entry past defs.size()");
-        release_assert(defs[v] != nullptr
-            && "skolem_defined_vars entry has no def");
-        release_assert(!orig_sampl_vars.count(v)
-            && "orig sampling var must never be Skolem-committed");
-    }
     [[maybe_unused]] auto ret = get_var_types(0, "defs_invariant");
     SLOW_DEBUG_DO(check_synth_funs_randomly());
     return true;
 }
 
-// Get the orig vars this AIG depends on, recursively expanding defined vars.
-// Iterative (variable-level) DFS that reuses scratch buffers across calls.
-// Dedup uses a per-frame epoch stamp in a shared vector, so merging a child's
-// cached result into the parent is O(size) with no set/RB-tree overhead.
-// Result vectors are unique but NOT sorted; callers only iterate them.
-DLL_PUBLIC vector<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v, map<uint32_t, vector<uint32_t>>& cache) const {
+// Orig vars this AIG depends on, recursively expanding defined vars. Iterative
+// variable-level DFS with reused scratch buffers; dedup via per-frame epoch
+// stamps. Results are unique but NOT sorted (callers only iterate).
+DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v, DepCache& dc) const {
     assert(need_aig);
     assert(defined(orig_v));
 
-    // Scratch buffers reused across all nested visits.
-    vector<char> is_dep;               // indexed by orig var id; cleared after each AIG query
-    vector<uint32_t> aig_dep_list;
-    vector<const AIG*> ag_stack;
+    auto& cache = dc.cache;
+    {
+        const auto top_it = cache.find(orig_v);
+        if (top_it != cache.end()) return top_it->second;
+    }
 
-    // Per-frame epoch stamp: merge_stamp[u] == frame.epoch means u is already
-    // present in that frame's `merged`. Each new frame gets a fresh epoch, so
-    // an ancestor frame's marks never collide with the current frame's — which
-    // is what the earlier boolean-bitmap implementation got wrong.
-    vector<uint64_t> merge_stamp;
-    uint64_t epoch_counter = 0;
+    // Scratch buffers, reused across calls via dc: sized to num orig vars, so
+    // re-allocating them per call is the dominant cost on large CNFs.
+    auto& is_dep = dc.is_dep;               // indexed by orig var id; cleared after each AIG query
+    auto& aig_dep_list = dc.aig_dep_list;
+    auto& ag_stack = dc.ag_stack;
+
+    // Per-frame epoch stamp: merge_stamp[u] == frame.epoch means u is already in
+    // that frame's `merged`. Fresh epoch per frame avoids ancestor-frame collisions.
+    auto& merge_stamp = dc.merge_stamp;
+    auto& epoch_counter = dc.epoch_counter;
 
     struct Frame {
         uint32_t v;
@@ -2099,7 +2024,8 @@ DLL_PUBLIC vector<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const ui
     }
     // Unreachable: orig_v is defined, so the loop always returns via the
     // stack.empty() branch above.
-    return {};
+    static const vector<uint32_t> empty;
+    return empty;
 }
 
 DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
@@ -2169,7 +2095,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
 
 DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
     if (!need_aig) return;
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
         if (orig_sampl_vars.count(orig_v)) {
             if (!defined(orig_v)) continue;
@@ -2253,7 +2179,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
     const auto new_to_orig_vars = get_new_to_orig_var_list();
 
     // Check each sampling variable
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     for(const auto& new_v : opt_sampl_vars) {
         release_assert(new_v < nvars);
 
@@ -2278,7 +2204,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
             // If it's defined, it must only depend on orig_sampl_vars
             release_assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
             /* if (defined(orig_v)) { */
-            const auto deps = get_dependent_vars_recursive(orig_v, cache);
+            const auto& deps = get_dependent_vars_recursive(orig_v, cache);
             bool only_orig_sampl = true;
             for(const auto& dep_v : deps) {
                 if (!orig_sampl_vars.count(dep_v)) {
@@ -2304,14 +2230,14 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
 // this checks that NO unsat-define has been made yet
 DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
     if (!need_aig) return;
-    map<uint32_t, vector<uint32_t>> cache;
+    DepCache cache;
     map<uint32_t, set<uint32_t>> dependencies;
     for(const auto& [o, n] : orig_to_new_var) {
         release_assert(o < defs.size());
         release_assert(n != CMSat::lit_Undef && n.var() < nvars);
         if (orig_sampl_vars.count(o)) continue; // don't care about orig sampling vars
         if (defined(o)) {
-            auto s = get_dependent_vars_recursive(o, cache);
+            const auto& s = get_dependent_vars_recursive(o, cache);
             dependencies[o].insert(s.begin(), s.end());
             bool only_orig_sampl = true;
             for(const auto& v: s) {
@@ -2320,13 +2246,7 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
                     break;
                 }
             }
-            // Skolem-committed vars (set_def_skolem) are allowed to reach non-orig-sampl
-            // leaves: their AIG is just one valid winning Skolem, not a
-            // unique-defining function over inputs. The "pre-backward-
-            // round-synth" invariant only applies to unique-defining defs
-            // produced by extend_synth.
-            if (!after_backward_round_synth && !only_orig_sampl
-                    && !skolem_defined_vars.count(o)) {
+            if (!after_backward_round_synth && !only_orig_sampl) {
                 cout << "ERROR: Found a variable in CNF, orig: " << o+1 << " new: " << n.var()+1
                     << " that is defined in terms of non-orig-sampl-vars before backward round synth.";
                 cout << endl << " in old: ";
@@ -2459,7 +2379,7 @@ DLL_PUBLIC uint32_t SimplifiedCNF::new_vars(uint32_t vars) {
     for(uint32_t i = 0; i < vars; i++) {
         const uint32_t v = nvars-vars+i;
         orig_to_new_var[defs.size()] = CMSat::Lit(v, false);
-        defs.push_back(nullptr);
+        defs.push_back(aig_lit());
     }
     return nvars;
 }
@@ -2467,7 +2387,7 @@ DLL_PUBLIC uint32_t SimplifiedCNF::new_var() {
     const uint32_t v = nvars;
     nvars++;
     orig_to_new_var[defs.size()] = CMSat::Lit(v, false);
-    defs.push_back(nullptr);
+    defs.push_back(aig_lit());
     return nvars;
 }
 
@@ -2493,7 +2413,7 @@ DLL_PUBLIC void SimplifiedCNF::check_clause(const vector<CMSat::Lit>& cl) const 
 }
 
 DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
-    for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
+    for(const auto& v: orig_sampl_vars) defs[v] = aig_lit();
 }
 
 DLL_PUBLIC void SimplifiedCNF::check_red_cls_deriveable() const {
@@ -2533,7 +2453,7 @@ DLL_PUBLIC void AIG::count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_
     }
 }
 
-DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const std::vector<aig_ptr>& roots) {
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const std::vector<aig_lit>& roots) {
     const uint64_t epoch = next_visit_epoch();
     size_t count = 0;
     for (const auto& r : roots) {
@@ -2542,7 +2462,7 @@ DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const std::vector<aig_ptr>& roots) {
     return count;
 }
 
-DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_ptr const& root) {
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_lit const& root) {
     if (!root) return 0;
     const uint64_t epoch = next_visit_epoch();
     size_t count = 0;
@@ -2550,15 +2470,9 @@ DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_ptr const& root) {
     return count;
 }
 
-DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
+DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig) {
     const size_t original_nodes = count_aig_nodes_fast(aig);
-    aig_ptr result = aig;
-
-    // Simplify AIG
-    {
-        unordered_map<const AIG*, aig_lit> cache;
-        result = simplify(result, cache);
-    }
+    aig_lit result = aig;
 
     // Perform CSE
     {
@@ -2572,19 +2486,19 @@ DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
     return result;
 }
 
-DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
+DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool balance) {
     assert(need_aig);
     AIGRewriter rw;
-    rw.rewrite_all(defs, verb);
+    rw.rewrite_all(defs, verb, balance);
 }
 
-DLL_PUBLIC aig_ptr AIG::rewrite_aig(const aig_ptr& aig) {
-    if (!aig) return nullptr;
+DLL_PUBLIC aig_lit AIG::rewrite_aig(const aig_lit& aig) {
+    if (!aig) return aig_lit();
     AIGRewriter rw;
     return rw.rewrite(aig);
 }
 
-DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
+DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs) {
     const double my_time = cpuTime();
     size_t before;
     size_t after;
@@ -2597,23 +2511,25 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     }
 
     // Save originals and per-AIG node counts for revert
-    vector<aig_ptr> originals = defs;
+    vector<aig_lit> originals = defs;
     vector<size_t> original_node_counts(defs.size());
     for (size_t i = 0; i < defs.size(); i++) {
         original_node_counts[i] = count_aig_nodes_fast(defs[i]);
     }
 
-    // simplify the AIGs
-    {
-        unordered_map<const AIG*, aig_lit> cache;
-        for(auto& aig: defs) aig = simplify(aig, cache);
-    }
+    auto phase = [&](const char* name) {
+        if (verb < 2) return;
+        cout << "c o [synth] AIG simplify: " << name << " done, "
+             << defs.size() << " defs, T: " << std::setprecision(2)
+             << std::fixed << cpuTime() - my_time << endl;
+    };
 
     // perform CSE
     {
         map<AIGKey, aig_node_ptr> cse_map;
         unordered_map<const AIG*, aig_node_ptr> cache2;
         for(auto& aig: defs) aig = simplify_cse(aig, cse_map, cache2);
+        phase("CSE");
     }
 
     // Revert individual AIGs that grew
@@ -2640,16 +2556,11 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     }
 }
 
-DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig) {
-    unordered_map<const AIG*, aig_lit> cache;
-    return simplify(aig, cache);
-}
-
 // CSE rebuild. Each AND node is keyed on (type, var, l_nid, l_neg, r_nid, r_neg).
 // Only the AND *node* is shared; the outer edge sign is applied by the caller.
 // Iterative post-order — see AIG::simplify for the reasoning.
-aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_node_ptr>& cse_map, unordered_map<const AIG*, aig_node_ptr>& cache) {
-    if (!aig) return nullptr;
+aig_lit AIG::simplify_cse(aig_lit aig, map<AIGKey, aig_node_ptr>& cse_map, unordered_map<const AIG*, aig_node_ptr>& cache) {
+    if (!aig) return aig_lit();
 
     auto build_leaf = [&](const AIG* src) -> aig_node_ptr {
         // Leaves are keyed for dedup across the whole simplification pass.
@@ -2715,60 +2626,10 @@ aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_node_ptr>& cse_map, unord
     return aig_lit(root, aig.neg);
 }
 
-// Rebuild the AIG tree bottom-up, running all algebraic simplifications
-// through the new_and / new_const / new_lit constructors. The cache stores, for
-// every source node, the rebuilt signed-edge form of that node's POSITIVE
-// value; the outer edge sign from the caller is applied on the final return.
-// Iterative post-order via an explicit stack — proof-driven interpolants
-// can be deep enough that a recursive rebuild blows the program stack.
-aig_ptr AIG::simplify(aig_ptr aig, unordered_map<const AIG*, aig_lit>& cache) {
-    if (!aig) return nullptr;
-
-    struct Frame { const AIG* src; bool children_done; };
-    std::vector<Frame> stack;
-    stack.reserve(64);
-    stack.push_back({aig.get(), false});
-
-    while (!stack.empty()) {
-        Frame& f = stack.back();
-        const AIG* src = f.src;
-        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
-        if (!f.children_done) {
-            if (src->type == AIGT::t_const) {
-                cache[src] = AIG::new_const(true);
-                stack.pop_back();
-            } else if (src->type == AIGT::t_lit) {
-                cache[src] = AIG::new_lit(src->var, false);
-                stack.pop_back();
-            } else {
-                assert(src->type == AIGT::t_and);
-                f.children_done = true;
-                // Pointer to f is invalidated by push_back, so capture
-                // children up-front. Right then left, so left is processed
-                // first when popped (LIFO).
-                const AIG* ln = src->l.get();
-                const AIG* rn = src->r.get();
-                stack.push_back({rn, false});
-                stack.push_back({ln, false});
-            }
-        } else {
-            assert(src->type == AIGT::t_and);
-            auto it_l = cache.find(src->l.get());
-            auto it_r = cache.find(src->r.get());
-            aig_lit lpos = (it_l != cache.end()) ? it_l->second : aig_lit();
-            aig_lit rpos = (it_r != cache.end()) ? it_r->second : aig_lit();
-            aig_lit l_edge(lpos.node, lpos.neg ^ src->l.neg);
-            aig_lit r_edge(rpos.node, rpos.neg ^ src->r.neg);
-            cache[src] = AIG::new_and(l_edge, r_edge);
-            stack.pop_back();
-        }
-    }
-
-    auto it = cache.find(aig.get());
-    aig_lit rebuilt_pos = (it != cache.end()) ? it->second : aig_lit();
-    return aig_lit(rebuilt_pos.node, rebuilt_pos.neg ^ aig.neg);
-}
-
+// Rebuild the AIG bottom-up through new_and/new_const/new_lit (running algebraic
+// simplifications). Cache holds each node's rebuilt positive-edge form; outer sign
+// applied on return. Iterative post-order — recursion can blow the stack on deep
+// interpolant AIGs.
 DLL_PUBLIC vector<vector<uint32_t>> SimplifiedCNF::find_disconnected() const {
   vector<int> var_to_bag(nvars, -1);
   map<int, vector<int>> bag_to_vars;
@@ -2862,7 +2723,6 @@ set_get_macro(bool, distill)
 set_get_macro(bool, intree)
 set_get_macro(bool, bve_pre_simplify)
 set_get_macro(int, simp)
-set_get_macro(uint32_t, incidence_count)
 set_get_macro(bool, or_gate_based)
 set_get_macro(bool, xor_gates_based)
 set_get_macro(bool, probe_based)
@@ -2872,8 +2732,11 @@ set_get_macro(bool, ite_gate_based)
 set_get_macro(bool, irreg_gate_based)
 set_get_macro(double, no_gates_below)
 set_get_macro(string, specified_order_fname)
+set_get_macro(string, dump_restart_aig)
 set_get_macro(uint32_t, verb)
 set_get_macro(uint32_t, extend_max_confl)
+set_get_macro(uint32_t, unate_def_max_confl)
+set_get_macro(uint32_t, unate_def_max_confl_total)
 set_get_macro(int, unate_def_eq)
 set_get_macro(uint32_t, unate_def_eq_max_per_var)
 set_get_macro(uint32_t, unate_def_eq_max_confl)

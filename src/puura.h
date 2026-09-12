@@ -59,15 +59,16 @@ private:
         const std::vector<uint32_t>& sampl_vars,
         const std::vector<uint32_t>& empty_sampl_vars);
 
+    ///Progress of definition recovery through puura's simplification pipeline.
+    ///A to-define var counts as defined once CMS has removed it (BVE resolved
+    ///its gate away, or SCC/var-replacement folded it into another var).
+    void print_stage(const char* name, CMSat::SATSolver* solver, double stage_start);
+    void print_cnf_shape(const char* name, const ArjunNS::SimplifiedCNF& cnf);
+    static std::string strip_distill_tokens(const std::string& strat, bool only_before_bve);
+
     const Config& conf;
 
-    std::set<uint32_t> input;
     std::set<uint32_t> to_define;
-    std::set<uint32_t> backward_defined;
-
-    std::vector<uint32_t> var_to_indic;
-    uint32_t orig_num_vars;
-    std::set<uint32_t> sampl_set;
     std::vector<CMSat::Lit> dont_elim;
 };
 }

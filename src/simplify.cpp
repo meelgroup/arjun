@@ -111,14 +111,6 @@ bool Minimize::simplify() {
     return true;
 }
 
-void Minimize::empty_out_indep_set_if_unsat() {
-    if (solver->okay()) return;
-
-    //It's UNSAT so the sampling set is empty
-    sampling_vars.clear();
-    verb_print(1, "[arjun] CNF is UNSAT, setting sampling set to empty");
-}
-
 bool Minimize::probe_all()
 {
     double my_time = cpuTime();
@@ -129,11 +121,24 @@ bool Minimize::probe_all()
     if (solver->simplify(nullptr, &s) == l_False) return false;
 
     verb_print(1, "[arjun-simp] probing all sampling variables");
-    for(auto v: sampling_vars) {
-        uint32_t min_props = 0;
-        Lit l(v, false);
-        if(solver->probe(l, min_props) == l_False) return false;
+    auto ord = sampling_vars;
+    auto inc = solver->get_var_incidence();
+    std::sort(ord.begin(), ord.end(), [&](const uint32_t& a, const uint32_t& b) {
+        return  inc[a] > inc[b];
+    });
+    if (ord.size() > 700000) {
+        ord.resize(700000);
+        verb_print(1, "[arjun-simp] probing only the first 700k sampling vars"
+            << " left: " << (ord.size()-700000));
     }
+#ifdef OLD_CMS
+    for(auto v: ord) {
+        uint32_t min_props = 0;
+        if (solver->probe(Lit(v, false), min_props) == l_False) return false;
+    }
+#else
+    if (solver->probe_all(ord) == l_False) return false;
+#endif
     s = "must-scc-vrepl";
     if (solver->simplify(nullptr, &s) == l_False) return false;
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));

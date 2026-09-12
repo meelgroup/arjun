@@ -31,16 +31,16 @@ static void fail(const std::string& msg) {
 
 // Build AND(l_0, l_1, ..., l_{N-1}) as a left-leaning chain of AIG AND
 // nodes using distinct positive literals.
-static aig_ptr build_and_chain(uint32_t n) {
-    aig_ptr cur = AIG::new_lit(0, false);
+static aig_lit build_and_chain(uint32_t n) {
+    aig_lit cur = AIG::new_lit(0, false);
     for (uint32_t i = 1; i < n; i++) {
         cur = AIG::new_and(cur, AIG::new_lit(i, false));
     }
     return cur;
 }
 
-static aig_ptr build_or_chain(uint32_t n) {
-    aig_ptr cur = AIG::new_lit(0, false);
+static aig_lit build_or_chain(uint32_t n) {
+    aig_lit cur = AIG::new_lit(0, false);
     for (uint32_t i = 1; i < n; i++) {
         cur = AIG::new_or(cur, AIG::new_lit(i, false));
     }
@@ -49,12 +49,12 @@ static aig_ptr build_or_chain(uint32_t n) {
 
 // Balanced AND tree: pairwise bottom-up. Same semantics as the linear
 // chain, but every internal AND has fanout exactly 1 -- still must flatten.
-static aig_ptr build_balanced_and_tree(uint32_t n) {
-    std::vector<aig_ptr> level;
+static aig_lit build_balanced_and_tree(uint32_t n) {
+    std::vector<aig_lit> level;
     level.reserve(n);
     for (uint32_t i = 0; i < n; i++) level.push_back(AIG::new_lit(i, false));
     while (level.size() > 1) {
-        std::vector<aig_ptr> next;
+        std::vector<aig_lit> next;
         next.reserve((level.size() + 1) / 2);
         for (size_t i = 0; i + 1 < level.size(); i += 2) {
             next.push_back(AIG::new_and(level[i], level[i+1]));
@@ -66,12 +66,12 @@ static aig_ptr build_balanced_and_tree(uint32_t n) {
     return level[0];
 }
 
-static aig_ptr build_balanced_or_tree(uint32_t n) {
-    std::vector<aig_ptr> level;
+static aig_lit build_balanced_or_tree(uint32_t n) {
+    std::vector<aig_lit> level;
     level.reserve(n);
     for (uint32_t i = 0; i < n; i++) level.push_back(AIG::new_lit(i, false));
     while (level.size() > 1) {
-        std::vector<aig_ptr> next;
+        std::vector<aig_lit> next;
         next.reserve((level.size() + 1) / 2);
         for (size_t i = 0; i + 1 < level.size(); i += 2) {
             next.push_back(AIG::new_or(level[i], level[i+1]));
@@ -88,20 +88,16 @@ struct EncResult {
     uint64_t helpers;
     uint64_t kary_and;
     uint64_t kary_and_width_total;
-    uint64_t kary_or;
-    uint64_t kary_or_width_total;
     Lit out;
 };
 
-static EncResult encode(const aig_ptr& root, uint32_t nvars) {
+static EncResult encode(const aig_lit& root, uint32_t nvars) {
     SATSolver s;
     s.set_verbosity(0);
     s.new_vars(nvars);
     AIGToCNF<SATSolver> enc(s);
-    // Disable cut-based CNF so n=4 chains surface as k-ary gates here.
-    // The cut encoder would otherwise absorb small (≤4-leaf) cones into
-    // CUT patterns, which is what these tests are explicitly NOT
-    // checking.
+    // Disable cut-based CNF so small (≤4-leaf) chains surface as k-ary gates
+    // instead of being absorbed into CUT patterns.
     enc.set_cut_cnf(false);
     Lit out = enc.encode(root);
     const auto& st = enc.get_stats();
@@ -110,13 +106,11 @@ static EncResult encode(const aig_ptr& root, uint32_t nvars) {
         st.helpers_added,
         st.kary_and_count,
         st.kary_and_width_total,
-        st.kary_or_count,
-        st.kary_or_width_total,
         out
     };
 }
 
-static void check_single_kand(const char* name, aig_ptr root, uint32_t n) {
+static void check_single_kand(const char* name, aig_lit root, uint32_t n) {
     EncResult r = encode(root, n);
     std::cout << name << " (n=" << n << "):"
               << "  clauses=" << r.clauses
@@ -143,14 +137,10 @@ static void check_single_kand(const char* name, aig_ptr root, uint32_t n) {
     }
 }
 
-// After the input-edge-neg refactor an OR chain isn't encoded through a
-// distinct OR path any more. new_or(a, b) is ~new_and(~a, ~b), so an OR
-// tree of N positive literals surfaces as one k-ary AND of width N over
-// the NEGATED leaves, referenced via a negative outer edge. The clause
-// count and helper count are identical to what emit_or_equiv would have
-// produced; only the bucket in the stats moved (kary_and instead of
-// kary_or). The test checks the AND-side bucket here to reflect that.
-static void check_single_kor(const char* name, aig_ptr root, uint32_t n) {
+// OR chains have no distinct OR path: new_or(a,b) = ~new_and(~a,~b), so an OR
+// tree of N positive lits surfaces as one k-ary AND of width N over negated
+// leaves. Clause/helper counts match emit_or_equiv; only the stats bucket moved.
+static void check_single_kor(const char* name, aig_lit root, uint32_t n) {
     EncResult r = encode(root, n);
     std::cout << name << " (n=" << n << "):"
               << "  clauses=" << r.clauses

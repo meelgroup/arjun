@@ -260,7 +260,7 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
         };
 
         // Recursively generate clauses for the AIG using the transform function
-        map<aig_ptr, Lit> cache;
+        map<aig_lit, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
         f.aig = aig;
@@ -344,12 +344,8 @@ bool verify_aigs_correct(T& solver, const map<uint32_t, typename FHolder<T>::For
 
     if (ret == l_True) {
         if (verb) cout << "c [test-synth] RESULT: SAT - AIGs are INCORRECT (counterexample found)" << endl;
-        // Dump the counterexample so we can see WHICH y_hat is wrong. The
-        // miter is F(x) ∧ ¬F(x, y_hat); a SAT answer means some orig clause
-        // is violated when y_hat is plugged in, but the orig clauses with
-        // the un-hatted y vars satisfied F(x). The inputs are in
-        // orig_sampling_vars, the un-hatted orig vars are everything else
-        // below orig_cnf nVars, and y_hat is above that.
+        // Dump the counterexample to see which y_hat is wrong. The miter is
+        // F(x) ∧ ¬F(x, y_hat); SAT means some clause breaks when y_hat is used.
         const auto& model = solver.get_model();
         cout << "c [test-synth] CEX MODEL:" << endl;
         cout << "c [test-synth]   inputs: ";
@@ -498,7 +494,7 @@ void check_aig_contains_no_self_refs(const SimplifiedCNF& cnf) {
             return true;
         };
 
-        map<aig_ptr, bool> cache;
+        map<aig_lit, bool> cache;
         AIG::transform<bool>(aig, visitor, cache);
     }
 }

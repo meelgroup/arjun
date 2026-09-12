@@ -78,7 +78,8 @@ int main()
 
     Arjun arjun;
     arjun.set_verb(0);
-    arjun.standalone_minimize_indep(cnf, false);
+    Arjun::InterpConf iconf;
+    arjun.standalone_minimize_indep(cnf, iconf, false);
     std::set<uint32_t> dont_elim (proj.begin(), proj.end());
 
     SimpConf simp_conf;

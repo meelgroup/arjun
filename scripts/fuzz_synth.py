@@ -32,10 +32,20 @@ import shlex
 from collections import namedtuple
 
 
+_USE_COLOR = os.isatty(1) and os.environ.get("NO_COLOR") is None
+CYAN, GREEN, RED, YELLOW, BLUE, MAGENTA = "36", "32", "31;1", "33", "34;1", "35"
+
+
+def col(txt, code):
+    if not _USE_COLOR:
+        return txt
+    return "\033[%sm%s\033[0m" % (code, txt)
+
+
 def fmt_cmd(command):
     # Render a command (list of args) so it can be copy-pasted into a
     # shell verbatim: each token is shell-quoted, so values containing
-    # parens/commas (e.g. --mstrategy "const(max_repairs=10),bve") stay
+    # parens/commas (e.g. --cstrategy "const(max_repairs=10),bve") stay
     # a single argument.
     return " ".join(shlex.quote(str(c)) for c in command)
 
@@ -148,7 +158,7 @@ def set_up_parser():
 
 
 def run(command):
-    print("--> Executing: %s" % fmt_cmd(command))
+    print(col("--> Executing: ", BLUE) + fmt_cmd(command))
     if options.verbose:
         print("CPU limit of parent (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU))
 
@@ -188,41 +198,58 @@ def run_check(command, final, seed):
     # below via output match) means test-synth crashed or hit an internal
     # error — treat as a bug regardless of final/non-final.
     if p.returncode < 0 or p.returncode > 1:
-        print("=" * 60)
-        print("BUG: test-synth crashed with returncode %d" % p.returncode)
+        print(col("=" * 60, RED))
+        print(col("BUG: test-synth crashed with returncode %d" % p.returncode, RED))
         print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
         print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-        print("=" * 60)
+        print(col("=" * 60, RED))
         exit(-1)
 
     for line in consoleOutput.split("\n"):
         if "INCORRECT" in line:
-            print("=" * 60)
-            print("BUG: test-synth reported AIGs are INCORRECT")
+            print(col("=" * 60, RED))
+            print(col("BUG: test-synth reported AIGs are INCORRECT", RED))
             print("Command was: %s" % fmt_cmd(command))
             print("Full check output was:")
             print(consoleOutput)
             print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-            print("=" * 60)
+            print(col("=" * 60, RED))
             exit(-1)
         # Match "CORRECT" but not "INCORRECT" — test-synth prints both on
         # failure ("AIGs are INCORRECT") and success ("AIGs are CORRECT"),
         # and plain substring matching accepts the failure text too.
         if "CORRECT" in line and "INCORRECT" not in line:
-            print("Check output: %s" % line)
+            print(col("Check output: ", GREEN) + line)
             ok = True
 
     if not ok and final:
-        print("=" * 60)
-        print("BUG: check process did not report CORRECT")
+        print(col("=" * 60, RED))
+        print(col("BUG: check process did not report CORRECT", RED))
         print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
         print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-        print("=" * 60)
+        print(col("=" * 60, RED))
         exit(-1)
+
+
+# Decision trees that never split leave recur()'s ITE construction untested, so
+# track the split/leaf mix and report it — a run that only ever built leaves has
+# not covered the learner, however many iterations it did. "verified" counts the
+# SLOW_DEBUG tree-vs-AIG equivalence checks, and stays 0 in non-SLOW_DEBUG builds.
+tree_depths = {"leaf": 0, "split": 0, "verified": 0}
+TREE_DEPTH_RE = re.compile(r"Training error:.*?depth:\s*(\d+)")
+
+
+def note_tree_depth(line):
+    if "[verify] AIG matches tree exactly" in line:
+        tree_depths["verified"] += 1
+    match = TREE_DEPTH_RE.search(line)
+    if match is None:
+        return
+    tree_depths["split" if int(match.group(1)) > 0 else "leaf"] += 1
 
 
 def run_synth(solver, fname):
@@ -248,7 +275,9 @@ def run_synth(solver, fname):
     for line in out.split("\n"):
         line = line.strip()
         # print("Solver output line: %s" % line)
-        if ("Training error" not in line) :
+        note_tree_depth(line)
+        # "Training error"/"[verify]" report percentages, not failures.
+        if ("Training error" not in line) and ("[verify]" not in line):
             if ("ERROR" in line) or ("Error" in line) or ("error" in line):
                 print("Error line from solver %s: %s" % (solver, line))
                 return True, []
@@ -327,7 +356,7 @@ def is_unsat(fname) :
 
 def gen_fuzz(seed) :
     fname = unique_file("fuzzTest")
-    print("Seed: ", seed,  " checking fname: ", fname)
+    print(col("Seed: ", MAGENTA) + str(seed) + col("  checking fname: ", MAGENTA) + fname)
     call = gen_fuzz_call_brummayer("./cnf-fuzz-brummayer.py", fname)
     print("Calling: ", call)
     status = subprocess.call(call, shell=True)
@@ -354,25 +383,22 @@ def cleanup(fname, prefix):
     os.unlink(prefix)
 
 def gen_mstrategy():
-    # Valid types: "const" and "bve". ("learn" requires EXTRA_SYNTH, so skip it.)
-    types = ["const", "bve"]
+    types = ["const", "bve", "learn", "rnd"]
 
-    uint_params = ["samples", "samples_ccnr", "max_depth", "sampler_fixed_conflicts",
-                   "min_leaf_size", "const_vote_samples", "stats_every",
+    uint_params = ["samples", "max_depth", "sampler_fixed_conflicts",
+                   "min_leaf_size", "stats_every",
                    "detailed_stats_every",
+                   "restart",
                    "conflict_drop_y_max",
-                   "conflict_cap_keep", "batch_minim_min",
+                   "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
-                   "ccnr_mems_per_sample", "ccnr_per_call_limit",
                    "cz_high_ratio", "cz_low_ratio",
                    "cz_threshold_high", "cz_threshold_mid", "cz_threshold_low"]
-    # manthan_order is handled separately (only 0/2 valid, gen_int would emit 1).
     int_params  = ["filter_samples", "minimize_conflict",
                    # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
-                   "maxsat_order", "use_all_vars_as_feats",
                    "repair_cache_size",
                    "one_repair_per_loop", "force_bw_equal",
-                   "inv_learnt"]
+                   "inv_guess", "seed", "learn_input_only"]
     #  "ctx_solver_type", "repair_solver_type",
     double_params = ["min_gain_split"]
 
@@ -390,15 +416,21 @@ def gen_mstrategy():
         params = {}
         if must_have_max_repairs or (not must_not_have_max_repairs and random.choice([True, False])):
             params["max_repairs"] = str(random.choice([10, 100, 400, 1000]))
-        for p in random.sample(uint_params, random.randint(0, 2)):
+        # Most learn strategies get params that actually grow a tree. On fuzz-sized
+        # CNFs the defaults (min_leaf_size=10, few unique-input samples) collapse
+        # every tree to a single leaf, so recur()'s ITE path never runs. The
+        # remaining quarter keeps the degenerate configs covered.
+        if stype == "learn" and random.random() < 0.75:
+            params["samples"] = str(random.choice([500, 2000, 5000]))
+            params["min_leaf_size"] = str(random.choice([1, 2, 3]))
+            params["min_gain_split"] = str(random.choice([0.0, 0.0001, 0.001]))
+            params["max_depth"] = str(random.choice([0, 3, 8]))
+        for p in random.sample(uint_params, random.randint(0, 5)):
             params.setdefault(p, gen_uint())
         for p in random.sample(int_params, random.randint(0, 2)):
             params.setdefault(p, gen_int())
         for p in random.sample(double_params, random.randint(0, 1)):
             params.setdefault(p, gen_double())
-        # manthan_order accepts only 0 (learn) and 2 (bve); 1 aborts.
-        if random.choice([True, False]):
-            params.setdefault("manthan_order", str(random.choice([0, 2])))
         if not params:
             return stype
         param_str = ",".join("%s=%s" % (k, v) for k, v in params.items())
@@ -452,28 +484,15 @@ if __name__ == "__main__":
             continue
         # solver = "./arjun --synth --debugsynth --verb 1"
         prefix = unique_file("fuzzTest")
-        print("Using prefix %s for synthesis output files" % prefix)
+        print(col("Using prefix ", YELLOW) + prefix + col(" for synthesis output files", YELLOW))
         solver = "./arjun --verb 2 --debugsynth %s " % prefix
-        if random.choice([True, False]):
-            solver += "--synth "
-        else:
-            solver += "--synthmore "
+        solver += "--synth "
 
-        # --bruteforcesynth is default-on in the binary, so explicitly
-        # toggle 50/50 to cover both paths: 1 = try brute-force synthesis
-        # first (it declines to Manthan when the enum set exceeds
-        # --bruteforcesynththresh), 0 = Manthan only. brute_force_synth mostly
-        # ignores the Manthan flag matrix this fuzzer randomizes, but
-        # the flags shape the pre-synth pipeline (BVE, autarky, extend,
-        # unate_def variants), so the CNF varies widely across iters.
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
-        # Independently toggle the dry-run backward minim pre-pass. Only
-        # affects iters where --bruteforcesynth=1, but the binary accepts
-        # it either way.
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
-        # Vary the minim cap so we exercise both the gated path (cap
-        # below the enum set, minim skipped) and the ungated path.
         solver += "--bruteforcesynthminimmax %d " % random.choice([0, 8, 40, 9999])
+        solver += "--distillremlevel %d " % random.choice([0, 1, 2])
+        solver += "--ctxlightinproc %d " % random.choice([0, 1, 2])
 
         opts = [
             " --synthbve"
@@ -488,7 +507,6 @@ if __name__ == "__main__":
             , " --unatedefeq"
             , " --unatedefeqnoninp"
             , " --bwequal"
-            , " --learnuseall"
         ]
         for o in opts:
             val = random.choice([0, 1])
@@ -500,58 +518,37 @@ if __name__ == "__main__":
         # it otherwise).
         solver += " --interprebuildevery %d" % random.randint(1, 5)
 
-        # manthan_order: 0 = incidence/learn, 2 = BVE. 1 is not a valid value.
-        solver += " --morder " + str(random.choice([0, 2]))
-        solver += " --maxsatorder " + random.choice(["0", "1"])
         solver += " --fixedconf " + random.choice(["1", "10", "100", "1000"])
         solver += " --unatedefmaxconfl " + random.choice(["1", "100", "1000", "15000", "100000"])
         solver += " --unatedefeqmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
         solver += " --unatedefeqconfl " + random.choice(["1", "10", "100", "1000", "100000"])
         solver += " --unatedefeqdry " + random.choice(["1", "10", "100", "100000"])
+        solver += " --unatedefmaxconfltot " + random.choice(["0", "0", "1", "10", "1000", "1000000"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))
-        solver += " --samplesccnr " + random.choice(["0", "100", "10000"])
         solver += " --samples " + random.choice(["0", "100", "10000"])
-        solver += " --mingainsplit " + random.choice(["0.1", "0.001", "5"])
+        solver += " --mingainsplit " + random.choice(["0.0", "0.001", "0.1", "5"])
         solver += " --maxdepth " + random.choice(["2", "10"])
-        solver += " --minleaf " + random.choice(["2", "10"])
+        solver += " --minleaf " + random.choice(["1", "2", "10"])
         solver += " --maxsat " + random.choice(["0", "-1"])  # skip 1 (requires EXTRA_SYNTH)
         solver += " --repaircache " + " " + random.choice(["0", "100", "1000"])
 
         # Hard-coded cutoff constants (very low and very high values)
-        solver += " --constvotesamples " + random.choice(["0", "1", "2", "10", "100"])
         solver += " --statsevery " + random.choice(["0", "1", "10", "40", "1000"])
         solver += " --detailedstatsevery " + random.choice(["0", "1", "10", "200", "5000"])
         solver += " --confldropy " + random.choice(["1", "5", "25", "100", "10000"])
-        solver += " --conflcapkeep " + random.choice(["1", "2", "5", "30", "100", "100000"])
         solver += " --batchminimmin " + random.choice(["1", "3", "6", "20", "10000"])
         solver += " --minimbudgetthresh " + random.choice(["1", "5", "20", "100", "10000"])
         solver += " --minimbudgetmax " + random.choice(["1", "10", "150", "1000", "100000"])
         solver += " --minimbudgetmult " + random.choice(["1", "2", "4", "10", "100"])
-        solver += " --ccnrmemspersample " + random.choice(["0", "1", "100", "1000", "100000", "10000000"])
-        solver += " --ccnrpercalllimit " + random.choice(["0", "1", "100", "1000", "50000", "10000000"])
         solver += " --czhighratio " + random.choice(["0", "1", "3", "10", "1000"])
         solver += " --czlowratio " + random.choice(["0", "1", "2", "5", "100"])
         solver += " --czthreshhigh " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
 
-        # Craig-interpolant repair: mostly off, ~25% on.
-        ir_mode = random.choices([0, 1, 2], weights=[3, 1, 1])[0]
-        solver += " --interprepair " + str(ir_mode)
-        if ir_mode == 2:
-            solver += " --interprepairmincl " + random.choice(["1", "2", "4", "8", "20"])
-        if ir_mode > 0:
-            solver += " --interprepairmaxnodes " + random.choice(["0", "10", "100", "1000", "100000"])
-            solver += " --interprepairb1rewrite " + random.choice(["0", "1"])
-            solver += " --interprepairmaxconfl " + random.choice(["0", "100", "10000"])
-            solver += " --interprepairgroupcse " + random.choice(["0", "1"])
-            solver += " --interprepairadaptive " + random.choice(["0", "1"])
-            solver += " --interprepairratioskip " + random.choice(["1.0", "5.0", "20.0"])
-            solver += " --interprepairskipwindow " + random.choice(["1", "10", "100"])
-
-        solver += " --mstrategy " + gen_mstrategy()
+        solver += " --cstrategy " + gen_mstrategy()
 
         err, aigs = run_synth(solver, fname)
         if err is None:
@@ -560,23 +557,31 @@ if __name__ == "__main__":
             continue
         if err:
             print("Synthesis failed on file %s" % fname)
-            print("=" * 60)
+            print(col("=" * 60, RED))
             print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-            print("=" * 60)
+            print(col("=" * 60, RED))
             exit(-1)
-        print("Synthesis succeeded on file %s, produced files: %s" % (fname, str(aigs)))
+        print(col("Synthesis succeeded", GREEN) + " on file %s, produced files: %s" % (fname, str(aigs)))
+        print("Decision trees so far: %d with splits, %d single-leaf, %d verified vs AIG"
+              % (tree_depths["split"], tree_depths["leaf"], tree_depths["verified"]))
         if len(aigs) == 0:
             print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
             exit(-1)
         check_core_files(prefix)
 
+        # A stage can run twice (the unate loop), overwriting its own AIG.
+        # Only the last write survives on disk, so check each name once.
+        seen = set()
         for aig in aigs:
+            if aig in seen:
+                continue
+            seen.add(aig)
             final = "final" in aig
             if final:
                 call = "./test-synth -u -v -s %d %s %s" % (seed, fname, aig)
             else:
                 call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
-            print("Running check command: ", call)
+            print(col("Running check command: ", CYAN) + call)
             run_check(call.split(), final, seed)
             os.unlink(aig)
         cleanup(fname, prefix)

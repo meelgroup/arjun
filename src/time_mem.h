@@ -74,11 +74,8 @@ static inline double cpuTimeTotal(void)
 #endif
 
 #if defined(__linux__)
-// process_mem_usage(double &, double &) - takes two doubles by reference,
-// attempts to read the system-dependent data for a process' virtual memory
-// size and resident set size, and return the results in KB.
-//
-// On failure, returns 0.0, 0.0
+// Resident set size of this process, in bytes (read from /proc/self/stat).
+// Returns 0 on failure.
 static inline uint64_t memUsedTotal()
 {
    using std::ios_base;

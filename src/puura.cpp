@@ -122,13 +122,15 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         SLOW_DEBUG_DO(assert(cnf.defs_invariant()));
-        cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf").unpack_to(input, to_define, backward_defined);
+        auto vt = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf");
+        to_define = std::move(vt.to_define);
     }
     for(const auto& v: cnf.get_sampl_vars())
         verb_print(5, "[w-debug] orig sampl var: " << v+1);
     for(const auto& v: cnf.get_opt_sampl_vars())
         verb_print(5, "[w-debug] orig opt sampl var: " << v+1);
 
+    print_cnf_shape("in", cnf);
     auto solver = fill_solver(cnf);
     set_zero_weight_lits(cnf, solver);
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
@@ -150,46 +152,45 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_oracle_find_bins(conf.oracle_find_bins);
     solver->set_oracle_mult(simp_conf.oracle_mult);
     solver->set_bve(simp_conf.do_bve);
+#ifndef OLD_CMS
+    solver->set_distill_rem_level(simp_conf.distill_rem_level);
+    solver->set_xor_gate_find_maxsize(simp_conf.xor_gate_find_maxsize);
+    solver->set_varelim_occ_cutoff(simp_conf.bve_occ_cutoff);
+    solver->set_varelim_occ_prod_cutoff(simp_conf.bve_occ_prod_cutoff);
+    solver->set_varelim_max_cls_size(simp_conf.bve_cls_max_size);
+    solver->set_varelim_sched_only_touched(simp_conf.bve_sched_only_touched);
+    solver->set_backbone_ccnr_mems_limitM(simp_conf.backbone_ccnr_mems_limitM);
+#endif
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
-        solver->set_bve_nonstop(simp_conf.bve_grow_nonstop);
-        solver->set_occ_based_lit_rem_time_limitM(500);
+        solver->set_occ_based_lit_rem_time_limitM(100);
         solver->set_bve_too_large_resolvent(simp_conf.bve_too_large_resolvent);
     } else {
         solver->set_occ_based_lit_rem_time_limitM(0);
     }
 
     string str;
-    switch (simp_conf.puura_strategy & 1) {
-        case 0:
-            str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-            break;
-        case 1:
-            str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-            break;
-    }
+    str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
 
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    if (simp_conf.puura_distill != 1)
+        str = strip_distill_tokens(str, simp_conf.puura_distill == 2);
     string str_iter2 = str + string("occ-backw-sub, ");
-    for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
+    for (int i = 0; i < simp_conf.iter1; i++) {
+        const double t = cpuTime();
+        solver->simplify(&dont_elim, &str);
+        print_stage(("iter1-" + std::to_string(i)).c_str(), solver.get(), t);
+    }
 
     // Now doing Oracle
     string str2;
     bool backbone_done = cnf.get_backbone_done();
     if (!backbone_done && simp_conf.do_backbone_puura) {
+        const double t_bb = cpuTime();
         solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
-        switch ((simp_conf.puura_strategy & 2) >> 1) {
-            case 0: {
-                string str_scc = "must-scc-vrepl, must-renumber";
-                solver->simplify(&dont_elim, &str_scc);
-                break;
-            }
-            case 1: {
-                string str_post_backbone = "must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, must-renumber";
-                solver->simplify(&dont_elim, &str_post_backbone);
-                break;
-            }
-        }
+        print_stage("backbone", solver.get(), t_bb);
+        string str_scc = "must-scc-vrepl, must-renumber";
+        solver->simplify(&dont_elim, &str_scc);
     }
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
@@ -199,12 +200,15 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify-mustfinish";
         else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
     }
-    solver->simplify(&dont_elim, &str2);
+    {
+        const double t = cpuTime();
+        solver->simplify(&dont_elim, &str2);
+        print_stage("oracle", solver.get(), t);
+    }
 
     // Now more expensive BVE, also RED linked in to occur
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
-        solver->set_bve_nonstop(simp_conf.bve_grow_nonstop);
         solver->set_varelim_check_resolvent_subs(true);
     }
     solver->set_max_red_linkin_size(20);
@@ -213,7 +217,9 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
             solver->set_picosat_gate_limitK(400);
             solver->set_picosat_confl_limit(1000);
         }
+        const double t = cpuTime();
         solver->simplify(&dont_elim, &str_iter2);
+        print_stage(("iter2-" + std::to_string(i)).c_str(), solver.get(), t);
     }
 
     // Final cleanup -- renumbering, disconnected component removing, etc.
@@ -229,17 +235,12 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     if (simp_conf.oracle_extra && !simp_conf.appmc) {
         solver->set_min_bva_gain(0);
         string s_bve = "occ-bve";
+        const double t = cpuTime();
         solver->simplify(&dont_elim, &s_bve);
+        print_stage("final-bve", solver.get(), t);
     }
 
-    switch ((simp_conf.puura_strategy & 4) >> 2) {
-        case 0:
-            str += string(", must-scc-vrepl, must-renumber,");
-            break;
-        case 1:
-            str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, intree-probe, must-scc-vrepl, must-renumber,");
-            break;
-    }
+    str += string(", must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
     auto new_sampl_vars = cnf.get_sampl_vars();
@@ -265,6 +266,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Return final one
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
     ret_cnf.set_backbone_done(backbone_done);
+    print_cnf_shape("out", ret_cnf);
     if (cnf.get_need_aig()) {
         auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | verbose_debug_enabled, "end get_fully_simplified_renumbered_cnf");
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
@@ -281,6 +283,97 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     return ret_cnf;
 }
 
+//Shape of the CNF, printed on the way in and out of puura. On circuit-like
+//inputs the interesting part is the clause-length profile: a definition chain
+//is nearly all binaries and ternaries, and BVE only unrolls it while that stays
+//true.
+//Drop distillation tokens from a strategy string, keeping the rest in order.
+//only_before_bve keeps the ones that run after the first occ-bve: distillation
+//rewrites the very clauses BVE reads as gate definitions, so on a circuit CNF
+//it is worth deleting only the passes that get to the formula first.
+string Puura::strip_distill_tokens(const string& strat, bool only_before_bve) {
+    string out;
+    size_t at = 0;
+    bool past_bve = false;
+    while (at < strat.size()) {
+        size_t end = strat.find(',', at);
+        if (end == string::npos) end = strat.size();
+        string tok = strat.substr(at, end-at);
+        size_t b = tok.find_first_not_of(" \t");
+        size_t e = tok.find_last_not_of(" \t");
+        string trimmed = (b == string::npos) ? "" : tok.substr(b, e-b+1);
+        if (trimmed.empty()) { at = end+1; continue; }
+        const bool is_distill = trimmed.find("distill") != string::npos;
+        if (!is_distill || (only_before_bve && past_bve)) out += trimmed + ", ";
+        if (trimmed == "occ-bve") past_bve = true;
+        at = end+1;
+    }
+    return out;
+}
+
+void Puura::print_cnf_shape(const char* name, const ArjunNS::SimplifiedCNF& cnf) {
+    if (conf.verb < 1) return;
+    uint64_t lits = 0, bins = 0, terns = 0, longs = 0;
+    uint32_t max_sz = 0;
+    for(const auto& cl: cnf.get_clauses()) {
+        lits += cl.size();
+        max_sz = std::max<uint32_t>(max_sz, cl.size());
+        if (cl.size() == 2) bins++;
+        else if (cl.size() == 3) terns++;
+        else longs++;
+    }
+    const auto& cls = cnf.get_clauses();
+    verb_print(1, "[puura-cnf] " << std::left << std::setw(18) << name << std::right
+        << " vars: " << std::setw(7) << cnf.nVars()
+        << " cls: " << std::setw(7) << cls.size()
+        << " bin: " << std::setw(7) << bins
+        << " tern: " << std::setw(7) << terns
+        << " long: " << std::setw(7) << longs
+        << " lits: " << std::setw(8) << lits
+        << " avg-sz: " << std::fixed << std::setprecision(2)
+        << (cls.empty() ? 0.0 : (double)lits/(double)cls.size())
+        << " max-sz: " << max_sz
+        << " sampl: " << cnf.get_sampl_vars().size());
+}
+
+void Puura::print_stage(const char* name, CMSat::SATSolver* solver, double stage_start) {
+    if (conf.verb < 1) return;
+    const uint32_t n = solver->nVars();
+    uint32_t removed = 0;
+    for(uint32_t v = 0; v < n; v++) if (solver->removed_var(v)) removed++;
+    uint32_t left = 0;
+    for(const auto& v: to_define) if (!solver->removed_var(v)) left++;
+
+    uint64_t cls = 0, lits = 0, bins = 0, terns = 0, longs = 0;
+    uint32_t max_sz = 0;
+    {
+        vector<CMSat::Lit> cl; bool is_xor, rhs;
+        solver->start_getting_constraints(false, true);
+        while (solver->get_next_constraint(cl, is_xor, rhs)) {
+            if (is_xor) continue;
+            cls++; lits += cl.size();
+            max_sz = std::max<uint32_t>(max_sz, cl.size());
+            if (cl.size() == 2) bins++; else if (cl.size() == 3) terns++; else longs++;
+        }
+        solver->end_getting_constraints();
+    }
+
+    verb_print(1, "[puura-stage] " << std::left << std::setw(18) << name << std::right
+        << " vars: " << std::setw(7) << (n - removed) << "/" << n
+        << " elimed: " << std::setw(7) << solver->get_elimed_vars().size()
+        << " to-define-left: " << std::setw(7) << left << "/" << to_define.size()
+        << " T: " << std::fixed << std::setprecision(2) << (cpuTime() - stage_start));
+    verb_print(1, "[puura-stage] " << std::left << std::setw(18) << name << std::right
+        << " cls: " << std::setw(7) << cls
+        << " bin: " << std::setw(7) << bins
+        << " tern: " << std::setw(7) << terns
+        << " long: " << std::setw(7) << longs
+        << " lits: " << std::setw(8) << lits
+        << " avg-sz: " << std::fixed << std::setprecision(2)
+        << (cls == 0 ? 0.0 : (double)lits/(double)cls)
+        << " max-sz: " << max_sz);
+}
+
 void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf) {
     assert(dont_elim.empty());
     if (cnf.get_weighted()) {
@@ -292,8 +385,6 @@ void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf) {
         }
     }
     for(uint32_t v: cnf.get_sampl_vars()) dont_elim.emplace_back(v, false);
-    sampl_set.clear();
-    for(uint32_t v: cnf.get_sampl_vars()) sampl_set.insert(v);
 }
 
 void Puura::run_sbva(SimplifiedCNF& cnf,

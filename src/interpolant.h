@@ -25,105 +25,190 @@
 #pragma once
 
 #include <cryptominisat5/solvertypesmini.h>
-#include "constants.h"
 #include "arjun.h"
 #include "config.h"
-#include "interp_repair.h"
 #include <cadical.hpp>
-#include <vector>
+#include <tracer.hpp>
+#include <map>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 #include <memory>
 #include <cstdint>
 
 namespace ArjunInt {
 
-// Definition extraction by Craig interpolation over a doubled CNF.
+// Lit::toInt() is a small positive int, so it's a perfect hash.
+struct LitHash { size_t operator()(const CMSat::Lit& l) const { return l.toInt(); } };
+
+// Hash over an AIGKey: mix the two child nids (elems 2,4) and sign bits.
+struct AigKeyHash {
+    size_t operator()(const ArjunNS::AIG::AIGKey& k) const {
+        uint64_t h = std::get<2>(k) * 1000003ULL + std::get<4>(k);
+        h = (h << 1) ^ std::get<3>(k);
+        h = (h << 1) ^ std::get<5>(k);
+        return std::hash<uint64_t>{}(h);
+    }
+};
+
+// McMillan labelled interpolation for A = clauses inside copy 1, B = the rest.
+// A clauses label = OR of their shared lits, B clauses = TRUE. Pivot on a
+// shared/B-local var → AND of children, on an A-local var → OR.
+struct InterpTracerMcMillan : public CaDiCaL::Tracer {
+    InterpTracerMcMillan(const Config& _conf,
+        const ArjunNS::AIGManager& _aig_mng,
+        const std::set<uint32_t>& _input_vars)
+        : conf(_conf), aig_mng(_aig_mng), input_vars(_input_vars) {}
+
+    const Config& conf;
+    const ArjunNS::AIGManager& aig_mng;
+    const std::set<uint32_t>& input_vars;
+
+    // "Shared" = a B-visible var, i.e. an input var.
+    [[nodiscard]] bool is_shared(uint32_t v) const {
+        return input_vars.count(v) != 0;
+    }
+
+    // Set before each solver->add(0): is the next original clause B-side?
+    bool next_is_b = false;
+
+    // Vars with index >= b_local_from occur only in B (copy-2 and indicator
+    // vars), so a pivot on them is AND'd like a shared pivot. = orig_num_vars.
+    uint32_t b_local_from = UINT32_MAX;
+
+    std::unordered_set<int64_t> b_clause_ids;
+    std::unordered_map<int64_t, std::vector<CMSat::Lit>> cls;
+    std::unordered_map<int64_t, ArjunNS::aig_lit> labels;
+    std::unordered_map<int64_t, std::vector<int64_t>> antec;
+    std::unordered_map<CMSat::Lit, ArjunNS::aig_lit, LitHash> lit_to_aig;
+
+    // Resolvent membership scratch for resolve_chain, indexed by Lit::toInt().
+    // res_stamp[i] == res_gen means literal i is in the resolvent.
+    std::vector<uint64_t> res_stamp;
+    uint64_t res_gen = 0;
+
+    // Structural-hash table over t_and nodes, keyed on canonicalised child
+    // edges so equal cones across proof clauses share one sub-DAG.
+    std::unordered_map<ArjunNS::AIG::AIGKey, ArjunNS::aig_lit, AigKeyHash> and_table;
+    ArjunNS::aig_lit hash_and(const ArjunNS::aig_lit& l,
+                              const ArjunNS::aig_lit& r);
+    ArjunNS::aig_lit hash_or(const ArjunNS::aig_lit& l,
+                             const ArjunNS::aig_lit& r);
+
+    int64_t empty_id = INT64_MAX;
+
+    // cadical reports the refutation via conclude_unsat(). conclusion_root
+    // is the empty clause (CONFLICT) or failing-assumption clause (ASSUMPTIONS).
+    int conclusion_type = 0;
+    int64_t conclusion_root = INT64_MAX;
+
+    ArjunNS::aig_lit out;
+
+    uint64_t derived_count = 0;
+    uint64_t orig_count = 0;
+    uint64_t core_count = 0;
+
+    ArjunNS::aig_lit lit_aig(CMSat::Lit l);
+    ArjunNS::aig_lit or_of_shared_lits(const std::vector<CMSat::Lit>& cl);
+
+    void add_original_clause(int64_t id, bool red,
+            const std::vector<int>& clause, bool restored = false) override;
+    void add_derived_clause(int64_t id, bool red, int witness,
+            const std::vector<int>& clause,
+            const std::vector<int64_t>& antecedents) override;
+    void add_assumption_clause(int64_t id,
+            const std::vector<int>& clause,
+            const std::vector<int64_t>& antecedents) override;
+    void conclude_unsat(CaDiCaL::ConclusionType type,
+            const std::vector<int64_t>& ids) override;
+
+    // Drop per-solve scratch (labels, and-table, refutation root); cls /
+    // antec / b_clause_ids outlive a solve. Caller must call it, not
+    // solve_query(): cadical can derive the empty clause before solve().
+    void reset_per_solve();
+
+    // Trace back from the refutation root, label the reachable proof core,
+    // and return the interpolant AIG (sets `out`). Null if no refutation.
+    ArjunNS::aig_lit build_interpolant();
+
+private:
+    // Computed lazily from the current input_vars so a persistent tracer
+    // picks up input vars added after the clause.
+    [[nodiscard]] ArjunNS::aig_lit original_label(int64_t id);
+    void build_derived_label(int64_t id);
+    // Replay `chain` as a linear resolution into labels[id]. Returns false
+    // (labels[id] left partial) if the chain is not a clean linear resolution.
+    [[nodiscard]] bool resolve_chain(int64_t id,
+            const std::vector<int64_t>& chain, bool reversed);
+};
+
+// Definition extraction by Craig interpolation over a doubled CNF (copy 1 =
+// vars [0,orig_num_vars), copy 2 = [orig_num_vars,2*orig_num_vars), tied by
+// indicators). When test_var is UNSAT under the differs-across-copies
+// assumptions, the McMillan interpolant of A=copy 1 / B=rest over the shared
+// input vars is its definition.
 //
-// extend/backward build a doubled formula: copy 1 = vars [0, orig_num_vars),
-// copy 2 = vars [orig_num_vars, 2*orig_num_vars), tied together by
-// indicator variables. When the doubled solver proves a `test_var` is
-// functionally determined by the input variables (UNSAT under the
-// test_var-differs-across-copies assumptions), the McMillan interpolant of
-//   A = clauses lying entirely inside copy 1
-//   B = everything else (copy 2, indicators, and their units)
-// over the shared input variables IS the definition of test_var.
-//
-// No PicoSAT is involved. The (CMS-simplified) doubled CNF is loaded once
-// in fill_from_solver into a single persistent incremental CaDiCaL with
-// InterpTracerMcMillan attached. Indicator units are added incrementally
-// via add_unit_cl, and each generate_interpolant call is one
-// assumption-based solve on that same solver: assume the
-// test_var-differs-across-copies literals, solve, conclude(), and let the
-// tracer reconstruct the interpolant from the refutation. Because the
-// doubled CNF is added (and the tracer told about it) only once, the
-// per-test_var cost is just the solve and the proof-core reconstruction.
-//
-// The tracer's clause maps (cls / antec) grow with every incremental
-// solve and cannot be pruned safely (a derived clause kept by cadical
-// may be an antecedent of a later proof). To bound both memory and the
-// per-lookup cost, the solver + tracer are rebuilt from scratch every
-// conf.interp_rebuild_every interpolants — cheap, since reloading just
-// re-adds the doubled CNF and the indicator units.
+// Loaded once into a persistent incremental CaDiCaL + InterpTracerMcMillan;
+// each generate_interpolant is one assumption-based solve. The tracer's maps
+// can't be pruned, so both are rebuilt every conf.interp_rebuild_every.
 class Interpolant {
 public:
-    Interpolant(const Config& _conf, const uint32_t num_vars) :
-        conf(_conf) {
-        defs.resize(num_vars, nullptr);
+    Interpolant(const Config& _conf, const ArjunNS::Arjun::InterpConf& _iconf, const uint32_t num_vars) :
+        conf(_conf), iconf(_iconf) {
+        defs.resize(num_vars, ArjunNS::aig_lit());
     }
     ~Interpolant();
 
-    // Extract the (CMS-simplified) doubled CNF from `solver` once and load
-    // it into the persistent incremental interpolation solver, before the
-    // per-variable solve loop starts. `input_vars` is the caller's live
-    // input-variable set: the tracer keeps a reference to it and picks up
-    // variables added to it as the loop proceeds.
     void fill_from_solver(CMSat::SATSolver* solver, uint32_t orig_num_vars,
         const ArjunNS::AIGManager& aig_mng,
-        const std::set<uint32_t>& input_vars);
+        const std::set<uint32_t>& input_vars,
+        const std::vector<uint32_t>& var_to_indic);
 
-    // `test_var` was just proven UNSAT under `assumptions`; reconstruct
-    // and store its definition AIG over the current input vars.
-    void generate_interpolant(const std::vector<CMSat::Lit>& assumptions,
+    // Reconstruct and store test_var's definition AIG. Returns false (var
+    // left undefined) if the solve exceeded conf.interp_max_confl.
+    bool generate_interpolant(const std::vector<CMSat::Lit>& assumptions,
         uint32_t test_var);
 
-    // Record an indicator unit clause permanently added to the doubled
-    // problem (a var proven independent/defined): add it, B-side, to the
-    // persistent interpolation solver too.
+    // Add an indicator unit (a var proven independent/defined), B-side.
     void add_unit_cl(const std::vector<CMSat::Lit>& cl);
 
     auto& get_defs() { return defs; }
 
 private:
     const Config conf;
+    const ArjunNS::Arjun::InterpConf& iconf;
     uint32_t orig_num_vars = 0;
     uint32_t tot_num_vars = 0;
     const ArjunNS::AIGManager* aig_mng = nullptr;
 
-    // The doubled CMS-simplified CNF, extracted once in fill_from_solver
-    // (kept only for the optional --debugsynth CNF dump).
+    // The pristine doubled CNF; re-loaded with equalities substituted on rebuild.
     std::vector<std::vector<CMSat::Lit>> all_cls;
-    // Indicator units accumulated as variables get defined / proven
-    // independent over the course of the solve loop.
+    // Accumulated indicator units; indic TRUE merges copy-2 var v' into copy-1 v.
     std::vector<CMSat::Lit> indicator_units;
+    // indic var -> the copy-1 var v it ties. Built in fill_from_solver.
+    std::unordered_map<uint32_t, uint32_t> indic_to_defvar;
 
-    // Persistent incremental CaDiCaL holding the doubled CNF + indicator
-    // units, with the McMillan tracer attached. Rebuilt periodically.
     std::unique_ptr<CaDiCaL::Solver> solver;
     std::unique_ptr<InterpTracerMcMillan> tracer;
-    // The caller's live input-variable set, bound into each fresh tracer.
     const std::set<uint32_t>* input_vars = nullptr;
-    // Interpolants produced since the last (re)build of solver + tracer.
     uint32_t solves_since_rebuild = 0;
+    uint32_t num_rebuilds = 0;
 
-    // defs[v] = AIG definition of v over the input vars (original var
-    // space), or nullptr if v was not defined this way.
-    std::vector<ArjunNS::aig_ptr> defs;
+    // defs[v] = AIG definition of v over the input vars, or nullptr.
+    std::vector<ArjunNS::aig_lit> defs;
 
-    // Create a fresh solver + tracer and (re)load the doubled CNF and the
-    // indicator units accumulated so far into it.
-    void load_solver();
+    void load_solver(bool is_rebuild);
 
-    // A clause is A-side iff it lies entirely inside copy 1.
+    // Rebuild if the define-count or conflict-count trigger has fired.
+    void maybe_rebuild();
+
+    // all_cls with the accumulated v' := v merges applied, tautologies and
+    // duplicates dropped. Returns the number of merges.
+    uint32_t build_effective_clauses(
+        std::vector<std::vector<CMSat::Lit>>& out_cls) const;
+
+    // B-side iff it touches any var outside copy 1.
     bool is_b_clause(const std::vector<CMSat::Lit>& cl) const {
         for (const auto& l : cl)
             if (l.var() >= orig_num_vars) return true;

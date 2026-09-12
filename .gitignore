@@ -1,5 +1,5 @@
 build/
-build_slowdbg/
+build*
 .kdev4/
 *.kdev4
 compile_commands.json
@@ -17,5 +17,4 @@ html/*.css
 html/*.wasm
 html/*.ts
 presentation*
-
 /scripts/data/__pycache__

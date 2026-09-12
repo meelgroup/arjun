@@ -25,19 +25,10 @@ using std::vector;
 
 namespace {
 
-// Deterministic ordering for aig_lit sorts. The default operator< on
-// shared_ptr uses raw addresses, which vary under ASLR.
-inline bool aig_lit_nid_less(const aig_lit& a, const aig_lit& b) {
-    if (!a.node) return b.node != nullptr;
-    if (!b.node) return false;
-    if (a->nid != b->nid) return a->nid < b->nid;
-    return (int)a.neg < (int)b.neg;
-}
-
 #ifdef SLOW_DEBUG
 // Brute-force equivalence check across all input assignments (≤ kMaxVars).
 // Catches a rewrite rule that breaks the function the moment it fires.
-inline void slow_assert_equiv(const aig_ptr& a, const aig_ptr& b) {
+inline void slow_assert_equiv(const aig_lit& a, const aig_lit& b) {
     if (!a.node || !b.node) { assert(a.node == b.node); return; }
     std::set<uint32_t> vars;
     AIG::get_dependent_vars(a, vars, std::numeric_limits<uint32_t>::max());
@@ -45,13 +36,13 @@ inline void slow_assert_equiv(const aig_ptr& a, const aig_ptr& b) {
     constexpr size_t kMaxVars = 16;
     if (vars.empty() || vars.size() > kMaxVars) return;
     const uint32_t maxv = *vars.rbegin();
-    std::vector<aig_ptr> defs(maxv + 1, nullptr);
+    std::vector<aig_lit> defs(maxv + 1, nullptr);
     std::vector<uint32_t> vlist(vars.begin(), vars.end());
     for (uint32_t mask = 0; mask < (1u << vlist.size()); mask++) {
         std::vector<CMSat::lbool> vals(maxv + 1, CMSat::l_False);
         for (size_t i = 0; i < vlist.size(); i++)
             if ((mask >> i) & 1u) vals[vlist[i]] = CMSat::l_True;
-        std::map<aig_ptr, CMSat::lbool> ca, cb;
+        std::map<aig_lit, CMSat::lbool> ca, cb;
         const CMSat::lbool va = AIG::evaluate(vals, a, defs, ca);
         const CMSat::lbool vb = AIG::evaluate(vals, b, defs, cb);
         assert(va == vb && "AIGRewriter changed the function!");
@@ -63,10 +54,12 @@ inline void slow_assert_equiv(const aig_ptr& a, const aig_ptr& b) {
 
 void AIGRewriteStats::print(int verb) const {
     if (verb < 1) return;
+    double perc;
+    if (nodes_before == 0) perc = 0.0;
+    else perc = (1.0-((double)nodes_after / nodes_before)) * -100.0;
     cout << "c o [aig-rw] T:" << std::fixed << std::setprecision(2) << total_time
          << " n:" << nodes_before << "->" << nodes_after
-         << " (-" << std::fixed << std::setprecision(1)
-         << (nodes_before > 0 ? (1.0 - (double)nodes_after / nodes_before) * 100.0 : 0.0) << "%)"
+         << " (" << std::fixed << std::setprecision(1) << perc << "%)"
          << " p:" << total_passes
          << " cp:" << const_prop
          << " cmp:" << complement_elim
@@ -75,6 +68,10 @@ void AIGRewriteStats::print(int verb) const {
          << " dst:" << and_or_distrib
          << " xor:" << xor_simplify
          << " hh:" << structural_hash_hits
+         << " chd:" << chain_defs
+         << " chc:" << chain_cubes
+         << " chdup:" << chain_dup_cubes
+         << " bal:" << balance_gates
          << endl;
 }
 
@@ -98,65 +95,28 @@ aig_lit AIGRewriter::cached_const(bool val) {
     return aig_lit(const_true_node, !val);
 }
 
-void AIGRewriter::collect_and_edges(const aig_lit& edge, vector<aig_lit>& out) {
-    if (!edge) return;
-    if (edge->type == AIGT::t_and && !edge.neg) {
-        collect_and_edges(edge->l, out);
-        collect_and_edges(edge->r, out);
-    } else {
-        out.push_back(edge);
-    }
-}
-
-void AIGRewriter::collect_or_edges(const aig_lit& edge, vector<aig_lit>& out) {
-    if (!edge) return;
-    if (edge->type == AIGT::t_and && edge.neg) {
-        // OR = negative-edge ref to AND; disjuncts are De Morgan complements.
-        collect_or_edges(~edge->l, out);
-        collect_or_edges(~edge->r, out);
-    } else {
-        out.push_back(edge);
-    }
-}
-
-aig_lit AIGRewriter::build_and_tree(vector<aig_lit>& children) {
-    if (children.empty()) return cached_const(true);
-    if (children.size() == 1) return children[0];
-    while (children.size() > 1) {
-        vector<aig_lit> next;
-        next.reserve((children.size() + 1) / 2);
-        for (size_t i = 0; i + 1 < children.size(); i += 2) {
-            next.push_back(make_canonical(children[i], children[i+1]));
-        }
-        if (children.size() % 2 == 1) next.push_back(children.back());
-        children = std::move(next);
-    }
-    return children[0];
-}
-
-aig_lit AIGRewriter::build_or_tree(vector<aig_lit>& children) {
-    if (children.empty()) return cached_const(false);
-    if (children.size() == 1) return children[0];
-    while (children.size() > 1) {
-        vector<aig_lit> next;
-        next.reserve((children.size() + 1) / 2);
-        for (size_t i = 0; i + 1 < children.size(); i += 2) {
-            // OR(a,b) = ~AND(~a,~b); routes through make_canonical for sharing.
-            aig_lit inner = make_canonical(~children[i], ~children[i+1]);
-            next.push_back(~inner);
-        }
-        if (children.size() % 2 == 1) next.push_back(children.back());
-        children = std::move(next);
-    }
-    return children[0];
-}
-
 // AND(l,r) with algebraic folds + structural hashing. AIG::new_and handles
 // constants / idempotent / complementary / local absorption; if the result is
 // a fresh t_and we canonicalise operand order by nid and hash-cons it.
 aig_lit AIGRewriter::make_canonical(const aig_lit& l, const aig_lit& r) {
+    // Fast path: probe the hash from the input key before new_and allocates.
+    // On a hit (the hot case) we skip the make_shared. Fold cases
+    // (const/identity/absorption) never stored their input key, so they miss
+    // here and fall through to new_and.
+    {
+        uint64_t lnid = l->nid, rnid = r->nid;
+        bool lneg = l.neg, rneg = r.neg;
+        bool swap = (lnid != rnid) ? (lnid < rnid) : ((int)lneg > (int)rneg);
+        if (swap) { std::swap(lnid, rnid); std::swap(lneg, rneg); }
+        auto it = struct_hash.find(StructKey{lnid, rnid, lneg, rneg});
+        if (it != struct_hash.end()) {
+            stats.structural_hash_hits++;
+            return aig_lit(it->second, false);
+        }
+    }
+
     aig_lit folded = AIG::new_and(l, r);
-    if (!folded || folded->type != AIGT::t_and) return folded;
+    if (folded->type != AIGT::t_and) return folded;
 
     aig_lit ll = folded->l;
     aig_lit rr = folded->r;
@@ -170,11 +130,21 @@ aig_lit AIGRewriter::make_canonical(const aig_lit& l, const aig_lit& r) {
         stats.structural_hash_hits++;
         return aig_lit(it->second, folded.neg);
     }
-    // Safe to write children: new_and just allocated the node.
+    // May be a pre-existing shared node, so only a commutative fanin swap here.
     folded.node->l = ll;
     folded.node->r = rr;
     struct_hash.emplace(key, folded.node);
     return folded;
+}
+
+aig_lit AIGRewriter::existing_and(const aig_lit& l, const aig_lit& r) const {
+    uint64_t lnid = l->nid, rnid = r->nid;
+    bool lneg = l.neg, rneg = r.neg;
+    bool swap = (lnid != rnid) ? (lnid < rnid) : ((int)lneg > (int)rneg);
+    if (swap) { std::swap(lnid, rnid); std::swap(lneg, rneg); }
+    auto it = struct_hash.find(StructKey{lnid, rnid, lneg, rneg});
+    if (it != struct_hash.end()) return aig_lit(it->second, false);
+    return aig_lit();
 }
 
 // ========== Pass 1: Bottom-up simplification ==========
@@ -280,8 +250,7 @@ aig_lit AIGRewriter::try_resolve_distribute(const aig_lit& l, const aig_lit& r) 
 aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
     if (!edge) return aig_lit();
 
-    // Iterative post-order — deep AIGs (e.g. interpolant-derived) overflow
-    // the program stack on recursion.
+    // Iterative post-order: deep AIGs would overflow the stack on recursion.
     struct Frame { const AIG* src; bool children_done; };
     std::vector<Frame> stack;
     stack.reserve(64);
@@ -290,7 +259,7 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
     while (!stack.empty()) {
         Frame& f = stack.back();
         const AIG* src = f.src;
-        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (cache.count(src)) { stack.pop_back(); continue; }
         if (src->type != AIGT::t_and) {
             cache[src] = (src->type == AIGT::t_const)
                 ? cached_const(true)
@@ -306,10 +275,8 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
         }
 
         // Compose child rebuilds with this node's incoming edge signs.
-        auto it_lc = cache.find(src->l.get());
-        auto it_rc = cache.find(src->r.get());
-        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
-        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
+        const aig_lit& lcached = cache.at(src->l.get());
+        const aig_lit& rcached = cache.at(src->r.get());
         const aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
         const aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
 
@@ -371,8 +338,7 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
         stack.pop_back();
     }
 
-    auto it = cache.find(edge.get());
-    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
+    const aig_lit& cached = cache.at(edge.get());
     return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
@@ -389,7 +355,7 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
     while (!stack.empty()) {
         Frame& f = stack.back();
         const AIG* src = f.src;
-        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (cache.count(src)) { stack.pop_back(); continue; }
         if (src->type != AIGT::t_and) {
             cache[src] = (src->type == AIGT::t_const)
                 ? cached_const(true)
@@ -403,432 +369,648 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
             stack.push_back({src->l.get(), false});
             continue;
         }
-        auto it_lc = cache.find(src->l.get());
-        auto it_rc = cache.find(src->r.get());
-        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
-        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
+        const aig_lit& lcached = cache.at(src->l.get());
+        const aig_lit& rcached = cache.at(src->r.get());
         aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
         aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
         cache[src] = make_canonical(l, r);
         stack.pop_back();
     }
 
-    auto it = cache.find(edge.get());
-    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
+    const aig_lit& cached = cache.at(edge.get());
     return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
-// ========== Pass 3: Multi-level absorption ==========
-//
-// Flattens k-ary AND/OR groups, dedups, applies cross-level absorption /
-// subsumption / resolution that simplify_pass's local rules miss.
+// ========== Decision-list (repair-chain) compression ==========
+// Recursively rebuild every OR/AND level in the DAG: flatten same-op regions,
+// re-emit each level's cubes with greedy factoring in one global
+// frequency-descending literal order (hash-consing shares near-duplicate
+// cubes' tails), and recurse into non-cube operands.
 
-// Local AND shortcuts for the case where neither child opens an AND/OR chain.
-aig_lit AIGRewriter::absorb_local_and(const aig_lit& l, const aig_lit& r) {
-    if (l == r) { stats.idempotent_elim++; return l; }
-    if (is_complement(l, r)) { stats.complement_elim++; return cached_const(false); }
-    if (l->type == AIGT::t_const) {
-        stats.const_prop++;
-        return l.neg ? cached_const(false) : r;
-    }
-    if (r->type == AIGT::t_const) {
-        stats.const_prop++;
-        return r.neg ? cached_const(false) : l;
-    }
-    return make_canonical(l, r);
-}
+namespace {
 
-// Fold constants and complementary pairs in a flat (sorted, deduped) AND child
-// list. Returns true and sets `out` to a constant when the conjunction
-// collapses (complementary pair or a FALSE conjunct ⇒ FALSE; empty ⇒ TRUE).
-// Otherwise drops TRUE conjuncts in place and returns false.
-bool AIGRewriter::fold_and_children(vector<aig_lit>& children, bool wide,
-                                    aig_lit& out) {
-    // Complementary pair ⇒ AND = FALSE. Sorted keys put same-node entries
-    // adjacent, so a linear scan suffices.
-    if (!wide) {
-        for (size_t i = 0; i + 1 < children.size(); i++) {
-            if (children[i].node == children[i+1].node
-                && children[i].neg != children[i+1].neg) {
-                stats.complement_elim++;
-                out = cached_const(false);
-                return true;
-            }
-        }
-    }
-
-    // Constants: drop TRUE, any FALSE ⇒ collapse.
-    vector<aig_lit> tmp;
-    tmp.reserve(children.size());
-    for (const auto& c : children) {
-        if (c->type == AIGT::t_const) {
-            stats.const_prop++;
-            if (c.neg) { out = cached_const(false); return true; }
+// Collect a pure cube (positive AND-tree) into var*2+neg literals; false if
+// not a cube.
+bool peel_cube(const aig_lit& e, vector<uint32_t>& out) {
+    if (!e) return false;
+    std::vector<aig_lit> todo{e};
+    while (!todo.empty()) {
+        aig_lit c = todo.back();
+        todo.pop_back();
+        if (c->type == AIGT::t_lit) {
+            out.push_back(c->var * 2 + (c.neg ? 1u : 0u));
+        } else if (c->type == AIGT::t_and && !c.neg) {
+            todo.push_back(c->l);
+            todo.push_back(c->r);
         } else {
-            tmp.push_back(c);
+            return false;
         }
     }
-    children = std::move(tmp);
-
-    if (children.empty()) { out = cached_const(true); return true; }
-    return false;
+    return true;
 }
 
-// Wide nodes: O(n) hash-set OR-absorption only — skip the O(n²) loops.
-// Drops any OR child that has a disjunct matching an AND sibling.
-void AIGRewriter::absorb_wide_or(vector<aig_lit>& children) {
-    std::set<std::pair<uint64_t, bool>> sibset;
-    for (const auto& c : children)
-        sibset.insert({c.node->nid, c.neg});
-    vector<aig_lit> kept;
-    kept.reserve(children.size());
-    for (const auto& c : children) {
-        bool absorbed = false;
-        if (is_or(c)) {
-            vector<aig_lit> dj;
-            collect_or_edges(c, dj);
-            for (const auto& d : dj) {
-                if (d.node && d != c
-                    && sibset.count({d.node->nid, d.neg})) {
-                    absorbed = true;
-                    break;
-                }
-            }
-        }
-        if (absorbed) stats.absorption++;
-        else kept.push_back(c);
-    }
-    children.swap(kept);
-}
+} // namespace
 
-// Cross-level absorption / subsumption against OR children (O(n²) fixed point):
-//   AND(a, OR(a, ...))            = a          — drop the OR
-//   AND(OR(narrow), OR(wide⊇narrow)) = OR(narrow) — drop the wider OR
-//   OR disjuncts complementing an AND sibling are removed from the OR
-// Returns true and sets `out` to FALSE if an emptied OR collapses the AND.
-bool AIGRewriter::absorb_cross_level(vector<aig_lit>& children, aig_lit& out) {
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (size_t i = 0; i < children.size() && !changed; i++) {
-            if (!is_or(children[i])) continue;
-            vector<aig_lit> disj;
-            collect_or_edges(children[i], disj);
-            if (disj.size() < 2) continue;
-
-            // AND(a, OR(a, ...)) = a — drop the OR.
-            bool absorbed = false;
-            for (size_t j = 0; j < children.size() && !absorbed; j++) {
-                if (i == j) continue;
-                for (const auto& d : disj) {
-                    if (d == children[j]) {
-                        stats.absorption++;
-                        children.erase(children.begin() + i);
-                        absorbed = true;
-                        changed = true;
-                        break;
+void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
+    // Global literal frequency over all defs (one shared order).
+    std::unordered_map<uint32_t, uint64_t> freq;
+    {
+        const uint64_t epoch = AIG::next_visit_epoch();
+        std::vector<const AIG*> stack;
+        auto count_edge = [&](const aig_lit& e) {
+            if (e.node && e->type == AIGT::t_lit)
+                freq[e->var * 2 + (e.neg ? 1u : 0u)]++;
+        };
+        for (const auto& d : defs) {
+            if (!d) continue;
+            count_edge(d);
+            if (d->type != AIGT::t_and) continue;
+            if (d.get()->visit_epoch == epoch) continue;
+            d.get()->visit_epoch = epoch;
+            stack.push_back(d.get());
+            while (!stack.empty()) {
+                const AIG* n = stack.back();
+                stack.pop_back();
+                for (const aig_lit* ch : {&n->l, &n->r}) {
+                    count_edge(*ch);
+                    const AIG* cn = ch->get();
+                    if (cn && cn->type == AIGT::t_and && cn->visit_epoch != epoch) {
+                        cn->visit_epoch = epoch;
+                        stack.push_back(cn);
                     }
                 }
             }
-            if (absorbed) break;
-
-            // OR-vs-OR: narrower implies wider, so drop the wider.
-            std::sort(disj.begin(), disj.end(), aig_lit_nid_less);
-            bool dropped_wide = false;
-            for (size_t j = 0; j < children.size() && !dropped_wide; j++) {
-                if (i == j || !is_or(children[j])) continue;
-                vector<aig_lit> dj;
-                collect_or_edges(children[j], dj);
-                if (dj.size() >= disj.size()) continue;
-                std::sort(dj.begin(), dj.end(), aig_lit_nid_less);
-                if (std::includes(disj.begin(), disj.end(),
-                                  dj.begin(), dj.end(),
-                                  aig_lit_nid_less)) {
-                    stats.absorption++;
-                    children.erase(children.begin() + i);
-                    dropped_wide = true;
-                    changed = true;
-                }
-            }
-            if (dropped_wide) break;
-
-            // Drop OR disjuncts that complement an AND sibling.
-            vector<aig_lit> new_disj;
-            bool disj_changed = false;
-            for (const auto& d : disj) {
-                bool drop = false;
-                for (size_t j = 0; j < children.size(); j++) {
-                    if (i == j) continue;
-                    if (is_complement(d, children[j])) {
-                        drop = true;
-                        stats.complement_elim++;
-                        break;
-                    }
-                }
-                if (drop) disj_changed = true;
-                else new_disj.push_back(d);
-            }
-            if (disj_changed) {
-                if (new_disj.empty()) {
-                    // Empty OR = FALSE ⇒ AND collapses.
-                    out = cached_const(false);
-                    return true;
-                }
-                children[i] = build_or_tree(new_disj);
-                changed = true;
-            }
         }
     }
-    return false;
-}
-
-// Resolution on OR pairs of equal width: AND(OR(X,b), OR(X,~b)) = X.
-void AIGRewriter::resolve_or_pairs(vector<aig_lit>& children) {
-    bool rchanged = true;
-    while (rchanged) {
-        rchanged = false;
-        for (size_t i = 0; i < children.size() && !rchanged; i++) {
-            if (!is_or(children[i])) continue;
-            vector<aig_lit> di;
-            collect_or_edges(children[i], di);
-            std::sort(di.begin(), di.end(), aig_lit_nid_less);
-
-            for (size_t j = i + 1; j < children.size() && !rchanged; j++) {
-                if (!is_or(children[j])) continue;
-                vector<aig_lit> dj;
-                collect_or_edges(children[j], dj);
-                std::sort(dj.begin(), dj.end(), aig_lit_nid_less);
-
-                if (di.size() != dj.size()) continue;
-
-                vector<aig_lit> common;
-                aig_lit diff_i, diff_j;
-                int diffs = 0;
-                for (size_t k = 0; k < di.size(); k++) {
-                    if (di[k] == dj[k]) common.push_back(di[k]);
-                    else { diffs++; diff_i = di[k]; diff_j = dj[k]; }
-                }
-                if (diffs == 1 && is_complement(diff_i, diff_j)) {
-                    stats.complement_elim++;
-                    if (common.empty()) {
-                        children.erase(children.begin() + j);
-                        children.erase(children.begin() + i);
-                    } else if (common.size() == 1) {
-                        children[i] = common[0];
-                        children.erase(children.begin() + j);
-                    } else {
-                        children[i] = build_or_tree(common);
-                        children.erase(children.begin() + j);
-                    }
-                    rchanged = true;
-                }
-            }
-        }
+    // rank: most frequent first; ties by literal value for determinism.
+    std::unordered_map<uint32_t, uint32_t> rank;
+    {
+        vector<std::pair<uint64_t, uint32_t>> fr;
+        fr.reserve(freq.size());
+        for (const auto& [l, f] : freq) fr.push_back({f, l});
+        std::sort(fr.begin(), fr.end(), [](const auto& a, const auto& b) {
+            if (a.first != b.first) return a.first > b.first;
+            return a.second < b.second;
+        });
+        for (uint32_t i = 0; i < fr.size(); i++) rank[fr[i].second] = i;
     }
-}
-
-// Rewrite one AND node (positive value AND(l, r)) given its rebuilt children.
-aig_lit AIGRewriter::absorb_and_node(const aig_lit& l, const aig_lit& r) {
-    // Fast path: no AND/OR chain to flatten ⇒ use local shortcuts.
-    auto is_proper_and = [](const aig_lit& e) {
-        return e.node && e->type == AIGT::t_and && !e.neg && e->l != e->r;
+    // Literals never seen as an edge get a fallback rank past all real ones.
+    const uint32_t rank_base = rank.size();
+    auto rank_of = [&](uint32_t l) -> uint64_t {
+        auto it = rank.find(l);
+        if (it != rank.end()) return it->second;
+        return (uint64_t)rank_base + l;
     };
-    const bool any_chain = is_proper_and(l) || is_proper_and(r)
-                          || is_or(l) || is_or(r);
-    if (!any_chain) return absorb_local_and(l, r);
 
-    // Collect flat AND conjuncts.
-    vector<aig_lit> children;
-    collect_and_edges(l, children);
-    collect_and_edges(r, children);
-
-    std::sort(children.begin(), children.end(), aig_lit_nid_less);
-    children.erase(std::unique(children.begin(), children.end()), children.end());
-
-    constexpr size_t kWide = 16;
-    const bool wide = children.size() > kWide;
-
-    aig_lit pos;
-    if (fold_and_children(children, wide, pos)) return pos;
-
-    if (wide) {
-        absorb_wide_or(children);
-    } else if (absorb_cross_level(children, pos)) {
-        return pos;  // emptied OR collapsed the conjunction to FALSE
-    }
-
-    if (!wide) resolve_or_pairs(children);
-
-    std::sort(children.begin(), children.end(), aig_lit_nid_less);
-    children.erase(std::unique(children.begin(), children.end()), children.end());
-    return children.empty() ? cached_const(true) : build_and_tree(children);
-}
-
-aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
-    if (!edge) return aig_lit();
-
-    struct Frame { const AIG* src; bool children_done; };
-    std::vector<Frame> stack;
-    stack.reserve(64);
-    stack.push_back({edge.get(), false});
-
-    while (!stack.empty()) {
-        Frame& f = stack.back();
-        const AIG* src = f.src;
-        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
-        if (src->type != AIGT::t_and) {
-            cache[src] = (src->type == AIGT::t_const)
-                ? cached_const(true)
-                : cached_lit(src->var, false);
-            stack.pop_back();
-            continue;
-        }
-        if (!f.children_done) {
-            f.children_done = true;
-            stack.push_back({src->r.get(), false});
-            stack.push_back({src->l.get(), false});
-            continue;
-        }
-
-        auto it_lc = cache.find(src->l.get());
-        auto it_rc = cache.find(src->r.get());
-        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
-        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
-        const aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
-        const aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
-        assert(l.node && r.node);
-
-        cache[src] = absorb_and_node(l, r);
-        stack.pop_back();
-    }
-
-    auto it = cache.find(edge.get());
-    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
-    return aig_lit(cached.node, cached.neg ^ edge.neg);
-}
-
-// ========== Pass 4: ITE chain depth reduction ==========
-//
-// Long AND/OR chains (common in manthan's ITE-repair output) get rebuilt
-// as balanced trees: depth N -> log2(N), same function.
-
-aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cache) {
-    if (!edge) return aig_lit();
-
-    struct Frame { const AIG* src; bool children_done; };
-    std::vector<Frame> stack;
-    stack.reserve(64);
-    stack.push_back({edge.get(), false});
-
-    while (!stack.empty()) {
-        Frame& f = stack.back();
-        const AIG* src = f.src;
-        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
-        if (src->type != AIGT::t_and) {
-            cache[src] = (src->type == AIGT::t_const)
-                ? cached_const(true)
-                : cached_lit(src->var, false);
-            stack.pop_back();
-            continue;
-        }
-        if (!f.children_done) {
-            f.children_done = true;
-            stack.push_back({src->r.get(), false});
-            stack.push_back({src->l.get(), false});
-            continue;
-        }
-
-        auto it_lc = cache.find(src->l.get());
-        auto it_rc = cache.find(src->r.get());
-        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
-        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
-        const aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
-        const aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
-        aig_lit pos;
-
-        // AND balanced rebuild.
-        vector<aig_lit> and_children;
-        collect_and_edges(l, and_children);
-        collect_and_edges(r, and_children);
-
-        if (and_children.size() >= 3) {
-            std::sort(and_children.begin(), and_children.end(), aig_lit_nid_less);
-            and_children.erase(std::unique(and_children.begin(), and_children.end()),
-                               and_children.end());
-            bool folded_false = false;
-            for (size_t i = 0; i + 1 < and_children.size(); i++) {
-                if (and_children[i].node == and_children[i+1].node
-                    && and_children[i].neg != and_children[i+1].neg) {
-                    stats.complement_elim++;
-                    folded_false = true;
-                    break;
-                }
-            }
-            pos = folded_false ? cached_const(false) : build_and_tree(and_children);
-        }
-
-        // OR rebuild on the inner OR view: positive(node) = ~OR(~l, ~r).
-        if (!pos.node) {
-            vector<aig_lit> or_children;
-            collect_or_edges(~l, or_children);
-            collect_or_edges(~r, or_children);
-            if (or_children.size() >= 3) {
-                std::sort(or_children.begin(), or_children.end(), aig_lit_nid_less);
-                or_children.erase(std::unique(or_children.begin(), or_children.end()),
-                                  or_children.end());
-                bool folded_true = false;
-                for (size_t i = 0; i + 1 < or_children.size(); i++) {
-                    if (or_children[i].node == or_children[i+1].node
-                        && or_children[i].neg != or_children[i+1].neg) {
-                        stats.complement_elim++;
-                        folded_true = true;
-                        break;
+    auto mk_or = [&](const aig_lit& a, const aig_lit& b) {
+        return ~make_canonical(~a, ~b);
+    };
+    // Reduce a canonically ordered operand list to one node with balanced
+    // pairwise rounds. In each round, pairs that already exist in the hash
+    // get reused first (DAG-aware pairing, quadratic probe capped at
+    // kMaxProbe operands); the rest pair up adjacently.
+    constexpr size_t kMaxProbe = 96;
+    auto balanced_reduce = [&](vector<aig_lit>& ts, bool is_or_op) -> aig_lit {
+        auto combine = [&](const aig_lit& a, const aig_lit& b) {
+            return is_or_op ? mk_or(a, b) : make_canonical(a, b);
+        };
+        while (ts.size() > 1) {
+            vector<aig_lit> nxt;
+            nxt.reserve((ts.size() + 1) / 2);
+            vector<bool> used(ts.size(), false);
+            if (ts.size() <= kMaxProbe) {
+                for (size_t i = 0; i < ts.size(); i++) {
+                    if (used[i]) continue;
+                    for (size_t j = i + 1; j < ts.size(); j++) {
+                        if (used[j]) continue;
+                        const bool hit = is_or_op
+                            ? (bool)existing_and(~ts[i], ~ts[j]).node
+                            : (bool)existing_and(ts[i], ts[j]).node;
+                        if (hit) {
+                            used[i] = used[j] = true;
+                            nxt.push_back(combine(ts[i], ts[j]));
+                            break;
+                        }
                     }
                 }
-                if (folded_true) {
-                    pos = cached_const(false);  // ~OR = ~TRUE = FALSE
+            }
+            // Remaining operands: canonical adjacent pairing.
+            aig_lit carry;
+            for (size_t i = 0; i < ts.size(); i++) {
+                if (used[i]) continue;
+                if (!carry.node) { carry = ts[i]; continue; }
+                nxt.push_back(combine(carry, ts[i]));
+                carry = aig_lit();
+            }
+            if (carry.node) nxt.push_back(carry);
+            ts = std::move(nxt);
+        }
+        return ts[0];
+    };
+    // OR together a list of terms: canonical (nid, sign) operand order plus
+    // a balanced pairwise fold, so equal operand sub-multisets across defs
+    // and levels hash-cons to the same nodes (the node-sharing effect of
+    // abc's "balance", worth ~15% union here over an ad-hoc left-deep fold).
+    auto or_terms = [&](vector<aig_lit>& ts) -> aig_lit {
+        assert(!ts.empty());
+        std::sort(ts.begin(), ts.end(), [](const aig_lit& a, const aig_lit& b) {
+            if (a->nid != b->nid) return a->nid < b->nid;
+            return (int)a.neg < (int)b.neg;
+        });
+        return balanced_reduce(ts, true);
+    };
+    // Build a cube as a balanced pairwise tree over the rank-ordered
+    // literals. All cubes use the same global order, so equal literal
+    // blocks land on aligned subtrees and hash-share across cubes and defs
+    // (measurably better than a right-deep suffix chain).
+    auto build_cube = [&](const vector<uint32_t>& lits_by_rank) -> aig_lit {
+        vector<aig_lit> ts;
+        ts.reserve(lits_by_rank.size());
+        for (const uint32_t l : lits_by_rank)
+            ts.push_back(cached_lit(l / 2, l & 1));
+        return balanced_reduce(ts, false);
+    };
+    // Emit OR(cubes) by greedily factoring the locally most frequent literal
+    // (f = OR(lit AND f_with, f_without)); single cubes use the global rank
+    // order. An empty residual (cube == {lit}) absorbs its with-group.
+    std::function<void(vector<vector<uint32_t>>&&, vector<aig_lit>&)>
+    emit_cube_terms = [&](vector<vector<uint32_t>>&& cs, vector<aig_lit>& terms) {
+            while (!cs.empty()) {
+                if (cs.size() == 1) {
+                    terms.push_back(build_cube(cs[0]));
+                    break;
+                }
+                std::map<uint32_t, size_t> f;
+                for (const auto& c : cs) for (const uint32_t l : c) f[l]++;
+                uint32_t best = 0;
+                size_t bestf = 0;
+                for (const auto& [l, cnt] : f)
+                    if (cnt > bestf) { bestf = cnt; best = l; }
+                if (bestf <= 1) {
+                    for (const auto& c : cs) terms.push_back(build_cube(c));
+                    break;
+                }
+                vector<vector<uint32_t>> with;
+                vector<vector<uint32_t>> without;
+                bool has_empty = false;
+                for (auto& c : cs) {
+                    auto it = std::find(c.begin(), c.end(), best);
+                    if (it == c.end()) { without.push_back(std::move(c)); continue; }
+                    c.erase(it);
+                    if (c.empty()) has_empty = true;
+                    else with.push_back(std::move(c));
+                }
+                if (has_empty) {
+                    // cube == {best}: absorbs the with-group entirely.
+                    terms.push_back(cached_lit(best / 2, best & 1));
                 } else {
-                    aig_lit balanced_or = build_or_tree(or_children);
-                    pos = ~balanced_or;
+                    vector<aig_lit> sub;
+                    emit_cube_terms(std::move(with), sub);
+                    terms.push_back(make_canonical(cached_lit(best / 2, best & 1),
+                                                   or_terms(sub)));
+                }
+                cs = std::move(without);
+            }
+        };
+
+    // ---- Recursive (DAG-wide) chain compression ----
+    // Every OR level in the DAG (an AND level is handled as the complement
+    // OR level) is flattened into operands, its cube operands re-emitted in
+    // canonical order with greedy factoring, and its non-cube operands
+    // rebuilt recursively. Memoised on the signed edge so shared subgraphs
+    // rebuild once across all defs.
+
+    // memo: signed edge (nid*2+neg) -> rebuilt edge with the same function.
+    std::unordered_map<uint64_t, aig_lit> memo;
+    auto memo_key = [](const aig_lit& e) {
+        return e->nid * 2 + (e.neg ? 1u : 0u);
+    };
+
+    // Flatten the OR region rooted at or_edge (a negative AND edge) into
+    // operand edges: literals, constants, and positive AND edges.
+    auto flatten_or = [&](const aig_lit& or_edge, vector<aig_lit>& ops) {
+        const uint64_t epoch = AIG::next_visit_epoch();
+        std::vector<aig_lit> todo{or_edge};
+        or_edge.get()->visit_epoch = epoch;
+        while (!todo.empty()) {
+            const aig_lit n = todo.back();
+            todo.pop_back();
+            for (const aig_lit& c : {~n->l, ~n->r}) {
+                if (is_or(c)) {
+                    if (c.get()->visit_epoch != epoch) {
+                        c.get()->visit_epoch = epoch;
+                        todo.push_back(c);
+                    }
+                } else {
+                    ops.push_back(c);
                 }
             }
         }
+    };
 
-        if (!pos.node) pos = make_canonical(l, r);
-        cache[src] = pos;
-        stack.pop_back();
+    // 64-bit literal signature for the fast subset pre-check.
+    auto cube_sig = [](const vector<uint32_t>& c) {
+        uint64_t s = 0;
+        for (const uint32_t l : c) s |= 1ULL << (l & 63u);
+        return s;
+    };
+
+    struct Frame {
+        aig_lit or_edge;
+        bool expanded = false;
+        vector<aig_lit> ops;
+    };
+
+    for (auto& def : defs) {
+        if (!def || def->type != AIGT::t_and) continue;
+        const aig_lit root_or = is_or(def) ? def : ~def;
+        std::vector<Frame> stack;
+        if (!memo.count(memo_key(root_or))) stack.push_back({root_or, false, {}});
+
+        while (!stack.empty()) {
+            Frame& f = stack.back();
+            if (memo.count(memo_key(f.or_edge))) { stack.pop_back(); continue; }
+            if (!f.expanded) {
+                f.expanded = true;
+                flatten_or(f.or_edge, f.ops);
+                // Recurse into non-cube AND operands first.
+                vector<aig_lit> children;
+                vector<uint32_t> tmp;
+                for (const auto& op : f.ops) {
+                    if (!op.node || op->type != AIGT::t_and) continue;
+                    tmp.clear();
+                    if (peel_cube(op, tmp)) continue;
+                    const aig_lit child_or = ~op;
+                    if (!memo.count(memo_key(child_or))) children.push_back(child_or);
+                }
+                if (!children.empty()) {
+                    // f invalidated by push_back below; don't touch it after.
+                    for (const auto& ch : children) stack.push_back({ch, false, {}});
+                    continue;
+                }
+            }
+
+            // All children rebuilt: gather this level's cubes and terms.
+            bool absorb = false;
+            vector<vector<uint32_t>> cubes;
+            vector<aig_lit> terms;
+            auto add_unit = [&](const aig_lit& u) {
+                if (!u.node || absorb) return;
+                if (u->type == AIGT::t_const) {
+                    if (!u.neg) absorb = true; // OR with TRUE
+                    return;                     // OR with FALSE: drop
+                }
+                if (u->type == AIGT::t_lit) {
+                    cubes.push_back({u->var * 2 + (u.neg ? 1u : 0u)});
+                    return;
+                }
+                vector<uint32_t> c;
+                if (!u.neg && peel_cube(u, c)) {
+                    cubes.push_back(std::move(c));
+                    return;
+                }
+                terms.push_back(u);
+            };
+            for (const auto& op : f.ops) {
+                if (absorb) break;
+                if (op.node && op->type == AIGT::t_and) {
+                    vector<uint32_t> c;
+                    if (peel_cube(op, c)) { cubes.push_back(std::move(c)); continue; }
+                    // Rebuilt value of this AND operand.
+                    const aig_lit r = ~memo.at(memo_key(~op));
+                    if (is_or(r)) {
+                        // Same-op result: dissolve its operands into this level.
+                        vector<aig_lit> sub;
+                        flatten_or(r, sub);
+                        for (const auto& s : sub) add_unit(s);
+                    } else {
+                        add_unit(r);
+                    }
+                } else {
+                    add_unit(op);
+                }
+            }
+
+            aig_lit acc;
+            if (absorb) {
+                acc = cached_const(true);
+            } else {
+                // Canonicalise cubes; drop always-false, duplicate, and
+                // subsumed (superset of another) cubes.
+                std::set<vector<uint32_t>> uniq;
+                size_t dup_dropped = 0;
+                for (auto& c : cubes) {
+                    std::sort(c.begin(), c.end());
+                    c.erase(std::unique(c.begin(), c.end()), c.end());
+                    bool is_false = false;
+                    for (size_t i = 0; i + 1 < c.size(); i++)
+                        if ((c[i] ^ 1u) == c[i+1]) { is_false = true; break; }
+                    if (is_false) { dup_dropped++; continue; }
+                    if (!uniq.insert(c).second) dup_dropped++;
+                }
+                if (uniq.size() > 1 && uniq.size() <= 1024) {
+                    // Subsumption: a cube that contains another cube is
+                    // redundant in an OR. Value-sorted vectors: subset check.
+                    vector<vector<uint32_t>> by_size(uniq.begin(), uniq.end());
+                    std::sort(by_size.begin(), by_size.end(),
+                              [](const auto& a, const auto& b) {
+                                  if (a.size() != b.size()) return a.size() < b.size();
+                                  return a < b;
+                              });
+                    vector<uint64_t> sigs;
+                    sigs.reserve(by_size.size());
+                    for (const auto& c : by_size) sigs.push_back(cube_sig(c));
+                    vector<bool> dead(by_size.size(), false);
+                    for (size_t i = 0; i < by_size.size(); i++) {
+                        if (dead[i]) continue;
+                        for (size_t j = i + 1; j < by_size.size(); j++) {
+                            if (dead[j]) continue;
+                            if ((sigs[i] & ~sigs[j]) != 0) continue;
+                            if (std::includes(by_size[j].begin(), by_size[j].end(),
+                                              by_size[i].begin(), by_size[i].end())) {
+                                dead[j] = true;
+                                dup_dropped++;
+                            }
+                        }
+                    }
+                    uniq.clear();
+                    for (size_t i = 0; i < by_size.size(); i++)
+                        if (!dead[i]) uniq.insert(std::move(by_size[i]));
+                }
+                stats.chain_dup_cubes += dup_dropped;
+
+                vector<aig_lit> all_terms;
+                if (!uniq.empty()) {
+                    stats.chain_cubes += uniq.size();
+                    vector<vector<uint32_t>> cs;
+                    cs.reserve(uniq.size());
+                    for (auto& c : uniq) {
+                        vector<uint32_t> cc = c;
+                        // Rarest first, most frequent last (deepest = shared
+                        // suffix).
+                        std::sort(cc.begin(), cc.end(), [&](uint32_t a, uint32_t b) {
+                            const uint64_t ra = rank_of(a), rb = rank_of(b);
+                            if (ra != rb) return ra > rb;
+                            return a > b;
+                        });
+                        cs.push_back(std::move(cc));
+                    }
+                    // Deterministic canonical order for emission.
+                    std::sort(cs.begin(), cs.end());
+                    emit_cube_terms(std::move(cs), all_terms);
+                }
+                for (const auto& t : terms) all_terms.push_back(t);
+                if (all_terms.empty()) acc = cached_const(false);
+                else acc = or_terms(all_terms);
+            }
+            memo[memo_key(f.or_edge)] = acc;
+            memo[memo_key(~f.or_edge)] = ~acc;
+            stack.pop_back();
+        }
+
+        const aig_lit reb = memo.at(memo_key(def));
+        if (!(reb == def)) stats.chain_defs++;
+        def = reb;
+    }
+}
+
+// ========== Balance (abc `b` port) ==========
+// Flatten every maximal AND supergate (stopping at complemented edges,
+// literals, and fanout>1 nodes), then rebuild it pairing the two
+// shallowest operands first; before each pairing, an operand from the same
+// level group is preferred if its AND with the shallowest already exists in
+// struct_hash (sharing-aware permute, as in abc's balance).
+void AIGRewriter::balance_defs(vector<aig_lit>& defs) {
+    // One sweep over the union DAG collecting every AND node, then park each
+    // node's index into visit_epoch (offset by kIdxBase = 2^63, far above
+    // any epoch the monotonic counter can reach, so stale indices never
+    // alias a live epoch mark). All per-node side data (fanout, root flag,
+    // rebuilt copy) then lives in plain vectors — no hash maps.
+    constexpr uint64_t kIdxBase = 1ULL << 63;
+    std::vector<const AIG*> nodes;
+    {
+        const uint64_t epoch = AIG::next_visit_epoch();
+        auto visit = [&](const AIG* n) {
+            if (n && n->type == AIGT::t_and && n->visit_epoch != epoch) {
+                n->visit_epoch = epoch;
+                nodes.push_back(n);
+            }
+        };
+        for (const auto& d : defs)
+            if (d.node && d->type == AIGT::t_and) visit(d.get());
+        for (size_t i = 0; i < nodes.size(); i++) {
+            const AIG* n = nodes[i];
+            visit(n->l.get());
+            visit(n->r.get());
+        }
+    }
+    for (size_t i = 0; i < nodes.size(); i++)
+        nodes[i]->visit_epoch = kIdxBase + i;
+    auto idx = [&](const AIG* n) { return (size_t)(n->visit_epoch - kIdxBase); };
+
+    // Fanout counts; def roots count as one ref each so a root shared
+    // between defs stays a supergate boundary.
+    std::vector<uint32_t> fanout(nodes.size(), 0);
+    for (const auto& d : defs)
+        if (d.node && d->type == AIGT::t_and) fanout[idx(d.get())]++;
+    for (const AIG* n : nodes)
+        for (const aig_lit* ch : {&n->l, &n->r}) {
+            const AIG* c = ch->get();
+            if (c && c->type == AIGT::t_and) fanout[idx(c)]++;
+        }
+
+    // Supergate roots: nodes NOT absorbed into a parent's supergate — i.e.
+    // shared (fanout > 1, which includes every def root due to the ref
+    // above), or referenced through a complemented edge. nid is monotonic
+    // at construction (children < parents), so processing roots in
+    // ascending nid order guarantees operand roots are rebuilt before any
+    // supergate that uses them — no recursion needed.
+    std::vector<bool> is_root(nodes.size(), false);
+    for (size_t i = 0; i < nodes.size(); i++)
+        if (fanout[i] > 1) is_root[i] = true;
+    for (const auto& d : defs)
+        if (d.node && d->type == AIGT::t_and) is_root[idx(d.get())] = true;
+    for (const AIG* n : nodes)
+        for (const aig_lit* ch : {&n->l, &n->r}) {
+            const AIG* c = ch->get();
+            if (c && c->type == AIGT::t_and && ch->neg) is_root[idx(c)] = true;
+        }
+    std::vector<const AIG*> roots;
+    for (size_t i = 0; i < nodes.size(); i++)
+        if (is_root[i]) roots.push_back(nodes[i]);
+    std::sort(roots.begin(), roots.end(),
+              [](const AIG* a, const AIG* b) { return a->nid < b->nid; });
+
+    // bcopy: old root AND node -> rebuilt (positive-value) edge plus its
+    // level (depth over the rebuilt structure; literals/consts are 0). The
+    // level rides along so no separate depth map is needed.
+    struct Op { aig_lit e; uint32_t lv; };
+    std::vector<Op> bcopy(nodes.size());
+
+    constexpr size_t kMaxSuper = 10000;
+    // Scratch buffers reused across all supergates.
+    std::vector<aig_lit> ops, todo;
+    std::vector<uint64_t> seen_keys;
+    std::vector<Op> super, fresh;
+
+    for (const AIG* root : roots) {
+        // Collect the supergate: flatten through positive fanout-1 AND
+        // edges; boundary operands are literals, consts, and root nodes.
+        ops.clear();
+        seen_keys.clear();
+        todo.clear();
+        todo.push_back(root->r);
+        todo.push_back(root->l);
+        bool zero = false;
+        while (!todo.empty()) {
+            const aig_lit e = todo.back();
+            todo.pop_back();
+            const AIG* c = e.get();
+            const bool expand = !e.neg && c->type == AIGT::t_and
+                && fanout[idx(c)] <= 1 && ops.size() < kMaxSuper;
+            if (expand) {
+                todo.push_back(e->r);
+                todo.push_back(e->l);
+                continue;
+            }
+            const uint64_t key = c->nid * 2 + (e.neg ? 1u : 0u);
+            bool dup = false;
+            for (const uint64_t k : seen_keys) {
+                if (k == key) { dup = true; break; }
+                if (k == (key ^ 1u)) { zero = true; break; } // x & ~x
+            }
+            if (zero) break;
+            if (dup) continue;                        // idempotent operand
+            seen_keys.push_back(key);
+            ops.push_back(e);
+        }
+        if (zero) {
+            bcopy[idx(root)] = {cached_const(false), 0};
+            continue;
+        }
+        // Rebuilt operands with cached levels, sorted ascending so the
+        // two shallowest are processed first (ties by nid/neg for
+        // determinism).
+        super.clear();
+        for (const auto& op : ops) {
+            const AIG* c = op.get();
+            Op nb;
+            if (c->type == AIGT::t_and) {
+                // A kMaxSuper-capped boundary can name a fanout-1 node that
+                // is not a root; keep it as-is (identity rebuild).
+                nb = is_root[idx(c)] ? bcopy[idx(c)]
+                                     : Op{aig_lit(op.node, false), 1};
+            }
+            else if (c->type == AIGT::t_lit) nb = {cached_lit(c->var, false), 0};
+            else nb = {cached_const(true), 0};
+            super.push_back({aig_lit(nb.e.node, nb.e.neg ^ op.neg), nb.lv});
+        }
+        std::sort(super.begin(), super.end(), [](const Op& a, const Op& b) {
+            if (a.lv != b.lv) return a.lv < b.lv;
+            if (a.e->nid != b.e->nid) return a.e->nid < b.e->nid;
+            return (int)a.e.neg < (int)b.e.neg;
+        });
+        stats.balance_gates++;
+        // Merge-consume: `pos` scans the sorted originals; `fresh` holds
+        // new nodes (each appended with level >= all consumed so far, so
+        // a stable merge by level keeps global ascending order).
+        size_t pos = 0;
+        fresh.clear();
+        size_t fpos = 0;
+        auto remaining = [&]() { return (super.size() - pos) + (fresh.size() - fpos); };
+        auto pop_smallest = [&]() -> Op {
+            const bool take_f = pos >= super.size()
+                || (fpos < fresh.size() && fresh[fpos].lv < super[pos].lv);
+            return take_f ? fresh[fpos++] : super[pos++];
+        };
+        auto push_fresh = [&](const Op& o) {
+            fresh.push_back(o);
+            // Bubble down: the pushed level can undercut pending entries
+            // when make_canonical folded / reused an existing node.
+            for (size_t i = fresh.size() - 1;
+                 i > fpos && fresh[i].lv < fresh[i - 1].lv; i--)
+                std::swap(fresh[i], fresh[i - 1]);
+        };
+        bool done = false;
+        Op result;
+        while (remaining() > 1) {
+            const Op o1 = pop_smallest();
+            // Sharing permute: prefer a partner at the SAME level as the
+            // next-shallowest whose AND with o1 already exists.
+            const uint32_t lv2 = (pos >= super.size()
+                || (fpos < fresh.size() && fresh[fpos].lv < super[pos].lv))
+                ? fresh[fpos].lv : super[pos].lv;
+            // Probe scan capped so huge equal-level groups (wide OR
+            // spines) stay linear overall.
+            constexpr size_t kBalProbe = 8;
+            size_t probes = 0;
+            Op o2;
+            bool have_o2 = false;
+            for (size_t p = pos; p < super.size() && super[p].lv == lv2
+                                 && probes < kBalProbe; p++, probes++)
+                if (existing_and(o1.e, super[p].e).node) {
+                    o2 = super[p];
+                    super[p] = super[pos++]; // same-level swap-out
+                    have_o2 = true;
+                    break;
+                }
+            if (!have_o2)
+                for (size_t fp = fpos; fp < fresh.size() && fresh[fp].lv == lv2
+                                       && probes < kBalProbe; fp++, probes++)
+                    if (existing_and(o1.e, fresh[fp].e).node) {
+                        o2 = fresh[fp];
+                        fresh[fp] = fresh[fpos++]; // same-level swap-out
+                        have_o2 = true;
+                        break;
+                    }
+            if (!have_o2) o2 = pop_smallest();
+            if (o1.e == o2.e) { push_fresh(o1); continue; } // dup operand
+            const aig_lit a = make_canonical(o2.e, o1.e);
+            if (a->type == AIGT::t_const) {
+                if (a.neg) { done = true; result = {a, 0}; break; }
+                continue; // AND with TRUE: drop
+            }
+            // Level of the result: a fold to one operand keeps its level, a
+            // real (or reused) AND is max+1 (upper bound if reused).
+            uint32_t alv;
+            if (a.node == o1.e.node) alv = o1.lv;
+            else if (a.node == o2.e.node) alv = o2.lv;
+            else if (a->type != AIGT::t_and) alv = 0;
+            else alv = std::max(o1.lv, o2.lv) + 1;
+            push_fresh({a, alv});
+        }
+        if (!done)
+            result = remaining() ? pop_smallest()
+                                 : Op{cached_const(true), 0};
+        bcopy[idx(root)] = result;
     }
 
-    auto it = cache.find(edge.get());
-    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
-    return aig_lit(cached.node, cached.neg ^ edge.neg);
+    for (auto& def : defs) {
+        if (!def.node || def->type != AIGT::t_and) continue;
+        const aig_lit nb = bcopy[idx(def.get())].e;
+        def = aig_lit(nb.node, nb.neg ^ def.neg);
+    }
 }
 
 // ========== Main rewrite entry points ==========
 
-aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
-    if (!aig) return nullptr;
+aig_lit AIGRewriter::rewrite(const aig_lit& aig, bool balance) {
+    if (!aig) return aig_lit();
     struct_hash.clear();
     lit_hash.clear();
     const_true_node.reset();
     const size_t before = AIG::count_aig_nodes_fast(aig);
     aig_lit result = aig;
 
-    // Fixed-point loop: deep_absorb's k-ary flattening can expose new local
-    // patterns and vice versa. Capped to avoid pathological oscillation.
-    constexpr int kMaxIters = 4;
-    size_t prev_count = before;
-    for (int iter = 0; iter < kMaxIters; iter++) {
-        { NodeRebuildMap c; result = simplify_pass(result, c); }
-        struct_hash.clear();
-        { NodeRebuildMap c; result = hash_cons(result, c); }
-        { NodeRebuildMap c; result = deep_absorb(result, c); }
-        { NodeRebuildMap c; result = flatten_ite_chains(result, c); }
-        struct_hash.clear();
-        { NodeRebuildMap c; result = hash_cons(result, c); }
-        const size_t cur_count = AIG::count_aig_nodes_fast(result);
-        if (cur_count >= prev_count) break;
-        prev_count = cur_count;
+    // A single simplify + hash-cons sweep reaches the fixed point.
+    { NodeRebuildMap c; c.reserve(before); result = simplify_pass(result, c); }
+    struct_hash.clear();
+    struct_hash.reserve(before);
+    { NodeRebuildMap c; c.reserve(before); result = hash_cons(result, c); }
+    if (balance) {
+        std::vector<aig_lit> one{result};
+        balance_defs(one);
+        result = one[0];
     }
     stats.total_passes++;
     SLOW_DEBUG_DO(slow_assert_equiv(aig, result));
@@ -836,7 +1018,7 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     return result;
 }
 
-void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
+void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb, bool balance) {
     const double t = cpuTime();
     stats.clear();
     struct_hash.clear();
@@ -844,24 +1026,39 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
     const_true_node.reset();
     stats.nodes_before = AIG::count_aig_nodes_fast(defs);
 
-    vector<aig_ptr> originals = defs;
+    vector<aig_lit> originals = defs;
 
-    constexpr int kMaxIters = 4;
-    size_t prev_count = stats.nodes_before;
-    for (int iter = 0; iter < kMaxIters; iter++) {
-        { NodeRebuildMap cache;
-          for (auto& d : defs) if (d) d = simplify_pass(d, cache); }
-        { NodeRebuildMap cache;
-          for (auto& d : defs) if (d) d = deep_absorb(d, cache); }
-        { NodeRebuildMap cache;
-          for (auto& d : defs) if (d) d = flatten_ite_chains(d, cache); }
-        // hash_cons last so new ANDs from OR/resolution rewrites also share.
-        { struct_hash.clear();
-          NodeRebuildMap cache;
-          for (auto& d : defs) if (d) d = hash_cons(d, cache); }
-        const size_t cur_count = AIG::count_aig_nodes_fast(defs);
-        if (cur_count >= prev_count) break;
-        prev_count = cur_count;
+    // Per-pass tracing so a long rewrite isn't a black box: prints the AIG
+    // node count and elapsed time after each pass at verb >= 2.
+    auto trace = [&](const char* pass) {
+        if (verb < 2) return;
+        const size_t nodes = AIG::count_aig_nodes_fast(defs);
+        cout << "c o [aig-rw] after " << std::setw(14)
+             << std::left << pass << std::right << " nodes: " << std::setw(10)
+             << nodes << " T: " << std::fixed << std::setprecision(2)
+             << (cpuTime() - t) << endl;
+    };
+    if (verb >= 2)
+        cout << "c o [aig-rw] start nodes: " << stats.nodes_before
+             << " defs: " << defs.size() << endl;
+
+    // Chain compression first (needs the raw decision-list structure).
+    compress_cube_chains(defs);
+    trace("chain_compress");
+
+    // A single simplify sweep suffices; hash_cons last so new ANDs from
+    // OR/resolution rewrites also share.
+    const size_t n = stats.nodes_before;
+    { NodeRebuildMap cache; cache.reserve(n);
+      for (auto& d : defs) if (d) d = simplify_pass(d, cache); }
+    trace("simplify_pass");
+    { struct_hash.clear(); struct_hash.reserve(n);
+      NodeRebuildMap cache; cache.reserve(n);
+      for (auto& d : defs) if (d) d = hash_cons(d, cache); }
+    trace("hash_cons");
+    if (balance) {
+        balance_defs(defs);
+        trace("balance");
     }
     stats.total_passes++;
 

@@ -28,13 +28,12 @@ CREATE TABLE data (
   backward_time FLOAT,
   backward_defined INT,
 
-  manthan_sampling_time FLOAT,
-  manthan_training_time FLOAT,
-  manthan_repair_time FLOAT,
-  manthan_time FLOAT,
+  cegr_training_time FLOAT,
+  cegr_repair_time FLOAT,
+  cegr_time FLOAT,
   repairs INT,
   repairs_failed INT,
-  manthan_defined INT,
+  cegr_defined INT,
 
   arjun_time FLOAT,
   mem_out INT
@@ -51,11 +50,10 @@ UPDATE data SET extend_time = NULL WHERE extend_time = '';
 UPDATE data SET extend_defined = NULL WHERE extend_defined = '';
 UPDATE data SET backward_time = NULL WHERE backward_time = '';
 UPDATE data SET backward_defined = NULL WHERE backward_defined = '';
-UPDATE data SET manthan_sampling_time = NULL WHERE manthan_sampling_time = '';
-UPDATE data SET manthan_training_time = NULL WHERE manthan_training_time = '';
-UPDATE data SET manthan_repair_time = NULL WHERE manthan_repair_time = '';
-UPDATE data SET manthan_time = NULL WHERE manthan_time = '';
+UPDATE data SET cegr_training_time = NULL WHERE cegr_training_time = '';
+UPDATE data SET cegr_repair_time = NULL WHERE cegr_repair_time = '';
+UPDATE data SET cegr_time = NULL WHERE cegr_time = '';
 UPDATE data SET repairs = NULL WHERE repairs = '';
 UPDATE data SET repairs_failed = NULL WHERE repairs_failed = '';
-UPDATE data SET manthan_defined = NULL WHERE manthan_defined = '';
+UPDATE data SET cegr_defined = NULL WHERE cegr_defined = '';
 UPDATE data SET arjun_time = NULL WHERE arjun_time = '';

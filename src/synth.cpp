@@ -37,7 +37,7 @@ using std::cout;
 using std::endl;
 
 namespace {
-using MC = ArjunNS::Arjun::ManthanConf;
+using MC = ArjunNS::Arjun::CegrConf;
 
 template<typename T> T parse_val(const string& s) {
     T v{}; std::from_chars(s.data(), s.data() + s.size(), v); return v;
@@ -59,9 +59,9 @@ using PT = SynthRunner::ParamType;
 struct ParamDef { PT type; std::function<void(MC&, const string&)> setter; };
 
 const std::map<string, ParamDef> param_table = {
-    {"max_repairs",              {PT::UInt,   [](MC& c, const string& v) { c.max_repairs              = parse_val<uint32_t>(v); }}},
+    {"max_repairs",              {PT::Int,    [](MC& c, const string& v) { c.max_repairs              = parse_val<int64_t>(v); }}},
+    {"restart",                  {PT::UInt,   [](MC& c, const string& v) { c.restart                  = parse_val<uint32_t>(v); }}},
     {"samples",                  {PT::UInt,   [](MC& c, const string& v) { c.samples                  = parse_val<uint32_t>(v); }}},
-    {"samples_ccnr",             {PT::UInt,   [](MC& c, const string& v) { c.samples_ccnr             = parse_val<uint32_t>(v); }}},
     {"min_gain_split",           {PT::Double, [](MC& c, const string& v) { c.min_gain_split           = parse_val<double>(v); }}},
     {"max_depth",                {PT::UInt,   [](MC& c, const string& v) { c.max_depth                = parse_val<uint32_t>(v); }}},
     {"sampler_fixed_conflicts",  {PT::UInt,   [](MC& c, const string& v) { c.sampler_fixed_conflicts  = parse_val<uint32_t>(v); }}},
@@ -69,26 +69,22 @@ const std::map<string, ParamDef> param_table = {
     {"filter_samples",           {PT::Int,    [](MC& c, const string& v) { c.filter_samples           = parse_val<int>(v); }}},
     {"minimize_conflict",        {PT::Int,    [](MC& c, const string& v) { c.minimize_conflict        = parse_val<int>(v); }}},
     {"maxsat_better_ctx",        {PT::Int,    [](MC& c, const string& v) { c.maxsat_better_ctx        = parse_val<int>(v); }}},
-    {"maxsat_order",             {PT::Int,    [](MC& c, const string& v) { c.maxsat_order             = parse_val<int>(v); }}},
-    {"use_all_vars_as_feats",    {PT::Int,    [](MC& c, const string& v) { c.use_all_vars_as_feats    = parse_val<int>(v); }}},
     {"ctx_solver_type",          {PT::Int,    [](MC& c, const string& v) { c.ctx_solver_type          = parse_val<int>(v); }}},
+    {"ctx_light_inproc",         {PT::Int,    [](MC& c, const string& v) { c.ctx_light_inproc         = parse_val<int>(v); }}},
     {"repair_solver_type",       {PT::Int,    [](MC& c, const string& v) { c.repair_solver_type       = parse_val<int>(v); }}},
     {"repair_cache_size",        {PT::Int,    [](MC& c, const string& v) { c.repair_cache_size        = parse_val<int>(v); }}},
-    {"manthan_order",            {PT::Int,    [](MC& c, const string& v) { c.manthan_order            = parse_val<int>(v); }}},
     {"one_repair_per_loop",      {PT::Int,    [](MC& c, const string& v) { c.one_repair_per_loop      = parse_val<int>(v); }}},
     {"force_bw_equal",           {PT::Int,    [](MC& c, const string& v) { c.force_bw_equal           = parse_val<int>(v); }}},
-    {"inv_learnt",               {PT::Int,    [](MC& c, const string& v) { c.inv_learnt               = parse_val<int>(v); }}},
-    {"const_vote_samples",       {PT::UInt,   [](MC& c, const string& v) { c.const_vote_samples       = parse_val<uint32_t>(v); }}},
+    {"inv_guess",                {PT::Int,    [](MC& c, const string& v) { c.inv_guess               = parse_val<int>(v); }}},
+    {"learn_input_only",         {PT::Int,    [](MC& c, const string& v) { c.learn_input_only        = parse_val<int>(v); }}},
+    {"seed",                     {PT::Int,    [](MC& c, const string& v) { c.seed                    = parse_val<int>(v); }}},
     {"stats_every",              {PT::UInt,   [](MC& c, const string& v) { c.stats_every              = parse_val<uint32_t>(v); }}},
     {"detailed_stats_every",     {PT::UInt,   [](MC& c, const string& v) { c.detailed_stats_every     = parse_val<uint32_t>(v); }}},
     {"conflict_drop_y_max",      {PT::UInt,   [](MC& c, const string& v) { c.conflict_drop_y_max      = parse_val<uint32_t>(v); }}},
-    {"conflict_cap_keep",        {PT::UInt,   [](MC& c, const string& v) { c.conflict_cap_keep        = parse_val<uint32_t>(v); }}},
     {"batch_minim_min",          {PT::UInt,   [](MC& c, const string& v) { c.batch_minim_min          = parse_val<uint32_t>(v); }}},
     {"minim_budget_threshold",   {PT::UInt,   [](MC& c, const string& v) { c.minim_budget_threshold   = parse_val<uint32_t>(v); }}},
     {"minim_budget_max",         {PT::UInt,   [](MC& c, const string& v) { c.minim_budget_max         = parse_val<uint32_t>(v); }}},
     {"minim_budget_mult",        {PT::UInt,   [](MC& c, const string& v) { c.minim_budget_mult        = parse_val<uint32_t>(v); }}},
-    {"ccnr_mems_per_sample",     {PT::UInt,   [](MC& c, const string& v) { c.ccnr_mems_per_sample     = parse_val<uint64_t>(v); }}},
-    {"ccnr_per_call_limit",      {PT::UInt,   [](MC& c, const string& v) { c.ccnr_per_call_limit      = parse_val<uint32_t>(v); }}},
     {"cz_high_ratio",            {PT::UInt,   [](MC& c, const string& v) { c.cz_high_ratio            = parse_val<uint32_t>(v); }}},
     {"cz_low_ratio",             {PT::UInt,   [](MC& c, const string& v) { c.cz_low_ratio             = parse_val<uint32_t>(v); }}},
     {"cz_threshold_high",        {PT::UInt,   [](MC& c, const string& v) { c.cz_threshold_high        = parse_val<uint32_t>(v); }}},
@@ -201,7 +197,7 @@ SynthStrategy SynthRunner::parse_one_strategy(const string& raw) {
         }
     }
 
-    if (strat.type != "learn" && strat.type != "bve" && strat.type != "const") {
+    if (strat.type != "learn" && strat.type != "bve" && strat.type != "const" && strat.type != "rnd") {
         cout << "ERROR: unknown strategy type '" << strat.type << "'. Use 'learn', 'bve', or 'const'." << endl;
         exit(EXIT_FAILURE);
     }
@@ -220,7 +216,7 @@ vector<SynthStrategy> SynthRunner::parse_mstrategy(const string& s) {
     return strategies;
 }
 
-ArjunNS::Arjun::ManthanConf SynthRunner::apply_strategy(const ArjunNS::Arjun::ManthanConf& base,
+ArjunNS::Arjun::CegrConf SynthRunner::apply_strategy(const ArjunNS::Arjun::CegrConf& base,
         const SynthStrategy& strat) {
     auto mconf = base;
     if (strat.type == "learn") {
@@ -228,11 +224,13 @@ ArjunNS::Arjun::ManthanConf SynthRunner::apply_strategy(const ArjunNS::Arjun::Ma
         cout << "ERROR: strategy type 'learn' is only supported in EXTRA_SYNTH mode!" << endl;
         exit(EXIT_FAILURE);
 #endif
-        mconf.manthan_base = 0;
+        mconf.cegr_base = 0;
     } else if (strat.type == "const") {
-        mconf.manthan_base = 1;
+        mconf.cegr_base = 1;
     } else if (strat.type == "bve") {
-        mconf.manthan_base = 2;
+        mconf.cegr_base = 2;
+    } else if (strat.type == "rnd") {
+        mconf.cegr_base = 3;
     } else {
         cout << "ERROR: unknown strategy type '" << strat.type << "'" << endl;
         exit(EXIT_FAILURE);
@@ -243,9 +241,9 @@ ArjunNS::Arjun::ManthanConf SynthRunner::apply_strategy(const ArjunNS::Arjun::Ma
     return mconf;
 }
 
-void SynthRunner::run_manthan_strategies(
+void SynthRunner::run_cegr_strategies(
         ArjunNS::SimplifiedCNF& cnf,
-        const ArjunNS::Arjun::ManthanConf& mconf_orig,
+        const ArjunNS::Arjun::CegrConf& mconf_orig,
         const vector<SynthStrategy>& strategies)
 {
     if (strategies.empty()) {
@@ -265,35 +263,23 @@ void SynthRunner::run_manthan_strategies(
         exit(EXIT_FAILURE);
     }
     if (cnf.synth_done()) return;
-    bool prev_hit_max_repairs = false;
+
     for (size_t i = 0; i < strategies.size(); i++) {
         const auto& strat = strategies[i];
         const bool is_last = (i == strategies.size() - 1);
 
         auto mconf = apply_strategy(mconf_orig, strat);
         if (is_last && strat.overrides.count("max_repairs") == 0)
-            mconf.max_repairs = std::numeric_limits<uint32_t>::max();
+            mconf.max_repairs = std::numeric_limits<int32_t>::max();
 
-        // If the previous non-final strategy hit max_repairs without finishing,
-        // reduce the budget for subsequent non-final strategies to avoid wasting
-        // time on strategies that are unlikely to help this instance.
-        if (!is_last && prev_hit_max_repairs) {
-            auto orig = mconf.max_repairs;
-            mconf.max_repairs = std::max(50u, orig / 4);
-            verb_print(1, "[synth] Reducing max_repairs " << orig << " -> " << mconf.max_repairs
-                    << " (previous strategy hit limit without finishing)");
-        }
-
-        verb_print(1, "Running Manthan strategy " << i+1 << "/" << strategies.size()
+        verb_print(1, "Running Cegr strategy " << i+1 << "/" << strategies.size()
             << " -- " << strat.raw << " with max_repairs="
-            << (mconf.max_repairs == std::numeric_limits<uint32_t>::max() ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
-        cnf = arjun->standalone_manthan(std::move(cnf), mconf);
+            << (mconf.max_repairs == std::numeric_limits<int32_t>::max() ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
+        cnf = arjun->standalone_cegr(std::move(cnf), mconf);
         if (cnf.synth_done()) {
-            verb_print(1,"Manthan finished with strategy " << i+1 << "/" << strategies.size()
+            verb_print(1,"Cegr finished with strategy " << i+1 << "/" << strategies.size()
                     << " -- " << strat.raw);
             break;
         }
-        // A non-final strategy that didn't finish likely hit max_repairs
-        if (!is_last) prev_hit_max_repairs = true;
     }
 }

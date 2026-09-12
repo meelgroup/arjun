@@ -3,7 +3,7 @@
 Minimal-independent-set calculator and CNF minimizer. Preprocessor for
 [GANAK](https://github.com/meelgroup/ganak) and
 [ApproxMC](https://github.com/meelgroup/ApproxMC). Also performs
-Boolean-function **synthesis** (Manthan-style counterexample-guided repair)
+Boolean-function **synthesis** (cegr-style counterexample-guided repair)
 for defining relationships between variables.
 
 ## Building
@@ -14,10 +14,16 @@ ALWAYS build with `make -j12` from `build/` — otherwise it's slow.
 cd build && ./build_norm.sh
 ```
 
-Dependencies (cadical, cryptominisat, sbva, treedecomp) are typically sibling
-checkouts under `../` and are pointed at via the cmake configuration already
-present in `build/`. If cmake needs to be re-run, use `scripts/build_norm.sh`
-or `scripts/build_release.sh`.
+Dependencies are sibling checkouts of this repo — arjun is `../arjun`, so
+cryptominisat is `../cryptominisat`, cadical is `../cadical`, and likewise
+`../cadiback`, `../sbva`, `../treedecomp`, `../EvalMaxSAT`, `../ganak`. To read a
+dependency's source or headers, go straight there (e.g.
+`../cryptominisat/src/cryptominisat.h`). NEVER search the filesystem for
+them — no `find /`, no `find ~`; any hit outside `../` is an unrelated copy.
+
+They are pointed at via the cmake configuration already present in `build/`.
+If cmake needs to be re-run, use `scripts/build_norm.sh` or
+`scripts/build_release.sh`.
 
 ## Running
 
@@ -28,9 +34,9 @@ From `build/`:
 ```
 
 Useful top-level flags:
-- `--synth` — enable synthesis (Manthan)
+- `--synth` — enable synthesis (cegr)
 - `--debugsynth` — emit intermediate AIGs (`*-simplified_cnf.aig`,
-  `*-autarky.aig`, `*-manthan.aig`, `*-final.aig`) for debugging
+  `*-autarky.aig`, `*-cegr.aig`, `*-final.aig`) for debugging
 - `--verb N` — verbosity (0–2)
 
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
@@ -58,54 +64,38 @@ From `build/`:
 ./fuzz_synth.py --num 400
 ./fuzz_aig_to_cnf --num 1000
 ./fuzz_aig_rewrite --num 1000
-./fuzz_interp_repair.py --num 400
 ```
 
-All must pass before reporting a change as complete.
-`fuzz_interp_repair.py` forces `--interprepair` on every
-iteration and randomizes the full set of `--interprepair*` knobs, so the
-Craig-interpolant repair path is exercised.
+They are independent, so with enough cores run all three at once (e.g. three
+parallel tool calls in the same message) instead of sequentially.
 
-For anything touching `interp_repair.*` also build the unit test and run
-it (`./test-interp-repair`, also wired into `ctest`).
+All must pass before reporting a change as complete.
 
 ## Source layout (`src/`)
 
 - `arjun.{h,cpp}` — public API, the `AIG` class, and the `SimplifiedCNF`
-  container. AIG nodes are `std::shared_ptr<AIG>` (`aig_ptr`). Every AIG
+  container. AIG nodes are `std::shared_ptr<AIG>` (`aig_lit`). Every AIG
   node carries a monotonic `uint64_t nid` assigned at construction; use
   `nid` for ordering/hashing, never the raw pointer (ASLR makes pointers
   non-deterministic across runs).
-- `manthan.{h,cpp}`, `manthan_learn.{h,cpp}` — counterexample-guided
+- `cegr.{h,cpp}`, `cegr_learn.{h,cpp}` — counterexample-guided
   synthesis / repair loop. Hot path for large benchmarks.
 - `aig_rewrite.{h,cpp}` — structural hashing, CSE, absorption, ITE
-  flattening. Runs before Manthan and between repair rounds.
-- `interp_repair.{h,cpp}` — Craig-interpolant repair for Manthan. A
-  failed repair's UNSAT core is one corner of input space; the McMillan
-  interpolant over the input vars generalises it to the
-  whole must-flip region, so one `compose_or/and` captures many repairs.
-  Interpolants are reconstructed from a cadical proof trace and trimmed
-  to the proof core. A McMillan interpolant CANNOT be wrong: given a
-  valid UNSAT proof of a correctly-built miter it is sound by
-  construction. Any "wrong interpolant" symptom is therefore a bug in
-  the miter / partition / mini-CNF setup, never in the interpolation
-  itself — debug by SAT-checking the A-only and B-only clause subsets.
-  Any double-checking of an interpolant (A→I / g≡N miters) is a
-  bug-hunting safety net only and belongs under `SLOW_DEBUG_DO`. The
-  pass returns nullptr (caller then uses the plain conflict-clause
-  branch) only when there is nothing to interpolate (empty conflict, no
-  input lits in conflict), the AIG exceeds the node cap, or the per-call
-  conflict budget is exhausted. See the `--interprepair*` flags in
-  `main.cpp`.
+  flattening. Runs before cegr and between repair rounds.
+- `interpolant.{h,cpp}` — definition extraction by Craig interpolation
+  over a doubled CNF (used by the `--backward` and `--extend` passes),
+  plus the `InterpTracerMcMillan` McMillan-interpolant tracer that
+  reconstructs interpolants from a cadical proof trace. See the
+  `--interprebuildevery` flag in `main.cpp`.
 - `aig_to_cnf.{h,cpp}` — Tseitin encoding with fanout-based helper
   suppression, k-ary AND/OR fusion, ITE / MUX3 detection.
 - `puura.{h,cpp}` — SharpSAT-td-derived simplification.
 - `autarky.cpp`, `backward.cpp`, `extend.cpp`, `minimize.cpp`,
   `unate_def.cpp` — independent-set extraction passes.
 - `metasolver.h`, `metasolver2.h`, `cachedsolver.h` — SAT-solver wrappers
-  used by Manthan.
-- `test_aig_rewrite.cpp`, `test_aig_to_cnf.cpp`, `test-synth.cpp`,
-  `test_interp_repair.cpp` — correctness checkers.
+  used by cegr.
+- `test_aig_rewrite.cpp`, `test_aig_to_cnf.cpp`, `test-synth.cpp` —
+  correctness checkers.
 - `aig_fuzzer.cpp`, `aig_to_cnf_fuzzer.cpp` — fuzzers.
 
 ## Determinism
@@ -120,7 +110,7 @@ For AIG nodes, order/hash on `AIG::nid` via the `aig_nid_less` comparator
 
 When `--debugsynth` is passed, intermediate AIGs are written next to the
 input CNF with suffixes `-simplified_cnf.aig`, `-autarky.aig`,
-`-minim_idep_synt.aig`, `-manthan.aig`, `-final.aig`. `test-synth` verifies
+`-minim_idep_synt.aig`, `-cegr.aig`, `-final.aig`. `test-synth` verifies
 each stage's AIG against the original CNF and is invoked automatically by
 `fuzz_synth.py`.
 

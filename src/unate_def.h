@@ -69,10 +69,8 @@ struct UnateDefEqStats {
     // average winning depth metric.
     uint64_t winning_depth_sum = 0;
     uint64_t winning_depth_max = 0;
-    // Of `hits`, how many had the winning L in the related-inputs prefix
-    // (i.e. an input sharing at least one clause with `test`). The
-    // remainder (hits - hits_in_related) came from the fall-through tail.
-    // Tells us whether the structural pre-ordering actually pays off.
+    // Of `hits`, how many had the winning L in the related prefix (vs the
+    // fall-through tail) — tells us if the structural pre-ordering pays off.
     uint64_t hits_in_related = 0;
     // Of `hits`, how many used a non-input as the definer L. Counts the
     // payoff of the non-input extension.
@@ -115,6 +113,16 @@ class Unate {
         uint32_t new_units = 0;
         uint32_t tested_num = 0;
         double my_time = 0.0;
+        uint64_t confl_at_start = 0;
+        bool budget_hit = false;
+
+        [[nodiscard]] uint64_t confl_used() const { return s->get_sum_conflicts() - confl_at_start; }
+        bool out_of_budget() {
+            if (conf.unate_def_max_confl_total == 0) return false;
+            if (confl_used() < conf.unate_def_max_confl_total) return false;
+            budget_hit = true;
+            return true;
+        }
 
         // Pass-section helpers, in the order synthesis_unate_def uses them.
         CMSat::Lit get_true_lit();
@@ -138,16 +146,15 @@ class Unate {
         // Cycle-safety cache for non-input L: dep-recursive lookups on
         // l_orig.var(). Invalidated after every successful commit since the
         // new def changes the dep graph.
-        std::map<uint32_t, std::vector<uint32_t>> eq_deps_cache;
+        ArjunNS::DepCache eq_deps_cache;
         bool eq_enabled = false;
         uint32_t eq_attempts_since_last_hit = 0;
         uint32_t eq_new_defs = 0;
         double eq_my_time = 0.0;                       // wall-clock baseline for verb_print
 
-        // Try to express `test` as a single input literal (test = L or test = ~L),
-        // using the two SAT witnesses from the standard-unate flips
-        // (projected to input vars in input_vals[0/1]). Returns true if a
-        // definition was found and committed to `*cnf_ptr`.
+        // Try to express `test` as a single literal (test = L or test = ~L)
+        // using the two flip witnesses in input_vals[0/1]. Returns true if a
+        // def was found and committed to `*cnf_ptr`.
         bool try_eq_unate_def(uint32_t test);
 
         UnateDefEqStats eq_stats;

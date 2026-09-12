@@ -1,6 +1,5 @@
 /******************************************
 Copyright (C) 2020 Mate Soos
-
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
@@ -39,7 +38,7 @@ THE SOFTWARE.
 #include <cryptominisat5/cryptominisat.h>
 #include <mpfr.h>
 
-namespace ArjunInt { class Manthan; }
+namespace ArjunInt { class Cegr; }
 
 namespace ArjunNS {
 
@@ -51,9 +50,7 @@ template<class Solver> class AIGToCNF;
 
 // Underlying AIG node. Nodes are positive-output only — the complement of a
 // reference is carried on the referring edge (see aig_lit below), not on the
-// node. This matches the AIGER literature convention: every fanin of an AND
-// gate may be independently complemented, but the AND's own output is never
-// inverted.
+// node (the AIGER convention).
 using aig_node_ptr = std::shared_ptr<AIG>;
 
 enum class AIGT {t_and, t_lit, t_const};
@@ -66,41 +63,33 @@ inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
     }
 }
 
-// Signed reference to an AIG node: the edge carries a complement bit.
-// Every consumer that needs to refer to an AIG (as a root, as a fanin of an
-// AND gate, as a value stored in defs[], as a key in a map, etc.) uses
-// `aig_lit` rather than a bare shared_ptr. This is the only place where
-// complementation lives in the new representation.
-//
-// `aig_ptr` is an alias for `aig_lit` for backwards-compatible naming.
+// Signed reference to an AIG node: the edge carries the complement bit. All
+// references (roots, AND fanins, defs[] values, map keys) use `aig_lit`, not a
+// bare shared_ptr — this is the only place complementation lives.
 struct aig_lit {
     aig_node_ptr node;
     bool neg;
 
-    aig_lit() : node(nullptr), neg(false) {}
-    aig_lit(std::nullptr_t) : node(nullptr), neg(false) {}
-    aig_lit(aig_node_ptr n) : node(std::move(n)), neg(false) {}
-    aig_lit(aig_node_ptr n, bool ng) : node(std::move(n)), neg(ng) {}
+    explicit aig_lit() : node(nullptr), neg(false) {}
+    explicit aig_lit(std::nullptr_t) : node(nullptr), neg(false) {}
+    explicit aig_lit(aig_node_ptr n) : node(std::move(n)), neg(false) {}
+    explicit aig_lit(aig_node_ptr n, bool ng) : node(std::move(n)), neg(ng) {}
 
     AIG* operator->() const { return node.get(); }
     AIG& operator*() const { return *node; }
-    AIG* get() const { return node.get(); }
+    [[nodiscard]] AIG* get() const { return node.get(); }
     explicit operator bool() const { return (bool)node; }
 
-    aig_lit operator~() const { return {node, !neg}; }
+    aig_lit operator~() const { return aig_lit(node, !neg); }
 
     bool operator==(const aig_lit& o) const { return node == o.node && neg == o.neg; }
     bool operator!=(const aig_lit& o) const { return !(*this == o); }
     bool operator==(std::nullptr_t) const { return node == nullptr; }
     bool operator!=(std::nullptr_t) const { return node != nullptr; }
-    // Defined out-of-line below class AIG, since the body needs access to
-    // AIG::nid which isn't complete here. Ordering on the monotonic nid
-    // (not the raw pointer) is required for cross-run determinism — see
-    // CLAUDE.md's determinism rule.
+    // Out-of-line below AIG (body needs the complete AIG::nid). Orders on nid,
+    // not the raw pointer, for cross-run determinism (see CLAUDE.md).
     bool operator<(const aig_lit& o) const;
 };
-
-using aig_ptr = aig_lit;
 
 class AIG {
 public:
@@ -109,11 +98,8 @@ public:
     AIG(const AIG&) = delete;
     AIG& operator=(const AIG&) = delete;
 
-    // Monotonically increasing id assigned at construction time. Used as a
-    // deterministic ordering/hash key in place of the raw shared_ptr address,
-    // which varies run-to-run and machine-to-machine due to ASLR / allocator
-    // variance. Assignment order reflects construction order, which is
-    // itself deterministic given deterministic inputs.
+    // Monotonic id assigned at construction. Deterministic ordering/hash key in
+    // place of the raw shared_ptr address, which ASLR randomises run-to-run.
     uint64_t nid;
 
     [[nodiscard]] bool invariants() const {
@@ -138,8 +124,8 @@ public:
     // vals = input variable assignments
     // aig = AIG to evaluate (signed edge; carries its own complement bit)
     // defs = known definitions of variables (each def is a signed edge)
-    static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs, std::map<aig_ptr, CMSat::lbool>& cache) {
-        std::function<CMSat::lbool(const aig_ptr&)> sub_eval = [&](const aig_ptr& aig) -> CMSat::lbool {
+    static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_lit& a, const std::vector<aig_lit>& defs, std::map<aig_lit, CMSat::lbool>& cache) {
+        std::function<CMSat::lbool(const aig_lit&)> sub_eval = [&](const aig_lit& aig) -> CMSat::lbool {
             if (cache.count(aig)) return cache.at(aig);
             assert(aig->invariants());
             if (aig->type == AIGT::t_lit) {
@@ -159,7 +145,11 @@ public:
                 return ret;
             }
 
-            if (aig->type == AIGT::t_const) return CMSat::boolToLBool(!aig.neg);
+            if (aig->type == AIGT::t_const) {
+                const CMSat::lbool ret = CMSat::boolToLBool(!aig.neg);
+                cache[aig] = ret;
+                return ret;
+            }
 
             if (aig->type == AIGT::t_and) {
                 const auto lv = sub_eval(aig->l);
@@ -176,28 +166,27 @@ public:
         return sub_eval(a);
     }
 
-    static aig_ptr new_lit(CMSat::Lit l) {
+    static aig_lit new_lit(CMSat::Lit l) {
         return new_lit(l.var(), l.sign());
     }
 
     // Creates a positive t_lit node for `var` and returns a signed edge to it.
     // The node itself has no `neg`; the sign lives on the returned aig_lit.
-    static aig_ptr new_lit(uint32_t v, bool neg = false) {
+    static aig_lit new_lit(uint32_t v, bool neg = false) {
         auto n = std::make_shared<AIG>();
         n->type = AIGT::t_lit;
         n->var = v;
         return aig_lit(n, neg);
     }
 
-    static aig_ptr new_const(bool val) {
-        // Single positive t_const node representing TRUE. Callers ask for FALSE
-        // via a complemented edge.
+    static aig_lit new_const(bool val) {
+        // Fresh positive t_const node meaning TRUE; FALSE is a complemented edge.
         auto n = std::make_shared<AIG>();
         n->type = AIGT::t_const;
         return aig_lit(n, !val);
     }
 
-    static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
+    static aig_lit new_ite(const aig_lit& l, const aig_lit& r, CMSat::Lit b) {
         assert(l != nullptr);
         assert(r != nullptr);
         // ITE(b, x, x) = x
@@ -208,15 +197,15 @@ public:
 
     // Logical NOT is an edge-only operation in the new representation: flip
     // the complement bit of the reference, don't create a new node.
-    static aig_ptr new_not(const aig_ptr& a) {
+    static aig_lit new_not(const aig_lit& a) {
         assert(a != nullptr);
         return ~a;
     }
 
-    static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
+    static aig_lit new_and(const aig_lit& l, const aig_lit& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
 
-        auto apply_out_neg = [&](const aig_ptr& v) -> aig_ptr {
+        auto apply_out_neg = [&](const aig_lit& v) -> aig_lit {
             return neg ? ~v : v;
         };
 
@@ -273,7 +262,7 @@ public:
         return aig_lit(ret, neg);
     }
 
-    static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
+    static aig_lit new_or(const aig_lit& l, const aig_lit& r, bool neg = false) {
         // OR(a, b) = ~AND(~a, ~b). The result's output complement collapses
         // with the caller-provided `neg`.
         return new_and(~l, ~r, !neg);
@@ -286,7 +275,7 @@ public:
     using AIGKey = std::tuple<AIGT, uint32_t, uint64_t, bool, uint64_t, bool>;
 
 
-    static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
+    static aig_lit new_ite(const aig_lit& l, const aig_lit& r, const aig_lit& b) {
         assert(l != nullptr);
         assert(r != nullptr);
         assert(b != nullptr);
@@ -298,7 +287,7 @@ public:
         return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
-    static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
+    static void get_dependent_vars(const aig_lit& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
         const uint64_t epoch = next_visit_epoch();
         std::vector<const AIG*> stack;
         const AIG* root = aig_orig.get();
@@ -319,12 +308,10 @@ public:
         }
     }
 
-    // Fast variant: writes into caller-owned scratch buffers to avoid
-    // per-call heap allocation. is_dep is a bitmap indexed by var id;
-    // dep_list receives the vars newly marked. stack is used for DFS and
-    // left dirty on exit so the caller can reuse its capacity. Visited
-    // state is tracked via AIG::visit_epoch; each call bumps the epoch.
-    static void get_dependent_vars(const aig_ptr& aig_orig,
+    // Fast variant using caller-owned scratch buffers (no per-call alloc):
+    // is_dep bitmap by var id, dep_list gets newly-marked vars, stack for DFS
+    // (left dirty for reuse). Visited state via AIG::visit_epoch.
+    static void get_dependent_vars(const aig_lit& aig_orig,
                                    std::vector<char>& is_dep,
                                    std::vector<uint32_t>& dep_list,
                                    std::vector<const AIG*>& stack,
@@ -353,36 +340,60 @@ public:
         }
     }
 
-    static std::vector<aig_ptr> deep_clone_vec(const std::vector<aig_ptr>& aigs) {
-        std::vector<aig_ptr> ret;
+    // Evaluate the AIG under an assignment supplied per t_lit var by
+    // `leaf_val` (must return 0/1). Iterative, lazy, short-circuiting.
+    // Nodes already visited under `epoch` reuse their cached
+    // value, so structure shared across many roots evaluates once per pass.
+    // Get a fresh epoch (next_visit_epoch()) once per assignment; `stack` is
+    // caller-owned scratch (left dirty for reuse).
+    template<typename F>
+    static bool evaluate_epoch(const aig_lit& root_e, const uint64_t epoch,
+                               std::vector<const AIG*>& stack, F&& leaf_val) {
+        const AIG* root = root_e.get();
+        if (root->visit_epoch != epoch) {
+            stack.clear();
+            stack.push_back(root);
+            while (!stack.empty()) {
+                const AIG* a = stack.back();
+                if (a->visit_epoch == epoch) { stack.pop_back(); continue; }
+                if (a->type != AIGT::t_and) {
+                    a->eval_val = (a->type == AIGT::t_const) ? 1 : leaf_val(a->var);
+                    a->visit_epoch = epoch;
+                    stack.pop_back();
+                    continue;
+                }
+                const AIG* la = a->l.get();
+                if (la->visit_epoch != epoch) { stack.push_back(la); continue; }
+                if (((la->eval_val != 0) != a->l.neg) == false) {
+                    a->eval_val = 0;
+                    a->visit_epoch = epoch;
+                    stack.pop_back();
+                    continue;
+                }
+                const AIG* ra = a->r.get();
+                if (ra->visit_epoch != epoch) { stack.push_back(ra); continue; }
+                a->eval_val = ((ra->eval_val != 0) != a->r.neg) ? 1 : 0;
+                a->visit_epoch = epoch;
+                stack.pop_back();
+            }
+        }
+        return (root->eval_val != 0) != root_e.neg;
+    }
+
+    static std::vector<aig_lit> deep_clone_vec(const std::vector<aig_lit>& aigs) {
+        std::vector<aig_lit> ret;
         std::unordered_map<const AIG*, aig_node_ptr> cache;
         ret.reserve(aigs.size());
-        for (const auto& aig : aigs) {
-            if (aig == nullptr) {
-                ret.push_back(nullptr);
-                continue;
-            }
-            ret.push_back(deep_clone(aig, cache));
-        }
+        for (const auto& aig : aigs) ret.push_back(deep_clone(aig, cache));
         return ret;
     }
 
-    template<typename T>
-    static T deep_clone_map(const T& aigs) {
-        T ret;
-        std::unordered_map<const AIG*, aig_node_ptr> cache;
-        for (auto& [x, aig] : aigs) ret[x] = deep_clone(aig, cache);
-        return ret;
-    }
-
-    static aig_ptr deep_clone(const aig_ptr& aig, std::unordered_map<const AIG*, aig_node_ptr>& cache) {
-        if (!aig) return nullptr;
+    static aig_lit deep_clone(const aig_lit& aig, std::unordered_map<const AIG*, aig_node_ptr>& cache) {
+        if (!aig) return aig_lit(nullptr);
 
         // Clones nodes, not signed edges. Sign is carried on the returned edge.
         std::function<aig_node_ptr(const AIG*)> clone_node =
             [&](const AIG* src) -> aig_node_ptr {
-                if (!src) return nullptr;
-
                 auto it = cache.find(src);
                 if (it != cache.end()) return it->second;
 
@@ -401,21 +412,17 @@ public:
         return aig_lit(clone_node(aig.get()), aig.neg);
     }
 
-    // Generic recursive traversal function that applies a function to each AIG
-    // node (post-edge). Each edge in the walk is passed to `func` as an
-    // aig_lit. De-dup is by signed-edge: two references with opposite sign
-    // visit the same underlying node twice (the sign can matter to callers).
+    // Apply `func` to each AIG edge (as aig_lit). De-dup is by signed-edge:
+    // opposite-sign references to one node are visited twice.
     template<typename Func>
-    static void traverse(const aig_ptr& aig, Func&& func) {
+    static void traverse(const aig_lit& aig, Func&& func) {
         if (!aig) return;
-        std::set<aig_ptr> visited;
+        std::set<aig_lit> visited;
         traverse_helper(aig, std::forward<Func>(func), visited);
     }
 
     template<typename Func>
-    static void traverse_helper(const aig_ptr& node, Func&& func, std::set<aig_ptr>& visited) {
-        if (!node) return;
-
+    static void traverse_helper(const aig_lit& node, Func&& func, std::set<aig_lit>& visited) {
         if (visited.count(node)) return;
         visited.insert(node);
 
@@ -436,21 +443,16 @@ public:
         else return ~x;
     }
 
-    // Post-order traversal producing a caller-defined fold. Visitor signature:
-    //   (type, var, left_result*, right_result*)
-    // The visitor is always invoked as if the edge were positive; transform
-    // applies the outer edge sign ITSELF by negating the visitor's result
-    // (`operator~` for aig_lit and CMSat::Lit, logical NOT for bool). Child
-    // results already reflect their own edge sign.
-    //
-    // Caching is per NODE rather than per signed edge. Without this, a shared
-    // sub-AIG referenced both positively and negatively would invoke the
-    // visitor twice — duplicating any side effects (e.g. Tseitin clauses).
+    // Post-order fold. Visitor(type, var, left_result*, right_result*) is
+    // always called as if the edge were positive; transform applies the outer
+    // sign itself by negating the result. Caching is per NODE (not signed
+    // edge) so a shared sub-AIG isn't visited twice, which would duplicate
+    // side effects (e.g. Tseitin clauses).
     template<typename ResultType, typename Visitor>
     static ResultType transform(
-        const aig_ptr& aig,
+        const aig_lit& aig,
         Visitor&& visitor,
-        std::map<aig_ptr, ResultType>& cache
+        std::map<aig_lit, ResultType>& cache
     ) {
         assert(aig);
 
@@ -473,19 +475,14 @@ public:
         return aig.neg ? negate_result(result) : result;
     }
 
-    // Tseitin-encode `aig` into `solver`. Walks once (shared subgraphs are
-    // encoded once via the cache), allocating one fresh helper var per AND
-    // node and emitting the standard Tseitin clauses
-    //     (~h ∨ l), (~h ∨ r), (h ∨ ~l ∨ ~r).
-    // Leaf vars go through `leaf_to_lit`. The const-TRUE literal is supplied
-    // lazily via `true_lit_fn` (called only if the AIG references a const),
-    // so callers can defer allocating their TRUE helper. `Solver` must expose
-    // `new_var()`, `nVars()`, and `add_clause(const std::vector<CMSat::Lit>&)`.
-    // `visit_count` and `and_emit_count`, when non-null, are incremented per
-    // visited node and per emitted helper respectively.
+    // Tseitin-encode `aig` into `solver` (one helper per AND, cached so shared
+    // subgraphs encode once): (~h∨l), (~h∨r), (h∨~l∨~r). Leaves via
+    // `leaf_to_lit`; const-TRUE lazily via `true_lit_fn`. `Solver` needs
+    // new_var()/nVars()/add_clause(). visit_count / and_emit_count, if
+    // non-null, count visited nodes / emitted helpers.
     template<typename Solver, typename TrueFn, typename LeafFn>
     static CMSat::Lit tseitin_encode(
-        const aig_ptr& aig,
+        const aig_lit& aig,
         Solver& solver,
         TrueFn&& true_lit_fn,
         LeafFn&& leaf_to_lit,
@@ -510,7 +507,7 @@ public:
             assert(false && "Unhandled AIG type in tseitin_encode");
             std::abort();
         };
-        std::map<aig_ptr, CMSat::Lit> cache;
+        std::map<aig_lit, CMSat::Lit> cache;
         return transform<CMSat::Lit>(aig, visit, cache);
     }
 
@@ -518,43 +515,40 @@ public:
     // preserving structure. `out_negate` flips the top edge. Used to remap
     // AIGs across var spaces (NEW↔ORIG, y→y_hat, etc.).
     template<typename LitFn>
-    static aig_ptr translate_leaves(
-        const aig_ptr& aig,
+    static aig_lit translate_leaves(
+        const aig_lit& aig,
         LitFn&& lit_of_var,
         bool out_negate = false
     ) {
         auto visit = [&](AIGT type, uint32_t var,
-                         const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+                         const aig_lit* left, const aig_lit* right) -> aig_lit {
             if (type == AIGT::t_const) return new_const(true);
             if (type == AIGT::t_lit)   return new_lit(lit_of_var(var));
             if (type == AIGT::t_and)   return new_and(*left, *right);
             assert(false && "Unhandled AIG type in translate_leaves");
             std::abort();
         };
-        std::map<aig_ptr, aig_ptr> cache;
-        aig_ptr ret = transform<aig_ptr>(aig, visit, cache);
+        std::map<aig_lit, aig_lit> cache;
+        aig_lit ret = transform<aig_lit>(aig, visit, cache);
         return out_negate ? ~ret : ret;
     }
 
-    // Fast variant: iterative DFS using AIG::visit_epoch marking. Shared
-    // structure across the input vector is counted only once. Used by the
-    // rewriter's hot paths where the std::set<aig_ptr> version was the
-    // dominant cost on large (500k+ node) AIGs.
-    static size_t count_aig_nodes_fast(const std::vector<aig_ptr>& roots);
-    static size_t count_aig_nodes_fast(const aig_ptr& root);
-    // Batch-counting helper: marks newly seen nodes against `epoch` and
-    // adds their count to `count`. Callers obtain `epoch` once via
-    // next_visit_epoch() and then invoke this for each root to union-count.
+    // Fast variant: iterative DFS with AIG::visit_epoch marking; shared
+    // structure counted once. For rewriter hot paths on large (500k+) AIGs.
+    static size_t count_aig_nodes_fast(const std::vector<aig_lit>& roots);
+    static size_t count_aig_nodes_fast(const aig_lit& root);
+    // Batch-count helper: marks nodes unseen this `epoch` and adds to `count`.
+    // Callers get `epoch` once, then call per root to union-count.
     static void count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_t& count);
-    static void simplify_aigs(uint32_t verb, std::vector<aig_ptr>& defs);
-    static aig_ptr simplify_aig(aig_ptr aig);
-    static aig_ptr rewrite_aig(const aig_ptr& aig);
+    static void simplify_aigs(uint32_t verb, std::vector<aig_lit>& defs);
+    static aig_lit simplify_aig(aig_lit aig);
+    static aig_lit rewrite_aig(const aig_lit& aig);
 
-    friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
+    friend std::ostream& operator<<(std::ostream& out, const aig_lit& aig);
     friend class AIGManager;
     friend class AIGRewriter;
     friend class SimplifiedCNF;
-    friend class ArjunInt::Manthan;
+    friend class ArjunInt::Cegr;
     template<class Solver> friend class AIGToCNF;
 
     AIGT type = AIGT::t_const;
@@ -566,35 +560,31 @@ public:
     aig_lit r;
 
 private:
-    static aig_ptr simplify(aig_ptr aig);
-    static aig_ptr simplify(aig_ptr aig, std::unordered_map<const AIG*, aig_lit>& cache);
-    static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_node_ptr>& cse_map, std::unordered_map<const AIG*, aig_node_ptr>& cache);
+    static aig_lit simplify_cse(aig_lit aig, std::map<AIGKey, aig_node_ptr>& cse_map, std::unordered_map<const AIG*, aig_node_ptr>& cache);
 
-    // Epoch-based visited marker used by DFS traversals (get_dependent_vars,
-    // count_aig_nodes, ...) in place of an unordered_set<const AIG*>. A
-    // traversal bumps the global counter once via next_visit_epoch() and
-    // then marks nodes by assignment; membership is an integer compare.
+    // Epoch-based visited marker for DFS traversals (replaces
+    // unordered_set<const AIG*>): bump epoch once, mark by assignment, test
+    // membership by integer compare.
     mutable uint64_t visit_epoch = 0;
+    // Value cache for evaluate_epoch, valid only under the epoch it was
+    // written with (the value of the POSITIVE node; edge signs applied by
+    // the reader).
+    mutable uint8_t eval_val = 0;
     static uint64_t next_visit_epoch() {
         static uint64_t counter = 0;
         return ++counter;
     }
 
-    // Counter backing the `nid` field. A plain static counter is sufficient
-    // because AIG construction is not thread-parallel in our pipeline, and
-    // determinism only requires that within a single process the issued ids
-    // are a deterministic function of construction order. Not reset across
-    // runs, but each run starts from 0, which is what callers rely on.
+    // Counter backing `nid`. A plain static counter suffices: construction is
+    // single-threaded, and each run starts from 0.
     static uint64_t next_nid() {
         static uint64_t counter = 0;
         return ++counter;
     }
 };
 
-// Deterministic ordering for aig_lit (a.k.a. aig_ptr) — keyed on the node's
-// monotonic nid rather than its raw address. std::map<aig_lit,…> and
-// std::set<aig_lit> rely on this to stay stable across runs (raw pointers
-// are ASLR-randomised).
+// Deterministic aig_lit ordering: keyed on the node's monotonic nid, not its
+// ASLR-randomised address, so std::map/std::set stay stable across runs.
 inline bool aig_lit::operator<(const aig_lit& o) const {
     const uint64_t a = node ? node->nid : 0;
     const uint64_t b = o.node ? o.node->nid : 0;
@@ -602,7 +592,7 @@ inline bool aig_lit::operator<(const aig_lit& o) const {
     return (int)neg < (int)o.neg;
 }
 
-inline std::ostream& operator<<(std::ostream& out, const aig_ptr& aig) {
+inline std::ostream& operator<<(std::ostream& out, const aig_lit& aig) {
     if (!aig) {
         out << "NULL_AIG";
         return out;
@@ -635,10 +625,7 @@ public:
     }
 
     AIGManager& operator=(const AIGManager& other) {
-        if (this != &other) {
-            clear();
-            const_true_node = other.const_true_node;
-        }
+        const_true_node = other.const_true_node;
         return *this;
     }
 
@@ -646,20 +633,14 @@ public:
         const_true_node = other.const_true_node;
     }
 
-    [[nodiscard]] aig_ptr new_const(bool val) const {
+    [[nodiscard]] aig_lit new_const(bool val) const {
         return aig_lit(const_true_node, !val);
     }
 
 
 private:
-    void clear() {
-        const_true_node = nullptr;
-    }
-
-    // Shared positive TRUE const node. Managers copied from others share the
-    // same node so comparisons stay pointer-equal across copies. Note: there
-    // can still be other TRUE nodes elsewhere (e.g. created by AIG::new_const);
-    // this manager is a convenience, not a canonical source.
+    // Shared positive TRUE const node (copies share it, so comparisons stay
+    // pointer-equal). A convenience — AIG::new_const can make other TRUE nodes.
     aig_node_ptr const_true_node = nullptr;
 };
 
@@ -1105,6 +1086,357 @@ public:
     [[nodiscard]] bool exact() const final { return false; }
 };
 
+// Only accepted format: a+bi or a-bi (spaces around '+'/'-' are optional).
+// Both the real part and the imaginary part must always be present.
+// Examples: "1/2+4i", "1/2 + 4i", "1/2-4i", "-1/2+4i"
+// The weight string must end with the DIMACS terminator " 0".
+inline bool parse_complex_mpq(const std::string& str, FMpq& real_out,
+    FMpq& imag_out, const uint32_t line_no) {
+  uint32_t at = 0;
+  if (!real_out.parse_mpq(str, at, line_no)) return false;
+  FMpq::skip_whitespace(str, at);
+  if (at >= str.size() || (str[at] != '+' && str[at] != '-')) {
+    std::cerr << "ERROR: complex weight requires both real and imaginary parts (a+bi or a-bi),"
+              << " missing '+' or '-' at line " << line_no << std::endl;
+    return false;
+  }
+  bool pos = (str[at] == '+');
+  at++;
+  FMpq::skip_whitespace(str, at);
+  if (!imag_out.parse_mpq(str, at, line_no)) return false;
+  FMpq::skip_whitespace(str, at);
+  if (at >= str.size() || str[at] != 'i') {
+    std::cerr << "ERROR: Expected 'i' after imaginary part at line " << line_no << std::endl;
+    return false;
+  }
+  at++;
+  if (!pos) imag_out *= FMpq(-1);
+  return FMpq::check_end_of_weight(str, at, line_no);
+}
+
+class FComplex final : public CMSat::Field {
+public:
+    mpq_class real;
+    mpq_class imag;
+    FComplex() : real(0), imag(0) {}
+    FComplex(const mpq_class& _real, const mpq_class& _imag) : real(_real), imag(_imag) {}
+    FComplex(const FComplex& other) : real(other.real), imag(other.imag) {}
+
+    Field& operator=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        real = od.real;
+        imag = od.imag;
+        return *this;
+    }
+
+    Field& operator+=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        real += od.real;
+        imag += od.imag;
+        return *this;
+    }
+
+    [[nodiscard]] std::unique_ptr<Field> add(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        return std::make_unique<FComplex>(real+od.real, imag+od.imag);
+    }
+
+    Field& operator-=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        real -= od.real;
+        imag -= od.imag;
+        return *this;
+    }
+
+    Field& operator*=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        mpq_class r = real;
+        mpq_class i = imag;
+        real = r*od.real-i*od.imag;
+        imag = r*od.imag+i*od.real;
+        return *this;
+    }
+
+    Field& operator/=(const Field& other) final {
+        const auto& od = static_cast<const FComplex&>(other);
+        if (od.is_zero()) throw std::runtime_error("Division by zero");
+        mpq_class div = od.imag*od.imag+od.real*od.real;
+        mpq_class r = real;
+        mpq_class i = imag;
+        real = r*od.real+i*od.imag;
+        real /= div;
+        imag = i*od.real-r*od.imag;
+        imag /= div;
+        return *this;
+    }
+
+    bool operator==(const Field& other) const final {
+        const auto& od = static_cast<const FComplex&>(other);
+        return real == od.real && imag == od.imag;
+    }
+
+    std::ostream& display(std::ostream& os) const final {
+        os << real << " + " << imag << "i";
+        return os;
+    }
+
+    [[nodiscard]] std::unique_ptr<Field> dup() const final {
+        return std::make_unique<FComplex>(real, imag);
+    }
+
+    [[nodiscard]] bool is_zero() const final { return real == 0 && imag == 0; }
+    [[nodiscard]] bool is_one() const final { return real == 1 && imag == 0; }
+    void set_zero() final { real = 0; imag = 0; }
+    void set_one() final { real = 1; imag = 0; }
+
+    uint64_t helper(const mpz_class& v) const {
+      return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
+    }
+
+    [[nodiscard]] uint64_t bytes_used() const final {
+      return sizeof(FComplex) +
+          helper(imag.get_num()) + helper(imag.get_den()) +
+          helper(real.get_num()) + helper(real.get_den());
+    }
+
+    bool parse(const std::string& str, const uint32_t line_no) final {
+        FMpq _real, _imag;
+        if (!parse_complex_mpq(str, _real, _imag, line_no)) return false;
+        real = _real.get_val();
+        imag = _imag.get_val();
+        return true;
+   }
+};
+
+class FGenComplex final : public CMSat::FieldGen {
+public:
+    ~FGenComplex() final = default;
+    [[nodiscard]] std::unique_ptr<CMSat::Field> zero() const final {
+        return std::make_unique<FComplex>();
+    }
+
+    [[nodiscard]] std::unique_ptr<CMSat::Field> one() const final {
+        return std::make_unique<FComplex>(1, 0);
+    }
+
+    [[nodiscard]] std::unique_ptr<FieldGen> dup() const final {
+        return std::make_unique<FGenComplex>();
+    }
+
+    [[nodiscard]] bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
+      const auto& ad = static_cast<const FComplex&>(a);
+      const auto& bd = static_cast<const FComplex&>(b);
+      return ad.real > bd.real || (ad.real == bd.real && ad.imag > bd.imag);
+    }
+
+    [[nodiscard]] bool weighted() const final { return true; }
+    [[nodiscard]] bool exact() const final { return true; }
+};
+
+class MPFComplex final : public CMSat::Field {
+public:
+    mpfr_t real;
+    mpfr_t imag;
+
+    explicit MPFComplex(mpfr_prec_t prec) {
+      mpfr_init2(real, prec);
+      mpfr_init2(imag, prec);
+      mpfr_set_si(real, 0, MPFR_RNDN);
+      mpfr_set_si(imag, 0, MPFR_RNDN);
+    }
+    explicit MPFComplex(long r, long i, mpfr_prec_t prec) {
+      mpfr_init2(real, prec);
+      mpfr_init2(imag, prec);
+      mpfr_set_si(real, r, MPFR_RNDN);
+      mpfr_set_si(imag, i, MPFR_RNDN);
+    }
+    explicit MPFComplex(const mpfr_t& _real, const mpfr_t& _imag) {
+      assert(mpfr_get_prec(_real) == mpfr_get_prec(_imag));
+      const auto prec = mpfr_get_prec(_real);
+      mpfr_init2(real, prec);
+      mpfr_init2(imag, prec);
+      mpfr_set(real, _real, MPFR_RNDN);
+      mpfr_set(imag, _imag, MPFR_RNDN);
+    }
+    explicit MPFComplex(const MPFComplex& other) : MPFComplex(other.real, other.imag) {}
+    ~MPFComplex() final {
+      mpfr_clear(real);
+      mpfr_clear(imag);
+    }
+
+    Field& operator=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        mpfr_set(real, od.real, MPFR_RNDN);
+        mpfr_set(imag, od.imag, MPFR_RNDN);
+        return *this;
+    }
+
+    Field& operator+=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        mpfr_add(real, real, od.real, MPFR_RNDN);
+        mpfr_add(imag, imag, od.imag, MPFR_RNDN);
+        return *this;
+    }
+
+    [[nodiscard]] std::unique_ptr<Field> add(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        const auto prec = mpfr_get_prec(real);
+        mpfr_t r;
+        mpfr_t i;
+        mpfr_init2(r, prec);
+        mpfr_init2(i, prec);
+        mpfr_add(r, real, od.real, MPFR_RNDN);
+        mpfr_add(i, imag, od.imag, MPFR_RNDN);
+        auto ret = std::make_unique<MPFComplex>(r, i);
+        mpfr_clear(r);
+        mpfr_clear(i);
+        return ret;
+    }
+
+    Field& operator-=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        mpfr_sub(real, real, od.real, MPFR_RNDN);
+        mpfr_sub(imag, imag, od.imag, MPFR_RNDN);
+        return *this;
+    }
+
+    Field& operator*=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        const auto prec = mpfr_get_prec(real);
+        mpfr_t r;
+        mpfr_init2(r, prec);
+        mpfr_t tmp;
+        mpfr_init2(tmp, prec);
+        mpfr_t tmp2;
+        mpfr_init2(tmp2, prec);
+
+        mpfr_mul(tmp, real, od.real, MPFR_RNDN);
+        mpfr_mul(tmp2, imag, od.imag, MPFR_RNDN);
+        mpfr_sub(r, tmp, tmp2, MPFR_RNDN);
+
+        mpfr_mul(tmp, real, od.imag, MPFR_RNDN);
+        mpfr_mul(tmp2, imag, od.real, MPFR_RNDN);
+        mpfr_add(imag, tmp, tmp2, MPFR_RNDN);
+
+        mpfr_set(real, r, MPFR_RNDN);
+        mpfr_clear(r);
+        mpfr_clear(tmp);
+        mpfr_clear(tmp2);
+        return *this;
+    }
+
+    Field& operator/=(const Field& other) final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        if (od.is_zero()) throw std::runtime_error("Division by zero");
+        const auto prec = mpfr_get_prec(real);
+        mpfr_t r;
+        mpfr_init2(r, prec);
+        mpfr_t tmp;
+        mpfr_init2(tmp, prec);
+        mpfr_t tmp2;
+        mpfr_init2(tmp2, prec);
+
+        mpfr_t div;
+        mpfr_init2(div, prec);
+        mpfr_mul(tmp, od.imag, od.imag, MPFR_RNDN);
+        mpfr_mul(tmp2, od.real, od.real, MPFR_RNDN);
+        mpfr_add(div, tmp, tmp2, MPFR_RNDN);
+
+        mpfr_mul(tmp, real, od.real, MPFR_RNDN);
+        mpfr_mul(tmp2, imag, od.imag, MPFR_RNDN);
+        mpfr_add(r, tmp, tmp2, MPFR_RNDN);
+        mpfr_div(r, r, div, MPFR_RNDN);
+
+        mpfr_mul(tmp, imag, od.real, MPFR_RNDN);
+        mpfr_mul(tmp2, real, od.imag, MPFR_RNDN);
+        mpfr_sub(imag, tmp, tmp2, MPFR_RNDN);
+        mpfr_div(imag, imag, div, MPFR_RNDN);
+        mpfr_set(real, r, MPFR_RNDN);
+
+        mpfr_clear(div);
+        mpfr_clear(r);
+        mpfr_clear(tmp);
+        mpfr_clear(tmp2);
+        return *this;
+    }
+
+    bool operator==(const Field& other) const final {
+        const auto& od = static_cast<const MPFComplex&>(other);
+        return mpfr_equal_p(real, od.real) && mpfr_equal_p(imag, od.imag);
+    }
+
+    std::ostream& display(std::ostream& os) const final {
+      char* tmp = nullptr;
+      mpfr_asprintf(&tmp, "%.8Re + %.8Rei", real, imag);
+      os << tmp;
+      mpfr_free_str(tmp);
+      return os;
+    }
+
+    [[nodiscard]] std::unique_ptr<Field> dup() const final {
+        return std::make_unique<MPFComplex>(real, imag);
+    }
+
+    [[nodiscard]] bool is_zero() const final {
+        return mpfr_zero_p(real) && mpfr_zero_p(imag);
+    }
+
+    [[nodiscard]] bool is_one() const final {
+        return mpfr_cmp_si(real, 1) == 0 && mpfr_zero_p(imag);
+    }
+
+    void set_zero() final {
+      mpfr_set_si(real, 0, MPFR_RNDN);
+      mpfr_set_si(imag, 0, MPFR_RNDN);
+    }
+
+    void set_one() final {
+      mpfr_set_si(real, 1, MPFR_RNDN);
+      mpfr_set_si(imag, 0, MPFR_RNDN);
+    }
+
+    [[nodiscard]] uint64_t bytes_used() const final {
+      return sizeof(MPFComplex) + mpfr_memory_usage(real) + mpfr_memory_usage(imag);
+    }
+
+    bool parse(const std::string& str, const uint32_t line_no) final {
+        FMpq _real, _imag;
+        if (!parse_complex_mpq(str, _real, _imag, line_no)) return false;
+        mpfr_set_q(real, _real.get_val().get_mpq_t(), MPFR_RNDN);
+        mpfr_set_q(imag, _imag.get_val().get_mpq_t(), MPFR_RNDN);
+        return true;
+   }
+};
+
+class FGenMPFComplex final : public CMSat::FieldGen {
+public:
+    mpfr_prec_t prec;
+    ~FGenMPFComplex() final = default;
+    explicit FGenMPFComplex(mpfr_prec_t _prec) : prec(_prec) {}
+    [[nodiscard]] std::unique_ptr<CMSat::Field> zero() const final {
+        return std::make_unique<MPFComplex>(prec);
+    }
+
+    [[nodiscard]] std::unique_ptr<CMSat::Field> one() const final {
+        return std::make_unique<MPFComplex>(1, 0, prec);
+    }
+
+    [[nodiscard]] std::unique_ptr<FieldGen> dup() const final {
+        return std::make_unique<FGenMPFComplex>(prec);
+    }
+
+    [[nodiscard]] bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
+      const auto& ad = static_cast<const MPFComplex&>(a);
+      const auto& bd = static_cast<const MPFComplex&>(b);
+      const int real_cmp = mpfr_cmp(ad.real, bd.real);
+      if (real_cmp != 0) return real_cmp > 0;
+      return mpfr_cmp(ad.imag, bd.imag) > 0;
+    }
+
+    [[nodiscard]] bool weighted() const final { return true; }
+    [[nodiscard]] bool exact() const final { return false; }
+};
+
 struct SimpConf {
     bool oracle_extra = true;
     bool oracle_vivify = true;
@@ -1114,16 +1446,23 @@ struct SimpConf {
     int iter1 = 2;
     int iter2 = 2;
     int bve_grow_iter1 = 0;
-    int bve_grow_iter2 = 6;
-    bool bve_grow_nonstop = false;
+    int bve_grow_iter2 = 0;
     bool do_bve = true;
     bool appmc = false;
     int bve_too_large_resolvent = 12;
+    int bve_too_large_resolvent2 = 4; // 2nd pass simplification
     int do_subs_with_resolvent_clauses = 1;
     bool do_backbone_puura = true;
     int64_t backbone_max_confl = -1;
     int weaken_limit = 8000;
-    int puura_strategy = 1;
+    int distill_rem_level = 2;
+    int puura_distill = 1;
+    int xor_gate_find_maxsize = 12;
+    int64_t bve_occ_cutoff = 0;
+    int64_t bve_occ_prod_cutoff = 10000;
+    int64_t bve_cls_max_size = 0;
+    int bve_sched_only_touched = 0;
+    int64_t backbone_ccnr_mems_limitM = 300;
 };
 
 struct VarTypes {
@@ -1134,6 +1473,22 @@ struct VarTypes {
     void unpack_to(std::set<uint32_t>& i, std::set<uint32_t>& t, std::set<uint32_t>& b) {
         i = std::move(input); t = std::move(to_define); b = std::move(backward_defined);
     }
+};
+
+// Memo + scratch for get_dependent_vars_recursive. The scratch buffers are
+// sized to the number of orig vars, so re-allocating and re-zeroing them per
+// call dominates on large CNFs -- reuse one of these across calls instead.
+// epoch_counter must travel with merge_stamp, otherwise stale stamps collide.
+struct DepCache {
+    // std::map, not unordered_map: entry refs must stay stable across inserts.
+    std::map<uint32_t, std::vector<uint32_t>> cache;
+    std::vector<char> is_dep;
+    std::vector<uint64_t> merge_stamp;
+    std::vector<uint32_t> aig_dep_list;
+    std::vector<const AIG*> ag_stack;
+    uint64_t epoch_counter = 0;
+
+    void clear() { cache.clear(); }
 };
 
 class SimplifiedCNF {
@@ -1172,7 +1527,6 @@ public:
             orig_clauses = other.orig_clauses;
             orig_sampl_vars = other.orig_sampl_vars;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
-            skolem_defined_vars = other.skolem_defined_vars;
         }
 
         return *this;
@@ -1222,7 +1576,7 @@ public:
         assert(!need_aig);
         assert(nvars == 0);
         assert(clauses.empty());
-        assert(red_clauses.empty());
+        ;
         assert(defs.empty());
         assert(opt_sampl_vars.empty());
         assert(sampl_vars.empty());
@@ -1243,10 +1597,10 @@ public:
     [[nodiscard]] bool check_orig_sampl_vars_undefined() const;
     [[nodiscard]] bool defs_invariant() const;
 
-    // Get the orig vars this AIG depends on, recursively expanding defined vars.
-    // Returns a sorted, unique vector. Cache entries are stored by std::map so
-    // references remain stable across inserts (needed by the internal helper).
-    std::vector<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::vector<uint32_t>>& cache) const;
+    // Orig vars this AIG depends on, recursively expanding defined vars. Unique
+    // but NOT sorted. The returned ref points into dc.cache; it stays valid
+    // until dc is cleared or destroyed.
+    const std::vector<uint32_t>& get_dependent_vars_recursive(const uint32_t orig_v, DepCache& dc) const;
 
     [[nodiscard]] bool check_aig_cycles() const;
     void check_self_dependency() const;
@@ -1311,9 +1665,7 @@ public:
               std::cout << "       Maybe you have two 'c p show' lines in your file?" << std::endl;
               exit(EXIT_FAILURE);
             }
-            assert(!sampl_vars_set && "Sampling variables have already been set!");
             assert(sampl_vars.empty());
-            assert(sampl_vars_set == false);
             assert(opt_sampl_vars_set == false);
             assert(opt_sampl_vars.empty());
         }
@@ -1343,22 +1695,23 @@ public:
         set_opt_sampl_vars(opt_sampl_vars2);
     }
 
+    void check_field_weighted() const {
+        if (fg->weighted()) return;
+        std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
+        exit(EXIT_FAILURE);
+    }
     void set_multiplier_weight(const std::unique_ptr<CMSat::Field>& m) {
         *multiplier_weight = *m;
     }
     [[nodiscard]] const auto& get_multiplier_weight() const { return multiplier_weight; }
     [[nodiscard]] auto get_lit_weight(CMSat::Lit lit) const {
         assert(weighted);
-        if (!fg->weighted()) {
-          std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(EXIT_FAILURE);
-        }
+        check_field_weighted();
         assert(lit.var() < nVars());
         auto it = weights.find(lit.var());
-        if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->one());
-        if (!lit.sign())
-            return std::unique_ptr<CMSat::Field>(it->second.pos->dup());
-        return std::unique_ptr<CMSat::Field>(it->second.neg->dup());
+        if (it == weights.end()) return fg->one();
+        if (!lit.sign()) return it->second.pos->dup();
+        return it->second.neg->dup();
     }
     void unset_var_weight(uint32_t v) {
         assert(v < nVars());
@@ -1372,10 +1725,7 @@ public:
     void set_lit_weight(CMSat::Lit lit, const CMSat::Field& w) {
         check_var(lit.var());
         assert(weighted);
-        if (!fg->weighted()) {
-          std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(EXIT_FAILURE);
-        }
+        check_field_weighted();
         assert(lit.var() < nVars());
         auto it = weights.find(lit.var());
         if (it == weights.end()) {
@@ -1436,10 +1786,7 @@ public:
 
     [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);
-        if (!fg->weighted()) {
-          std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(EXIT_FAILURE);
-        }
+        check_field_weighted();
         return weights.count(v) > 0;
     }
 
@@ -1466,7 +1813,7 @@ public:
             const std::vector<uint32_t>& new_sampl_vars,
             const std::vector<uint32_t>& empty_sampling_vars);
 
-    CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_ptr, CMSat::lbool>& cache ) const;
+    CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_lit, CMSat::lbool>& cache ) const;
 
     // returns in CNF (NEW VARS) the dependencies of each variable
     // input is also NEW VARS
@@ -1486,7 +1833,7 @@ public:
 
     [[nodiscard]] std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
-    void map_aigs_to_orig(const std::vector<aig_ptr>& aigs, const uint32_t max_num_vars,
+    void map_aigs_to_orig(const std::vector<aig_lit>& aigs, const uint32_t max_num_vars,
             std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map = std::nullopt);
 
     SimplifiedCNF get_cnf(
@@ -1551,36 +1898,19 @@ public:
     }
 
     // Get AIG definition for a variable (in ORIG numbering)
-    [[nodiscard]] const aig_ptr& get_def(uint32_t v) const {
+    [[nodiscard]] const aig_lit& get_def(uint32_t v) const {
         assert(v < defs.size());
         return defs[v];
     }
 
-    void set_def(const uint32_t v_orig, const aig_ptr& def);
-
-    // Like set_def, but marks `v_orig` as committed via a Skolem function
-    // (replacement keeps F sat) rather than a unique-defining function
-    // (y = AIG in every F-sat model). This affects get_var_types: a Skolem-
-    // committed var is always categorized as backward-synth-defined, never
-    // extend-defined, even if its AIG happens to depend on inputs only or is
-    // a constant. Manthan must build a formula and y_hat for it so the
-    // commit's constraints (e.g. y_test = H_test) propagate; treating it as
-    // an input would silently drop those, breaking later commits whose
-    // miters relied on them.
-    void set_def_skolem(uint32_t v_orig, const aig_ptr& def);
-
-    [[nodiscard]] bool is_skolem_defined(uint32_t v_orig) const {
-        return skolem_defined_vars.count(v_orig) > 0;
-    }
-
+    void set_def(const uint32_t v_orig, const aig_lit& def);
     void clear_orig_sampl_defs();
     void simplify_aigs(const uint32_t verb = 0) {
         assert(need_aig);
         AIG::simplify_aigs(verb, defs);
     }
-    void rewrite_aigs(const uint32_t verb = 0);
+    void rewrite_aigs(const uint32_t verb = 0, bool balance = false);
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
-    void import_candidate_functions(const std::string& fname, int verb = 0);
     void check_red_cls_deriveable() const;
 
 private:
@@ -1617,18 +1947,13 @@ private:
     std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
                                                     // does NOT map to vars NOT in the CNF
     AIGManager aig_mng; // only for const true/false
-    std::vector<aig_ptr> defs; //Definition of variables in terms of AIG. ORIGINAL number space.
+    std::vector<aig_lit> defs; //Definition of variables in terms of AIG. ORIGINAL number space.
                                //Size is the original number of variables, ALWAYS
                                //Full of nullptr-s in case synthesis is not needed
 
     void check_synth_funs_randomly() const;
     bool orig_sampl_vars_set = false;
     std::set<uint32_t> orig_sampl_vars;
-    // Vars whose def in `defs` was set via set_def_skolem — i.e. committed
-    // as a Skolem (replacement-only) rather than a unique-defining function.
-    // get_var_types reads this to keep them out of extend_defined_vars even
-    // when the AIG happens to look input-only or constant.
-    std::set<uint32_t> skolem_defined_vars;
     // debug
     std::vector<std::vector<CMSat::Lit>> orig_clauses;
 };
@@ -1662,49 +1987,50 @@ public:
         bool do_renumber = true;
         bool do_autarky = true;
     };
-    struct ManthanConf {
-        ManthanConf() = default;
-        ManthanConf(const ManthanConf& other) = default;
+    struct InterpConf {
+        uint32_t interp_rebuild_every = 50;
+        uint32_t interp_max_confl = 30000;
+        uint64_t interp_rebuild_max_confl = 500000;
+    };
+    struct CegrConf {
+        CegrConf() = default;
+        CegrConf(const CegrConf& other) = default;
+
+        // Learning a skolem function
         int filter_samples = 1;
-        /// Also to try:
         uint32_t samples = 5000;
-        uint32_t samples_ccnr = 0;
         uint32_t min_leaf_size = 10;
-        // TODO experiment with 0.003
         double min_gain_split = 0.001;
         uint32_t max_depth = 0;
+        int learn_input_only = 0; // ML features are the input vars only, no already-defined y vars
+
         uint32_t sampler_fixed_conflicts = 100;
         int minimize_conflict = 1;
-        std::string write_manthan_cnf;
+        std::string write_cegr_cnf;
         int maxsat_better_ctx = 0;
-        int maxsat_order = 1;
         int do_unique_input_samples = 1;
-        int use_all_vars_as_feats = 1;
         int ctx_solver_type = 1;
+        int ctx_light_inproc = 2; // cex_solver: 1 = no lucky-under-assumptions, 2 = also no inprobing/congruence/sweep/factor
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
-        int manthan_base = 0;
-        int manthan_order = 0;
+        int cegr_base = 0;
+        int seed = -1; // -1 = inherit the global --seed
         int one_repair_per_loop = 0;
         int force_bw_equal = 1;
-        int inv_learnt = 0;
-        uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
+        int inv_guess = 0;
+        int32_t max_repairs = std::numeric_limits<int32_t>::max();
+        uint32_t restart = 10000;
         int check_repair = 0;
-        std::string ganak_binary;
+        std::string ganak_binary; // to check if count of error formula is strictly monotonic
 
         // Hard-coded cutoffs now configurable
-        uint32_t const_vote_samples = 100;   // const_functions: majority voting samples
         uint32_t stats_every = 40;          // print stats every N repair loops
         uint32_t detailed_stats_every = 600;// print detailed stats every N repair loops
         uint32_t conflict_drop_y_max = 25;  // max conflict size to try dropping y-vars
-        uint32_t conflict_cap_keep = 30;    // keep this many literals when capping
         uint32_t batch_minim_min = 6;       // min conflict size for batch minimization
         uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
         uint32_t minim_budget_max = 150;    // max minimization solver calls
         uint32_t minim_budget_mult = 4;     // budget = conflict.size * mult (up to max)
-        // CCNR sampling constants
-        uint64_t ccnr_mems_per_sample = 100000; // total CCNR mem budget per sample
-        uint32_t ccnr_per_call_limit = 50000;   // per-call step limit for CCNR local_search
         // Adaptive consecutive cost-zero break threshold
         uint32_t cz_high_ratio = 3;         // cost_zero > tot_repaired * cz_high_ratio triggers tight threshold
         uint32_t cz_low_ratio = 2;          // cost_zero > tot_repaired * cz_low_ratio triggers medium threshold
@@ -1712,64 +2038,20 @@ public:
         uint32_t cz_threshold_mid = 2;      // consecutive cost-zero break threshold (medium ratio)
         uint32_t cz_threshold_low = 3;      // consecutive cost-zero break threshold (low ratio)
 
-        // Craig-interpolant repair: use a McMillan interpolant (input
-        // vars only) as the compose_or/and branch instead of the AND of
-        // conflict literals. 0=off, 1=every repair, 2=only when conflict
-        // size >= interp_repair_min_conflict.
-        int interp_repair = 0;
-        // Mode 2 only: minimum conflict size to interpolate.
-        uint32_t interp_repair_min_conflict = 4;
-        // Cap interpolant AIG node count; bigger falls back. 0=no cap.
-        uint32_t interp_repair_max_aig_nodes = 0;
-        // rewrite_aig of the guard AIG before Tseitin encoding.
-        // 0=simplify only, 1=+rewrite_aig. On by default: the guard is
-        // composed into the candidate formula and Tseitin-encoded into the
-        // cex solver on every interpolant repair, so a smaller guard
-        // directly slows cex-solver growth between rebuilds. (The flag name
-        // keeps the historical "b1" spelling for backward compatibility.)
-        int interp_repair_b1_rewrite = 1;
-        // Pass --group-cse to AIGToCNF when encoding the guard: dedups
-        // Tseitin helpers for structurally identical sub-AIGs. On by
-        // default for the same cex-solver-growth reason as b1_rewrite.
-        int interp_repair_group_cse = 1;
-        // Per-call cadical conflict budget for the interp solve. 0=no limit.
-        uint64_t interp_repair_max_conflicts = 0;
-        // Adaptive per-var gating: blacklist a var when its mean
-        // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
-        int interp_repair_adaptive_gate = 1;
-        double interp_repair_adaptive_ratio_skip = 8.0;
-        uint32_t interp_repair_adaptive_skip_window = 20;
-        // Progress-based per-var gating: once a variable has been repaired
-        // via the interpolant branch this many times and still needs more
-        // repairs, the interpolant is not generalising for it, so fall
-        // back permanently to the conflict clause for that variable.
-        // 0 disables the gate.
-        uint32_t interp_repair_progress_max_var_repairs = 100;
-
-        // Brute-force synthesis (--bruteforcesynth 1): enumerate every
-        // consistent X assignment via a forbid-clause loop, tabulate y
-        // values per SAT model, build per-y decision trees.
-        //
-        // Upper bound on |orig_sampl_cnf| (after the minim pre-pass).
-        // Each undet y allocates a 2^N truth table, so raising this past
-        // ~20 will OOM. Above the threshold brute_force_synth declines and
-        // the caller falls back to Manthan.
+        // Brute-force synthesis (--bruteforcesynth 1). Max |orig_sampl_cnf|; each undet y allocates a 2^N table, so >~20 OOMs.
         uint32_t brute_force_synth_threshold = 16;
+        int brute_force_synth_minim = 1;         // dry-run backward minim to shrink the enum domain before enumerating
+        uint32_t brute_force_synth_minim_max = 40; // only try the minim pre-pass when |orig_sampl_cnf| is at most this
 
-        // If set, run a dry-run backward minim on orig_sampl_cnf in the
-        // *current* (post-preproc, post-AIG-rewrite) CNF before the
-        // enumeration. The transforms can introduce dependencies among
-        // orig sampling vars that didn't exist at initial minim time;
-        // shrinking the enum domain makes the 2^N table much cheaper
-        // and lets more cases stay under brute_force_synth_threshold.
-        int brute_force_synth_minim = 1;
-
-        // Only attempt the minim pre-pass when |orig_sampl_cnf| is at
-        // most this. The backward minim solves a doubled-CNF SAT per
-        // candidate var, so on a large sampling set it is expensive and
-        // unlikely to shrink below brute_force_synth_threshold anyway — skip
-        // it there and let the threshold release_assert fire.
-        uint32_t brute_force_synth_minim_max = 40;
+        std::string cegr_base_str() const {
+            switch (cegr_base) {
+                case 0: return "[LEARN]";
+                case 1: return "[CONST]";
+                case 2: return "[BVE]";
+                case 3: return "[RND]";
+                default: return "[UNKNOWN]";
+            }
+        }
     };
 
     struct IndepInfo {
@@ -1780,31 +2062,23 @@ public:
 
     /// Standalone functions
     ///
-    IndepInfo standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep);
-    void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
-    void standalone_backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& manthan_conf);
-    void standalone_extend_sampl_set(SimplifiedCNF& cnf);
-    bool standalone_check_extend(const SimplifiedCNF& cnf);
-    void standalone_unsat_define(SimplifiedCNF& cnf);
+    IndepInfo standalone_minimize_indep_info(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep);
+    void standalone_minimize_indep(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep);
+    void standalone_backward_round_synth(SimplifiedCNF& cnf, const InterpConf& iconf);
+    void standalone_extend_sampl_set(SimplifiedCNF& cnf, const InterpConf& iconf);
+    bool standalone_check_extend(const SimplifiedCNF& cnf, const InterpConf& iconf);
+    void standalone_extend_synth(SimplifiedCNF& cnf, const InterpConf& iconf);
     void standalone_unate_def(SimplifiedCNF& cnf);
     void standalone_elim_to_file(SimplifiedCNF& cnf,
-            const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
+            const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
     void standalone_backbone(SimplifiedCNF& cnf);
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
-    SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
-    // Brute-force synthesis: enumerate every consistent X
-    // assignment via a forbid-clause SAT loop, build per-y decision
-    // trees. Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold
-    // (after the optional minim pre-pass); otherwise returns the CNF
-    // unchanged (synth_done() stays false) so the caller can fall back
-    // to Manthan. ManthanConf is kept for API parity with
-    // standalone_manthan; brute_force_synth only reads its brute_force_synth_*
-    // fields.
-    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
+    SimplifiedCNF standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& cegr_conf);
+    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
     //Set config
@@ -1813,7 +2087,6 @@ public:
     void set_intree(bool intree);
     void set_simp(int simp);
     void set_bve_pre_simplify(bool bve_pre_simp);
-    void set_incidence_count(uint32_t incidence_count);
     void set_or_gate_based(bool or_gate_based);
     void set_xor_gates_based(bool xor_gates_based);
     void set_probe_based(bool probe_based);
@@ -1823,11 +2096,13 @@ public:
     void set_find_xors(bool find_xors);
     void set_ite_gate_based(bool ite_gate_based);
     void set_irreg_gate_based(const bool irreg_gate_based);
-    //void set_polar_mode(CMSat::PolarityMode mode);
     void set_no_gates_below(double no_gates_below);
     void set_specified_order_fname(std::string specified_order_fname);
+    void set_dump_restart_aig(std::string dump_restart_aig);
     void set_weighted(const bool);
     void set_extend_max_confl(uint32_t extend_max_confl);
+    void set_unate_def_max_confl(uint32_t unate_def_max_confl);
+    void set_unate_def_max_confl_total(uint32_t unate_def_max_confl_total);
     void set_unate_def_eq(int unate_def_eq);
     void set_unate_def_eq_max_per_var(uint32_t unate_def_eq_max_per_var);
     void set_unate_def_eq_max_confl(uint32_t unate_def_eq_max_confl);
@@ -1841,12 +2116,12 @@ public:
     //Get config
     [[nodiscard]] uint32_t get_verb() const;
     [[nodiscard]] std::string get_specified_order_fname() const;
+    [[nodiscard]] std::string get_dump_restart_aig() const;
     [[nodiscard]] double get_no_gates_below() const;
     [[nodiscard]] int get_simp() const;
     [[nodiscard]] bool get_distill() const;
     [[nodiscard]] bool get_intree() const;
     [[nodiscard]] bool get_bve_pre_simplify() const;
-    [[nodiscard]] uint32_t get_incidence_count() const;
     [[nodiscard]] bool get_or_gate_based() const;
     [[nodiscard]] bool get_xor_gates_based() const;
     [[nodiscard]] bool get_probe_based() const;
@@ -1857,6 +2132,8 @@ public:
     [[nodiscard]] bool get_ite_gate_based() const;
     [[nodiscard]] bool get_irreg_gate_based() const;
     [[nodiscard]] uint32_t get_extend_max_confl() const;
+    [[nodiscard]] uint32_t get_unate_def_max_confl() const;
+    [[nodiscard]] uint32_t get_unate_def_max_confl_total() const;
     [[nodiscard]] int get_unate_def_eq() const;
     [[nodiscard]] uint32_t get_unate_def_eq_max_per_var() const;
     [[nodiscard]] uint32_t get_unate_def_eq_max_confl() const;
@@ -1876,10 +2153,8 @@ private:
 namespace std {
 template<> struct hash<ArjunNS::aig_lit> {
     size_t operator()(const ArjunNS::aig_lit& a) const noexcept {
-        // Hash on the monotonic nid + edge sign. Using the raw pointer
-        // would make bucket layout ASLR-dependent, and while lookup-only
-        // uses are fine, any future iteration over such a map would leak
-        // non-determinism — see CLAUDE.md.
+        // Hash on monotonic nid + edge sign, not the raw pointer, whose
+        // ASLR-dependent buckets would leak non-determinism (see CLAUDE.md).
         const uint64_t nid = a.node ? a.node->nid : 0;
         return std::hash<uint64_t>{}(nid) ^ (a.neg ? 0x9e3779b97f4a7c15ULL : 0);
     }

@@ -23,13 +23,11 @@ THE SOFTWARE.
 /*
  * Pure C ABI for Arjun (SimplifiedCNF + standalone preprocessing).
  *
- * Variables are 0-indexed (as in SimplifiedCNF). Clause literals use the
- * DIMACS convention: signed nonzero ints, positive = positive literal on
- * variable |lit|-1, negative = negated literal on variable |lit|-1.
+ * Variables are 0-indexed; clause literals use DIMACS convention (signed
+ * nonzero ints, |lit|-1 is the variable, sign = negation).
  *
- * All functions that may fail return int (0 = success, nonzero = failure)
- * and leave a thread-local error string retrievable via arjun_last_error().
- * Functions returning a pointer return NULL on failure.
+ * Functions that may fail return int (0 = success) and set a thread-local
+ * error string (arjun_last_error()); pointer-returning ones return NULL.
  */
 
 #ifndef ARJUN_C_H
@@ -138,9 +136,8 @@ int arjun_simpcnf_set_lit_weight(arjun_simpcnf_t* c, int32_t lit,
 int arjun_simpcnf_set_sampl_vars(arjun_simpcnf_t* c,
                                  const uint32_t* vars, size_t n_vars);
 
-/* Return a NEWLY-OWNED copy of the multiplier weight (Arjun preprocessing
- * sometimes folds a constant factor into here that must be multiplied with
- * the eventual Ganak count). Caller must arjun_field_free() the result. */
+/* Return a NEWLY-OWNED copy of the multiplier weight (a constant factor to
+ * multiply with the eventual Ganak count). Caller must arjun_field_free(). */
 arjun_field_t* arjun_simpcnf_get_multiplier_weight(const arjun_simpcnf_t* c);
 
 /* ----------------------------------------------------------------- */

@@ -23,7 +23,7 @@ Typical usage:
     # assertion text.
     cat > /tmp/oracle.sh <<'SH'
     #!/bin/bash
-    out=$(timeout 30 /path/to/arjun --verb 0 --synthmore ... "$1" 2>&1)
+    out=$(timeout 30 /path/to/arjun --verb 0 --synth ... "$1" 2>&1)
     if [[ "$out" == *"Assertion \`incorrect.empty()'"* ]]; then
         exit 0
     fi

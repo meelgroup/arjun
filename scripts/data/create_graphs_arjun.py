@@ -15,7 +15,7 @@ RESET = "\033[0m"
 
 DB = "data.sqlite3"
 TABLE = "arjun"
-TIMEOUT = 1800  # seconds used for PAR2 / scatter timeout
+TIMEOUT = 1800  # the run timeout, in seconds. PAR2 charges 2x this per unsolved
 TMP_DIR = "tmp"
 
 # arjun_sha1 is NULL for non-arjun solvers (e.g. CADET), so fall back to the
@@ -29,6 +29,8 @@ SOLVE_TIME_EXPR = "(CASE WHEN solver='cadet' THEN timeout_t ELSE arjun_time END)
 
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
+    # "out-synth-1587721-6", # CADET
+
     # "out-synth-1068169-0",
     # "out-synth-1296625-", # lots of memory (9GB)
     # "out-synth-1286344-0", # 4.5GB memory, improvements but no AIG speedup
@@ -45,11 +47,37 @@ only_dirs = [
     # "out-synth-1583187-0", # interpolation, cadet-style (turned off)
     # "out-synth-1583187-5", # interpolation, cadet-style
     # "out-synth-1587721-0", # whatever
-    "out-synth-1587721-6", # CADET
     # "out-synth-1595974-5", # ALWAYS ON INTERPOLATION
     # "out-synth-1595974-", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
-    "out-synth-1652067-0", # inprocessing with "cadet" turned OFF
+    # "out-synth-1652067-0", # inprocessing with "cadet" turned OFF
     # "out-synth-1652067-2", # inprocessing with cadet
+    # "out-synth-1595974-4", # check interpolation
+    # "out-synth-1595974-0", # check interpolation
+    # "out-synth-1859870-0", # AI slop cleanup
+    # "out-synth-1595974-0", # old system where interpolant was with picosat and MyTracer
+    # "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
+    # "out-synth-1903613-2", # restarts between cegr & ITE chain rewrite
+    "out-synth-1903613-1", # restarts between cegr & ITE chain rewrite
+    # "out-synth-1903613-2", # restarts between cegr & ITE chain rewrite
+    # "out-synth-1914059-0", # more rewrite
+    # "out-synth-1925733-0", # faster y_hat recompute, persistent conflict minim SAT solver
+    # "out-synth-1932323-0", # reorder CEGAR variable order on-the-fly
+    # "out-synth-1943539-0", # reorder churn prevention
+    # "out-synth-1945355-0", # vsids and some other checks
+    # "out-synth-1945355-5", # vsids and some other checks
+    # "out-synth-1945355-", # vsids and some other checks
+    # "out-synth-1957159-2", # cleanup
+    # "out-synth-1965186-0", # polarity that's easier?
+    # "out-synth-1995325-0", # rnd strategy
+    # "out-synth-2248210-0", # new CMS, new CaDiCaL
+    # "out-synth-2253327-0", # stupid idea about unate + no-unate
+    # "out-synth-2261154-0", # "develop" CMS, but with CaDiCaL 3.0.1 lucky issue fixed
+    # "out-synth-2263789-0", # fixing up the distill with new cadical
+    # "out-synth-2263789-2", # fixing up the distill with new cadical
+    # "out-synth-2272478-4", # even better maybe
+    "out-synth-2273894-3", # limit unate
+
+    # "out-synth-1367674-0", # before unate-eq
 ]
 # -------------------------------------------------------------
 
@@ -247,11 +275,20 @@ def print_summary_tables(table_todo, fname_like, full=False):
     dirs = ",".join("'" + d + "'" for d, _ in table_todo)
     vers = ",".join("'" + v + "'" for _, v in table_todo)
 
+    #PAR2 charges an unsolved instance 2x the timeout. Only meaningful over a
+    #set that includes the unsolved ones -- restricted to solved instances the
+    #coalesce never fires and it degenerates into the mean time over whatever
+    #each config happened to solve, which *punishes* solving more hard
+    #instances. So that table gets an honestly-named average instead.
+    par2_col = (f"CAST(ROUND(sum(coalesce({SOLVE_TIME_EXPR},{2*TIMEOUT}))/COUNT(*),0)"
+                " AS INTEGER)", "PAR2")
+    avg_t_col = (f"CAST(ROUND(sum({SOLVE_TIME_EXPR})/COUNT(*),0) AS INTEGER)",
+                 "avg-T-solved")
+
     compact_cols = [
         ("dirname",                                                      "dirname"),
         ("MIN(timeout_call)",                                            "call"),
         (f"sum({SOLVE_TIME_EXPR} IS NOT NULL)",                          "solved"),
-        (f"CAST(ROUND(sum(coalesce({SOLVE_TIME_EXPR},{TIMEOUT}))/COUNT(*),0) AS INTEGER)", "PAR2"),
         ("CAST(ROUND(median(timeout_mem),0) AS INTEGER)",                "med memMB"),
         ("sum(mem_out)",                                                 "mem_out"),
         ("sum(signal == 11)",                                            "sigSEGV"),
@@ -268,22 +305,22 @@ def print_summary_tables(table_todo, fname_like, full=False):
         ("CAST(median(extend_defined) AS INTEGER)",                      "med-ext-def"),
         ("CAST(ROUND(median(backward_time), 2) AS REAL)",                "med-backw-T"),
         ("CAST(median(backward_defined) AS INTEGER)",                    "med-backw-def"),
-        ("CAST(ROUND(median(manthan_training_time),2) AS REAL)",         "med-mant-tr-T"),
-        ("CAST(ROUND(median(manthan_repair_time),2) AS REAL)",           "med-mant-rep-T"),
-        ("CAST(ROUND(median(manthan_time), 2) AS REAL)",                 "med-manth-T"),
+        ("CAST(ROUND(median(cegr_repair_time),2) AS REAL)",           "med-mant-rep-T"),
+        ("CAST(ROUND(median(cegr_time), 2) AS REAL)",                 "med-manth-T"),
         ("CAST(ROUND(median(repairs),0) AS INTEGER)",                    "med-repairs"),
-        ("CAST(median(manthan_defined) AS INTEGER)",                     "med-manthan-def"),
+        ("CAST(median(cegr_defined) AS INTEGER)",                     "med-cegr-def"),
     ]
-
-    cols = compact_cols + (full_only_cols if full else [])
-    select_clause = ",\n        ".join(f"{expr} as '{alias}'" for expr, alias in cols)
-    headers = [alias for _, alias in cols]
-    call_idx = headers.index("call")
 
     for only_counted in [False, True]:
         title = ("Data based on ONLY SOLVED benchmarks"
                  if only_counted else "Data including UNSOLVED benchmarks")
         counted_req = f" AND {SOLVE_TIME_EXPR} IS NOT NULL" if only_counted else ""
+
+        cols = (compact_cols[:3] + [avg_t_col if only_counted else par2_col]
+                + compact_cols[3:] + (full_only_cols if full else []))
+        select_clause = ",\n        ".join(f"{expr} as '{alias}'" for expr, alias in cols)
+        headers = [alias for _, alias in cols]
+        call_idx = headers.index("call")
         sql = (f"select {select_clause} from {TABLE}"
                f" where dirname IN ({dirs}) and {VER_EXPR} IN ({vers})"
                f"{fname_like}{counted_req} group by dirname order by solved asc")
@@ -323,7 +360,7 @@ def print_median_tables(table_todo, fname_like):
         ("repairs",         "repairs"),
         ("timeout_mem",     "timeout_mem"),
         (SOLVE_TIME_EXPR,   "solve_time"),
-        ("manthan_time",    "manthan_time"),
+        ("cegr_time",    "cegr_time"),
     ]
     union_parts = []
     for i, (dir, ver) in enumerate(table_todo):
@@ -346,7 +383,7 @@ def print_instance_stats_table(table_todo, fname_like):
         ("puura_defined",        "puura_def"),
         ("extend_defined",       "ext_def"),
         ("backward_defined",     "back_def"),
-        ("manthan_defined",      "mant_def"),
+        ("cegr_defined",      "mant_def"),
     ]
     union_parts = []
     for i, (dir, ver) in enumerate(table_todo):
@@ -361,6 +398,60 @@ def print_instance_stats_table(table_todo, fname_like):
         union_parts.append("SELECT " + ", ".join(parts))
     _sqlite_run("\nUNION ALL\n".join(union_parts),
                 title="Instance stats: variable counts and synthesis phase results (median/avg)")
+
+
+def print_stuck_stage_table(table_todo, fname_like):
+    """One table per dir/ver counting UNSOLVED runs by the stage they stopped in."""
+    if not table_todo:
+        return
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    for dir, ver in table_todo:
+        cur.execute(
+            f"SELECT last_stage, COUNT(*) FROM {TABLE}"
+            f" WHERE dirname=? AND {VER_EXPR}=?"
+            f" AND {SOLVE_TIME_EXPR} IS NULL{fname_like}"
+            f" GROUP BY last_stage", (dir, ver))
+        rows = [(s if s is not None else "startup", n) for s, n in cur.fetchall()]
+        total = sum(n for _, n in rows)
+        str_rows = []
+        for stage, n in sorted(rows, key=lambda r: -r[1]):
+            pct = f"{100.0 * n / total:.0f}%" if total else "0%"
+            str_rows.append([stage, str(n), pct])
+        print(f"\n{BLUE}Where UNSOLVED runs got stuck (last_stage): "
+              f"{dir} [{ver[:10]}]{RESET}")
+        _print_table(["stuck at", "n", "% unsolved"], str_rows)
+    con.close()
+
+
+def print_stuck_top_table(table_todo, fname_like, top=5):
+    """One table per dir/ver: the shortest-running UNSOLVED runs by term time."""
+    if not table_todo:
+        return
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    for dir, ver in table_todo:
+        cur.execute(
+            f"SELECT fname, last_stage, timeout_t_nonnull, timeout_mem,"
+            f" signal, mem_out FROM {TABLE}"
+            f" WHERE dirname=? AND {VER_EXPR}=?"
+            f" AND {SOLVE_TIME_EXPR} IS NULL{fname_like}"
+            f" AND timeout_t_nonnull IS NOT NULL"
+            f" ORDER BY timeout_t_nonnull ASC LIMIT {top}", (dir, ver))
+        str_rows = []
+        for fn, stage, t, mem, sig, mo in cur.fetchall():
+            str_rows.append([
+                fn,
+                stage if stage is not None else "startup",
+                f"{t:.1f}" if t is not None else "",
+                f"{mem:.0f}" if mem is not None else "",
+                str(sig) if sig is not None else "",
+                str(mo) if mo is not None else "",
+            ])
+        print(f"\n{BLUE}Top {top} shortest UNSOLVED runs: {dir} [{ver[:10]}]{RESET}")
+        _print_table(["fname", "stuck at", "term(s)", "memMB", "sig", "mem_out"],
+                     str_rows)
+    con.close()
 
 
 def print_signal_warnings(table_todo, fname_like):
@@ -553,14 +644,15 @@ def generate_cdf(fname2_s):
             f.write(f'set terminal {term}\n')
             f.write(f'set output "{out}"\n')
             f.write('set title "Arjun synthesis CDF: instances solved vs. time"\n')
-            f.write('set key top left\n')
+            f.write('set key bottom right font ",6"\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
-            f.write(f'set xrange [0.001:{TIMEOUT}]\n')
-            f.write('set yrange [0:]\n')
+            f.write(f'set xrange [10.0:{TIMEOUT}]\n')
+            # f.write('set yrange [0:]\n')
             f.write('set ylabel "Instances synthesised"\n')
             f.write('set xlabel "Time (s)"\n')
             f.write('set grid\n')
+            f.write('set pointsize 0.2\n')
             f.write('plot \\\n')
             f.write(plot_lines())
             f.write('\n\n')
@@ -724,9 +816,15 @@ def main():
                 sys.exit(1)
             eff_fname_like = fname_like
         print_summary_tables(table_todo, eff_fname_like, full=args.full)
+        if fname2_s:
+            generate_cdf(fname2_s)
+        else:
+            print(f"{RED}No CDF data (no solved instances?){RESET}")
         return
 
     print_signal_warnings(table_todo, fname_like)
+    print_stuck_stage_table(table_todo, fname_like)
+    print_stuck_top_table(table_todo, fname_like)
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)

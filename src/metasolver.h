@@ -58,6 +58,21 @@ public:
         if (solver_type == SolverType::cms) cms->set_verbosity(v);
     }
 
+    // CaDiCaL 2.1.3 skipped lucky_phases() under assumptions; 3.0.1's
+    // luckyassumptions (default on) does not, so many short assumption-based
+    // solve() calls on one big growing formula pay for formula-wide
+    // propagation sweeps every call -- 56% of runtime on query52_query25_1344n.
+    // set() on an unknown option is a no-op, so this is safe on older CaDiCaL.
+    void set_light_inprocessing(int level) {
+        if (solver_type != SolverType::cadical || level <= 0) return;
+        cadical->set("luckyassumptions", 0);
+        if (level < 2) return;
+        cadical->set("inprobing", 0);
+        cadical->set("congruence", 0);
+        cadical->set("sweep", 0);
+        cadical->set("factor", 0);
+    }
+
     // Variable management
     void new_var() {
         if (solver_type == SolverType::cms) cms->new_var();
@@ -124,18 +139,22 @@ public:
         if (solver_type == SolverType::cms) cms->simplify(assumps);
     }
 
+    // Only materialize the first `n` vars of the model on SAT (0 = all).
+    // Pure perf cap for callers that never read past a known prefix; the
+    // returned model vector is simply shorter.
+    void set_model_prefix(uint32_t n) { model_prefix = n; }
+
     void set_max_confl(int64_t max_confl) {
         if (solver_type == SolverType::cms) cms->set_max_confl(max_confl);
         else cadical->limit("conflicts", static_cast<int>(max_confl));
     }
-
-    SolverType get_solver_type() const { return solver_type; }
 
 private:
     SolverType solver_type;
     std::unique_ptr<CMSat::SATSolver> cms = nullptr;
     std::unique_ptr<CaDiCaL::Solver> cadical = nullptr;
     uint32_t cadical_nvars = 0;
+    uint32_t model_prefix = 0;
     mutable std::vector<CMSat::lbool> cadical_model;
     mutable std::vector<CMSat::Lit> cadical_conflict;
 
@@ -146,8 +165,10 @@ private:
         cadical_model.clear();
         cadical_conflict.clear();
         if (status == CaDiCaL::Status::SATISFIABLE) {
-            cadical_model.resize(cadical_nvars);
-            for (uint32_t i = 0; i < cadical_nvars; i++) {
+            const uint32_t n_model = (model_prefix != 0 && model_prefix < cadical_nvars)
+                ? model_prefix : cadical_nvars;
+            cadical_model.resize(n_model);
+            for (uint32_t i = 0; i < n_model; i++) {
                 int val = cadical->val(i + 1);
                 if (val > 0) cadical_model[i] = CMSat::l_True;
                 else if (val < 0) cadical_model[i] = CMSat::l_False;
@@ -172,11 +193,6 @@ private:
         return l.sign() ? -v : v;
     }
 
-    // Convert CaDiCaL int to CMSat::Lit
-    static CMSat::Lit cadical_to_lit(int l) {
-        uint32_t var = std::abs(l) - 1;  // 0-indexed
-        return CMSat::Lit(var, l < 0);
-    }
 };
 
 } // namespace ArjunInt

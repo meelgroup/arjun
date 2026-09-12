@@ -35,7 +35,6 @@ struct Config {
     int distill = 1;
     int intree = 1;
     int bve_pre_simplify = 1;
-    int incidence_count = 3; // this determines what incidence MEANS
     int or_gate_based = 1;
     int xor_gates_based = 1;
     int ite_gate_based = 1;
@@ -45,30 +44,23 @@ struct Config {
     double no_gates_below = 0.01;
     std::string specified_order_fname;
     uint32_t backw_max_confl = 20000;
-    uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 30000;
     int unate_def_eq = 1;
     uint32_t unate_def_eq_max_per_var = 128;
     uint32_t unate_def_max_confl = 15000;
     uint32_t unate_def_eq_max_confl = 10000;
-    // Disable equiv probe after this many consecutive misses with
-    // zero hits so far. Low = bail aggressively; very high = effectively
-    // never disable.
+    uint32_t unate_def_max_confl_total = 50000.; // whole pass, not per call. 0 = off
+    // Disable equiv probe after this many consecutive misses with zero hits.
     uint32_t unate_def_eq_dry_streak = 128;
-    // Allow non-input vars (to-define + already-tested non-backward-defined)
-    // as the candidate L in the equiv t = L probe. Inputs are still
-    // tried first; non-inputs only after the input list is exhausted.
-    // 0 = inputs only (old behavior). 1 = inputs first, then non-inputs.
+    // Allow non-input vars as candidate L in the equiv t=L probe (tried after
+    // inputs). 0 = inputs only; 1 = inputs first, then non-inputs.
     int unate_def_eq_noninput = 1;
-    bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;
-    // Rebuild the persistent interpolation solver + tracer after this
-    // many interpolants, to bound the tracer's accumulating clause maps.
-    // Lowering it forces the rebuild path on every fuzz iteration.
-    uint32_t interp_rebuild_every = 512;
     std::string debug_synth;
+    // If set, dump guess AIGs at each restart to <prefix>-restart<N>.aig/.v.
+    std::string dump_restart_aig;
     uint32_t seed = 42;
 };
 

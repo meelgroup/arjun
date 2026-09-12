@@ -136,7 +136,7 @@ Arjun supports several top-level modes, selected via command-line flags:
   (different oracle / Puura iteration settings).
 - **Synthesis (`--synth`)** — instead of producing a simplified
   CNF, compute a Boolean function for each defined (non-input) variable in
-  terms of the projection-set variables (Manthan-style
+  terms of the projection-set variables (Cegr-style
   counterexample-guided repair). When an output path is given, Arjun writes a
   Verilog file with the synthesized functions:
 
