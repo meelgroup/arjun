@@ -1446,7 +1446,7 @@ struct SimpConf {
     int iter1 = 2;
     int iter2 = 2;
     int bve_grow_iter1 = 0;
-    int bve_grow_iter2 = 6;
+    int bve_grow_iter2 = 0;
     bool do_bve = true;
     bool appmc = false;
     int bve_too_large_resolvent = 12;
