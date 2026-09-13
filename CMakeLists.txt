@@ -520,7 +520,7 @@ endfunction()
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GetGitSHA1.cmake")
 get_git_sha1(GIT_SHA1)
 message(STATUS "GIT hash found: ${GIT_SHA1}")
-set(ARJUN_FULL_VERSION "2.7.3")
+set(ARJUN_FULL_VERSION "2.8.0")
 
 string(REPLACE "." ";" ARJUN_FULL_VERSION_LIST ${ARJUN_FULL_VERSION})
 SetVersionNumber("PROJECT" ${ARJUN_FULL_VERSION_LIST})
