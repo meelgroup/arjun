@@ -1447,6 +1447,10 @@ struct SimpConf {
     int iter2 = 2;
     int bve_grow_iter1 = 0;
     int bve_grow_iter2 = 0;
+    // if >= 0, used instead of bve_grow_iter2 when more than
+    // bve_grow_iter2_large_vars vars are left at the start of iter2
+    int bve_grow_iter2_large = -1;
+    int bve_grow_iter2_large_vars = 20000;
     bool do_bve = true;
     bool appmc = false;
     int bve_too_large_resolvent = 12;

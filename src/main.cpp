@@ -347,6 +347,8 @@ void add_arjun_options() {
     myopt("--iter1grow", simp_conf.bve_grow_iter1, fc_int,"Puura BVE grow rate allowed before Oracle");
     myopt("--iter2", simp_conf.iter2, fc_int,"Puura iterations after oracle");
     myopt("--iter2grow", simp_conf.bve_grow_iter2, fc_int,"Puura BVE grow rate allowed after Oracle");
+    myopt("--iter2growlarge", simp_conf.bve_grow_iter2_large, fc_int,"If >= 0: used instead of --iter2grow when more than --iter2growlargevars vars are left before iter2");
+    myopt("--iter2growlargevars", simp_conf.bve_grow_iter2_large_vars, fc_int,"Vars-left threshold for --iter2growlarge");
     myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, fc_int,"Puura BVE max resolvent size in literals. -1 == no limit");
     myopt("--bveresolvmaxsz2", simp_conf.bve_too_large_resolvent2, fc_int,"Like --bveresolvmaxsz, for the 2nd pass");
     myopt("--oraclemult", simp_conf.oracle_mult, fc_double,"Oracle multiplier for timeout (i.e. steps-out)");

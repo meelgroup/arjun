@@ -63,6 +63,7 @@ private:
     ///A to-define var counts as defined once CMS has removed it (BVE resolved
     ///its gate away, or SCC/var-replacement folded it into another var).
     void print_stage(const char* name, CMSat::SATSolver* solver, double stage_start);
+    uint32_t num_vars_left(CMSat::SATSolver* solver) const;
     void print_cnf_shape(const char* name, const ArjunNS::SimplifiedCNF& cnf);
     static std::string strip_distill_tokens(const std::string& strat, bool only_before_bve);
 
