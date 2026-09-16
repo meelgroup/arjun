@@ -1154,7 +1154,7 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
                 info.accepted = !(reject || too_long);
                 comp_info.push_back(info);
             }
-            if (conf.verb >= 2)
+            if (conf.verb >= 3)
                 cout << "c o " << prefix << "[cnfrw-comp] " << (reject || too_long ? "REJ " : "acc ")
                      << "roots " << croots.size() << " gates " << gates.size() << " rem-vars " << rem_vars
                      << " cls " << rem_cls << "->" << comp_cls.size() << " lits " << rem_lits << "->" << add_lits
