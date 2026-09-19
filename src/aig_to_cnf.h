@@ -86,7 +86,7 @@ public:
     void set_group_cse(bool b) { group_cse = b; }
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
-    void set_max_kary_width(uint32_t w) { max_kary_width = w; }
+    void set_max_kary_width(uint32_t w) { max_kary_width = std::max<uint32_t>(2, w); }
     void set_dup_var_weight(int w) { dup_var_weight = w; }
     void set_or_distribute(bool b) { or_distribute = b; }
     void set_max_mux_chain(uint32_t k) { max_mux_chain = std::max<uint32_t>(1, k); }
@@ -122,6 +122,19 @@ private:
         }
     };
     std::unordered_map<const AIG*, uint32_t, AigNodeHash> fanout;
+
+    // Every emitted clause must fit the widest shape any encoding rule can
+    // produce. A rule that flattens without honouring max_kary_width (or a
+    // counter that overflows into an exponential enumeration) breaks this.
+    uint64_t width_cap() const {
+        return std::max<uint64_t>(8, std::max<uint64_t>(max_kary_width + 1, max_mux_chain + 3));
+    }
+    // Set per encode_* entry from the AIG size. Sane encodings emit a couple of
+    // clauses per node, so tripping this means a blowup, not a big instance.
+    uint64_t emit_budget = 0;
+    uint64_t emit_calls = 0;
+    void set_emit_budget(size_t nodes) { emit_budget = emit_calls + 4096 + 256 * (uint64_t)nodes; }
+
     bool polarity_mode = false;
     int dup_var_weight = -1;
     bool or_distribute = true;
@@ -265,6 +278,9 @@ private:
 
 template<class Solver>
 void AIGToCNF<Solver>::add_clause(const std::vector<CMSat::Lit>& cl) {
+    // Counts attempts, not kept clauses: a blowup emits mostly duplicates
+    emit_calls++;
+    if (emit_budget) release_assert(emit_calls < emit_budget && "AIG-to-CNF encoding blew up");
     // Degenerate gates (e.g. AND(x,x)) can yield repeated literals; collapse
     // duplicates and drop tautologies so each var appears at most once.
     std::vector<CMSat::Lit> tmp(cl);
@@ -273,6 +289,7 @@ void AIGToCNF<Solver>::add_clause(const std::vector<CMSat::Lit>& cl) {
     for (size_t i = 1; i < tmp.size(); i++) {
         if (tmp[i].var() == tmp[i-1].var()) return; // tautology
     }
+    assert(tmp.size() <= width_cap());
     if (polarity_mode && cur_h != CMSat::lit_Undef && cur_need != 3) {
         for (const CMSat::Lit l : tmp) {
             if (l.var() != cur_h.var()) continue;
@@ -327,6 +344,7 @@ template<class Solver>
 CMSat::Lit AIGToCNF<Solver>::encode(const aig_lit& root, bool force_helper) {
     assert(root);
     count_fanout(root);
+    set_emit_budget(fanout.size() + 1);
     CMSat::Lit out = encode_edge(root);
     if (force_helper && root->type != AIGT::t_and) {
         CMSat::Lit h = new_helper();
@@ -359,6 +377,7 @@ std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch(const std::vector<aig_lit
         if (r->type == AIGT::t_and) fanout[r.get()]++;
         dfs(r.get());
     }
+    set_emit_budget(visited.size() + roots.size());
     std::vector<CMSat::Lit> result;
     result.reserve(roots.size());
     for (const auto& r : roots) {
@@ -421,6 +440,7 @@ std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch_keep_fanout(const std::ve
         if (r->type == AIGT::t_and) fanout[r.get()]++;
         dfs(r.get());
     }
+    set_emit_budget(visited.size() + all_roots.size());
     std::vector<CMSat::Lit> result;
     for (const auto& r : to_encode) {
         if (!r) { result.emplace_back(0, false); continue; }
@@ -431,6 +451,31 @@ std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch_keep_fanout(const std::ve
 
 template<class Solver>
 void AIGToCNF<Solver>::emit_or_group(const std::vector<CMSat::Lit>& prefix, const std::vector<aig_lit>& d) {
+    // Wide groups go through one-sided helpers (hc -> OR(chunk)) so no clause
+    // is wider than max_kary_width; count-safe, the helpers are not projected.
+    if (prefix.size() + d.size() > max_kary_width) {
+        std::vector<CMSat::Lit> cur;
+        cur.reserve(d.size());
+        for (const auto& e : d) cur.push_back(encode_edge(e));
+        while (prefix.size() + cur.size() > max_kary_width) {
+            std::vector<CMSat::Lit> next;
+            for (size_t i = 0; i < cur.size(); i += max_kary_width) {
+                const size_t end = std::min(cur.size(), i + (size_t)max_kary_width);
+                if (end - i == 1) { next.push_back(cur[i]); continue; }
+                const CMSat::Lit hc = new_helper();
+                std::vector<CMSat::Lit> hcl{~hc};
+                for (size_t j = i; j < end; j++) hcl.push_back(cur[j]);
+                add_clause(hcl);
+                next.push_back(hc);
+            }
+            if (next.size() >= cur.size()) { cur = std::move(next); break; }
+            cur = std::move(next);
+        }
+        std::vector<CMSat::Lit> cl(prefix);
+        for (const auto l : cur) cl.push_back(l);
+        add_clause(cl);
+        return;
+    }
     std::vector<std::vector<aig_lit>> alts;
     size_t prod = 1;
     uint64_t helper_cost = 0;
@@ -610,8 +655,8 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
                 return h;
             }
             size_t prod = 1;
-            for (const auto& d : groups) prod *= d.size();
-            if (prod <= 4) {
+            for (const auto& d : groups) { prod *= d.size(); if (prod > 4) break; }
+            if (prod <= 4 && groups.size() <= max_kary_width) {
                 std::vector<std::vector<CMSat::Lit>> dl;
                 for (const auto& d : groups) {
                     std::vector<CMSat::Lit> ls;
@@ -629,8 +674,26 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
                 }
                 return h;
             }
+            // One-sided chunks (AND(chunk) -> hc) keep clauses <= max_kary_width
+            // wide; hc only occurs negatively above, so this is count-safe for
+            // the non-projected helpers.
+            std::vector<CMSat::Lit> cur;
+            for (const auto& c : conjunct_edges) cur.push_back(encode_edge(c));
+            while (cur.size() > max_kary_width) {
+                std::vector<CMSat::Lit> next;
+                for (size_t i = 0; i < cur.size(); i += max_kary_width) {
+                    const size_t end = std::min(cur.size(), i + max_kary_width);
+                    if (end - i == 1) { next.push_back(cur[i]); continue; }
+                    const CMSat::Lit hc = new_helper();
+                    std::vector<CMSat::Lit> cl{hc};
+                    for (size_t j = i; j < end; j++) cl.push_back(~cur[j]);
+                    add_clause(cl);
+                    next.push_back(hc);
+                }
+                cur = std::move(next);
+            }
             std::vector<CMSat::Lit> cl{h};
-            for (const auto& c : conjunct_edges) cl.push_back(~encode_edge(c));
+            for (const auto l : cur) cl.push_back(~l);
             add_clause(cl);
             return h;
         }

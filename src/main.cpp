@@ -215,6 +215,7 @@ void add_arjun_options() {
     myopt("--cnfrwmingain", conf.cnfrw_min_gain, fc_int, "cnfrw: minimum cost gain for accepting a rewritten gate group");
     myopt("--cnfrwtries", conf.cnfrw_tries, fc_int, "cnfrw: encode each gate group in this many root orders, keep the cheapest");
     myopt("--cnfrwmaxclslen", conf.cnfrw_max_cls_len, fc_int, "cnfrw: reject a rewritten gate group with a clause longer than this. 0 = no limit");
+    myopt("--cnfrwnowiden", conf.cnfrw_no_widen, fc_int, "cnfrw: reject a rewritten gate group whose longest clause is more than this longer than the longest clause it replaces. -1 = off");
     myopt("--cnfrwpfgain", conf.cnfrw_portfolio_min_gain, fc_double, "cnfrw portfolio: run the second puura only if the rewrite removed at least this percent of literals");
     myopt("--cnfrwenc", conf.cnfrw_encoder, fc_int, "cnfrw: encoder: 0 = AIGToCNF, 1 = cut mapper, 2 = both, keep the cheaper per gate group");
     myopt("--cnfrwmapleaves", conf.cnfrw_map_leaves, fc_int, "cnfrw: cut mapper max cut leaves (2..5)");
@@ -453,6 +454,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_cnfrw_min_gain(conf.cnfrw_min_gain);
     arj->set_cnfrw_tries(conf.cnfrw_tries);
     arj->set_cnfrw_max_cls_len(conf.cnfrw_max_cls_len);
+    arj->set_cnfrw_no_widen(conf.cnfrw_no_widen);
     arj->set_cnfrw_encoder(conf.cnfrw_encoder);
     arj->set_cnfrw_map_leaves(conf.cnfrw_map_leaves);
     arj->set_cnfrw_map_cuts(conf.cnfrw_map_cuts);

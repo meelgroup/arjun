@@ -1067,13 +1067,19 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
     vector<char> accepted_gate(nvars, 0);
     comp_info.clear();
     for (const auto& [c, gates] : comp_gates) {
-        uint64_t rem_lits = 0, rem_cls = 0, rem_vars = 0;
+        uint64_t rem_lits = 0, rem_cls = 0, rem_vars = 0, rem_max_len = 0;
         for (const uint32_t v : gates) {
-            for (const uint32_t ci : cands[gate_of_var[v]].cls) { rem_cls++; rem_lits += cls[ci].size(); }
+            for (const uint32_t ci : cands[gate_of_var[v]].cls) {
+                rem_cls++; rem_lits += cls[ci].size();
+                rem_max_len = std::max<uint64_t>(rem_max_len, cls[ci].size());
+            }
             if (removable[v]) rem_vars++;
         }
         auto cit = comp_constr.find(c);
-        if (cit != comp_constr.end()) for (const uint32_t ci : cit->second) { rem_cls++; rem_lits += cls[ci].size(); }
+        if (cit != comp_constr.end()) for (const uint32_t ci : cit->second) {
+            rem_cls++; rem_lits += cls[ci].size();
+            rem_max_len = std::max<uint64_t>(rem_max_len, cls[ci].size());
+        }
         CompInfo info;
         if (collect_comp_info) {
             info.gates = gates.size();
@@ -1142,6 +1148,10 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
             bool too_long = false;
             if (conf.cnfrw_max_cls_len > 0)
                 for (const auto& cl : comp_cls) if ((int)cl.size() > conf.cnfrw_max_cls_len) { too_long = true; break; }
+            // A k-long clause is a k-clique in the primal graph: widening hurts the TD
+            if (conf.cnfrw_no_widen >= 0)
+                for (const auto& cl : comp_cls)
+                    if (cl.size() > rem_max_len + conf.cnfrw_no_widen) { too_long = true; break; }
             bool reject = conf.cnfrw_guard && add_cost + conf.cnfrw_min_gain >= rem_cost;
             if (conf.cnfrw_guard && conf.cnfrw_pareto) {
                 const double slack = conf.cnfrw_pareto > 1 ? 1.0 + conf.cnfrw_pareto / 100.0 : 1.0;
@@ -1169,6 +1179,14 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
                 if (cit != comp_constr.end()) for (const uint32_t ci : cit->second) cl_used[ci] = 0;
                 continue;
             }
+            // What we write out must satisfy every guard we claim to enforce
+            assert(!conf.cnfrw_guard || conf.cnfrw_pareto || add_cost + conf.cnfrw_min_gain < rem_cost);
+            assert(conf.cnfrw_max_cls_len <= 0 || [&]{
+                for (const auto& cl : comp_cls) if ((int)cl.size() > conf.cnfrw_max_cls_len) return false;
+                return true; }());
+            assert(conf.cnfrw_no_widen < 0 || [&]{
+                for (const auto& cl : comp_cls) if (cl.size() > rem_max_len + conf.cnfrw_no_widen) return false;
+                return true; }());
             stats.comp_gain_cost += rem_cost - add_cost;
             stats.roots_helper += n_helper;
             stats.roots_half += er.n_half;
@@ -1243,6 +1261,9 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
     stats.t_assemble = cpuTime() - t;
     stats.t_total = cpuTime() - t_start;
     stats.print(conf.verb, prefix);
+    // With the guard on, every accepted group got cheaper, so the CNF cannot grow
+    assert(!conf.cnfrw_guard || stats.comp_gain_cost >= 0);
+    assert(!conf.cnfrw_guard || stats.lits_out <= 2 * stats.lits_in + 1000);
     SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     return true;
 }
