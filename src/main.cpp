@@ -362,7 +362,7 @@ void add_arjun_options() {
     myopt("--bveocclim", simp_conf.bve_occ_cutoff, fc_int, "BVE: refuse a var whose more frequent polarity occurs more than this often (CaDiCaL's elimocclim). 0 = no such limit");
     myopt("--bveprodlim", simp_conf.bve_occ_prod_cutoff, fc_int, "BVE: refuse a var whose pos*neg occurrence product is over this. This is the bound on resolution work");
     myopt("--bveclsmaxsz", simp_conf.bve_cls_max_size, fc_int, "BVE: refuse a var that occurs in a clause longer than this. 0 = no limit");
-    myopt("--bveplanner", simp_conf.bve_planner, fc_int, "BVE elimination order: 0 = pos*neg score, 1 = literal growth, 2 = no-clause-growth tiers then literal growth, 3 = min-degree, 4 = min-fill, 5 = simulate 0-4 on a clause model and pick the best");
+    myopt("--bveplanner", simp_conf.bve_planner, fc_int, "BVE elimination order: 0 = pos*neg score, 1 = literal growth");
     myopt("--bvecanonties", simp_conf.bve_canon_ties, fc_int, "BVE: break score ties by a neighbourhood hash instead of the variable index (renaming-invariant)");
     myopt("--bveschedtouched", simp_conf.bve_sched_only_touched, fc_int, "BVE: only schedule vars whose clauses changed since BVE last looked. 0 = schedule every eligible var");
     myopt("--ccnrbudget", simp_conf.backbone_ccnr_mems_limitM, fc_int, "Mems budget, in millions, for each CCNR local search try that pre-filters backbone candidates. If no model is found, cadiback must test every variable");
