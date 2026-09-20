@@ -50,6 +50,7 @@ struct CNFRW_PUBLIC CnfRwStats {
     uint64_t rej_var_defined = 0;
     uint64_t rej_cycle = 0;
     uint64_t rej_dont_elim_no_gain = 0;
+    uint64_t rej_edge_guard = 0;
     uint64_t irreg_tried = 0;
     uint64_t irreg_taut_ok = 0;
     uint64_t irreg_bf_ok = 0;

@@ -99,6 +99,7 @@ struct Config {
     int cnfrw_tries = 6;
     int cnfrw_max_cls_len = 0;
     int cnfrw_no_widen = -1;
+    int cnfrw_edge_grow = -1;
     int cnfrw_encoder = 0;
     int cnfrw_map_leaves = 5;
     int cnfrw_map_cuts = 8;

@@ -2156,6 +2156,7 @@ public:
     void set_cnfrw_tries(int cnfrw_tries);
     void set_cnfrw_max_cls_len(int cnfrw_max_cls_len);
     void set_cnfrw_no_widen(int cnfrw_no_widen);
+    void set_cnfrw_edge_grow(int cnfrw_edge_grow);
     void set_cnfrw_encoder(int cnfrw_encoder);
     void set_cnfrw_map_leaves(int cnfrw_map_leaves);
     void set_cnfrw_map_cuts(int cnfrw_map_cuts);
@@ -2226,6 +2227,7 @@ public:
     [[nodiscard]] int get_cnfrw_tries() const;
     [[nodiscard]] int get_cnfrw_max_cls_len() const;
     [[nodiscard]] int get_cnfrw_no_widen() const;
+    [[nodiscard]] int get_cnfrw_edge_grow() const;
     [[nodiscard]] int get_cnfrw_encoder() const;
     [[nodiscard]] int get_cnfrw_map_leaves() const;
     [[nodiscard]] int get_cnfrw_map_cuts() const;

@@ -88,7 +88,8 @@ void CnfRwStats::print(int verb, const string& prefix) const {
     s3 << "[cnfrw] rejected: cl-conflict " << rej_clause_conflict
        << " var-defined " << rej_var_defined << " cycle " << rej_cycle
        << " | irreg tried " << irreg_tried << " taut-ok " << irreg_taut_ok
-       << " bf-ok " << irreg_bf_ok << " too-big " << irreg_too_big;
+       << " bf-ok " << irreg_bf_ok << " too-big " << irreg_too_big
+       << " | rej-edge-guard " << rej_edge_guard;
     line(s3);
     std::ostringstream s4;
     s4 << "[cnfrw] outputs " << gate_outputs << " removable " << removable_outputs
@@ -707,6 +708,26 @@ void CnfRewrite::fill_root_info(Lifted& out) const {
 }
 
 namespace {
+// A clause is a clique in the primal graph. Counting the distinct edges a gate
+// group's clauses span -- before vs after -- measures what the rewrite does to
+// the graph the tree decomposition is built from, which lits/cls/vars miss
+// entirely: fusing a chain into one wide clause drops literals but adds edges
+// quadratically, while a Tseitin chain adds a helper var and almost no edges.
+void add_primal_edges(const vector<Lit>& cl, vector<uint64_t>& out) {
+    if (cl.size() > 4096) { out.push_back(std::numeric_limits<uint64_t>::max()); return; }
+    for (size_t i = 0; i < cl.size(); i++)
+        for (size_t j = i + 1; j < cl.size(); j++) {
+            const uint64_t a = std::min(cl[i].var(), cl[j].var());
+            const uint64_t b = std::max(cl[i].var(), cl[j].var());
+            out.push_back((a << 32) | b);
+        }
+}
+
+uint64_t count_uniq(vector<uint64_t>& v) {
+    std::sort(v.begin(), v.end());
+    return std::unique(v.begin(), v.end()) - v.begin();
+}
+
 struct ClauseCollector {
     uint32_t nv = 0;
     vector<vector<Lit>> cls;
@@ -1068,10 +1089,12 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
     comp_info.clear();
     for (const auto& [c, gates] : comp_gates) {
         uint64_t rem_lits = 0, rem_cls = 0, rem_vars = 0, rem_max_len = 0;
+        vector<uint64_t> rem_edges_buf;
         for (const uint32_t v : gates) {
             for (const uint32_t ci : cands[gate_of_var[v]].cls) {
                 rem_cls++; rem_lits += cls[ci].size();
                 rem_max_len = std::max<uint64_t>(rem_max_len, cls[ci].size());
+                if (conf.cnfrw_edge_grow >= 0) add_primal_edges(cls[ci], rem_edges_buf);
             }
             if (removable[v]) rem_vars++;
         }
@@ -1079,7 +1102,9 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
         if (cit != comp_constr.end()) for (const uint32_t ci : cit->second) {
             rem_cls++; rem_lits += cls[ci].size();
             rem_max_len = std::max<uint64_t>(rem_max_len, cls[ci].size());
+            if (conf.cnfrw_edge_grow >= 0) add_primal_edges(cls[ci], rem_edges_buf);
         }
+        const uint64_t rem_edges = count_uniq(rem_edges_buf);
         CompInfo info;
         if (collect_comp_info) {
             info.gates = gates.size();
@@ -1152,6 +1177,16 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
             if (conf.cnfrw_no_widen >= 0)
                 for (const auto& cl : comp_cls)
                     if (cl.size() > rem_max_len + conf.cnfrw_no_widen) { too_long = true; break; }
+            uint64_t add_edges = 0;
+            if (conf.cnfrw_edge_grow >= 0) {
+                vector<uint64_t> add_edges_buf;
+                for (const auto& cl : comp_cls) add_primal_edges(cl, add_edges_buf);
+                add_edges = count_uniq(add_edges_buf);
+                if ((double)add_edges > (double)rem_edges * (1.0 + conf.cnfrw_edge_grow / 100.0)) {
+                    too_long = true;
+                    stats.rej_edge_guard++;
+                }
+            }
             bool reject = conf.cnfrw_guard && add_cost + conf.cnfrw_min_gain >= rem_cost;
             if (conf.cnfrw_guard && conf.cnfrw_pareto) {
                 const double slack = conf.cnfrw_pareto > 1 ? 1.0 + conf.cnfrw_pareto / 100.0 : 1.0;
@@ -1168,7 +1203,8 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
                 cout << "c o " << prefix << "[cnfrw-comp] " << (reject || too_long ? "REJ " : "acc ")
                      << "roots " << croots.size() << " gates " << gates.size() << " rem-vars " << rem_vars
                      << " cls " << rem_cls << "->" << comp_cls.size() << " lits " << rem_lits << "->" << add_lits
-                     << " vars -" << rem_vars << "+" << helpers << " cost " << rem_cost << "->" << add_cost << endl;
+                     << " vars -" << rem_vars << "+" << helpers << " cost " << rem_cost << "->" << add_cost
+                     << " edges " << rem_edges << "->" << add_edges << endl;
             if (reject || too_long) {
                 stats.comp_rej_cost += add_cost - rem_cost;
                 stats.comp_rejected++;
@@ -1184,6 +1220,8 @@ bool CnfRewrite::run(SimplifiedCNF& cnf, const string& tag) {
             assert(conf.cnfrw_max_cls_len <= 0 || [&]{
                 for (const auto& cl : comp_cls) if ((int)cl.size() > conf.cnfrw_max_cls_len) return false;
                 return true; }());
+            assert(conf.cnfrw_edge_grow < 0
+                || (double)add_edges <= (double)rem_edges * (1.0 + conf.cnfrw_edge_grow / 100.0));
             assert(conf.cnfrw_no_widen < 0 || [&]{
                 for (const auto& cl : comp_cls) if (cl.size() > rem_max_len + conf.cnfrw_no_widen) return false;
                 return true; }());
