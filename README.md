@@ -121,31 +121,22 @@ understands the following comment-style extensions:
 | `c p weight LIT VALUE`       | Weight of a literal (for weighted counting). Requires `--mode 1`.                                        |
 | `c t mc \| pmc \| wmc \| pwmc` | Counting task type: `mc` = model counting, `pmc` = projected MC, `wmc` = weighted MC, `pwmc` = projected weighted MC. |
 | `c MUST MULTIPLY BY N`       | Existing count multiplier carried into Arjun (Arjun will combine it with the multiplier it produces).    |
+| `c p no-touch v1 v2 ... 0`   | Variables Arjun must keep in simplified CNF. Must be in `c p show` |
 | `c ind v1 v2 ... 0`          | Legacy independent-set syntax. Still accepted, but prefer `c p show`. |
+
 
 ### Modes
 Arjun supports several top-level modes, selected via command-line flags:
 
-- **Default (unweighted model counting preprocessing)** — minimize the
-  independent set and simplify the CNF while preserving its model count.
-- **Weighted counting** — pass `--mode 1`. Required if your input uses
-  `c p weight` lines or `c t wmc` / `c t pwmc`. Weights are tracked through
-  simplification.
-- **ApproxMC preset** — pass `--appmc`. Sets simplification defaults tuned for
-  use as an [ApproxMC](https://github.com/meelgroup/ApproxMC) front-end
-  (different oracle / Puura iteration settings).
-- **Synthesis (`--synth`)** — instead of producing a simplified
-  CNF, compute a Boolean function for each defined (non-input) variable in
-  terms of the projection-set variables (Cegr-style
-  counterexample-guided repair). When an output path is given, Arjun writes a
-  Verilog file with the synthesized functions:
+- **Minimize the independent set** when you pass a CNF with no further
+  arguments.
+- **Weighted counting preprocess** — pass a CNF as an input, and a new file
+  like `output.cnf` as an output, and Arjun will produce a simplified CNF
+- **Synthesis (`--synth`)** — compute a skolem function for each
+  non-input variable in terms of the projection-set variables via CEGR-style
+counterexample-guided repair. Output file will be a Verilog file with the
+skolem functions:
 
   ```shell
   ./arjun --synth input.cnf output.v
   ```
-## How to Use to Synthesize
-Simply use `--synth` and then you can get a Verilog for the skolem functions by passing a 2nd argument as an `output.v` for verilog:
-
-```bash
-./arjun --synth myfile.dimacs skolems.v
-```

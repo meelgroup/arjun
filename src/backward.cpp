@@ -169,12 +169,21 @@ void Backward::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& cl: cnf.get_clauses()) solver->add_clause(cl);
     for(const auto& cl: cnf.get_red_clauses()) solver->add_red_clause(cl);
     sampling_vars = cnf.get_sampl_vars();
+    no_touch = cnf.get_no_touch_cur();
     if (cnf.get_opt_sampl_vars_set()) {
         if (cnf.get_sampl_vars() != cnf.get_opt_sampl_vars()) {
             cout <<"ERROR: backwards does not support opt sampling set" << endl;
             exit(EXIT_FAILURE);
         }
     }
+}
+
+void Backward::keep_no_touch() {
+    if (no_touch.empty()) return;
+    std::erase_if(empty_sampling_vars, [&](uint32_t v) { return no_touch.count(v); });
+    std::set<uint32_t> s(sampling_vars.begin(), sampling_vars.end());
+    s.insert(no_touch.begin(), no_touch.end());
+    sampling_vars.assign(s.begin(), s.end());
 }
 
 void Backward::fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf) {
@@ -275,6 +284,7 @@ void Backward::backward_round() {
     for(const auto& x: sampling_vars) {
         assert(x < orig_num_vars);
         assert(unknown_set[x] == 0 && "No var should be in 'sampling_vars' twice!");
+        if (no_touch.count(x)) { indep.push_back(x); continue; }
         unknown.push_back(x);
         unknown_set[x] = 1;
     }

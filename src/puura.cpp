@@ -252,7 +252,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     auto new_sampl_vars = cnf.get_sampl_vars();
     vector<uint32_t> new_empty_sampl_vars;
-    solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
+
+    ArjunNS::clean_sampl_get_empties_prot(solver.get(), new_sampl_vars,
+            new_empty_sampl_vars, cnf.get_no_touch_cur());
+
+    // Set up dont_elim
     if (!cnf.get_weighted()) {
       dont_elim.clear();
       for(uint32_t v: new_sampl_vars) dont_elim.emplace_back(v, false);
@@ -274,6 +278,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
     ret_cnf.set_backbone_done(backbone_done);
     print_cnf_shape("out", ret_cnf);
+    ret_cnf.check_no_touch_mapping();
     if (cnf.get_need_aig()) {
         auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | verbose_debug_enabled, "end get_fully_simplified_renumbered_cnf");
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()

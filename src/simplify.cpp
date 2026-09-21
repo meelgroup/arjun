@@ -107,6 +107,7 @@ bool Minimize::simplify() {
         << stats_line_percent(old_size-sampling_vars.size(), old_size)
         << " T: " << (cpuTime() - my_time));
 
+    keep_no_touch();
     check_no_duplicate_in_sampling_set();
     return true;
 }
@@ -377,7 +378,8 @@ void Minimize::get_empty_occs() {
     uint32_t old_size = sampling_vars.size();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-    solver->clean_sampl_get_empties(sampling_vars, empty_sampling_vars);
+    ArjunNS::clean_sampl_get_empties_prot(solver.get(), sampling_vars,
+            empty_sampling_vars, no_touch);
 
     verb_print(1, "[arjun-simp] get-empties"
         << " removed: " << (old_size-sampling_vars.size())
