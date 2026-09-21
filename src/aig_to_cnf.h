@@ -81,7 +81,7 @@ public:
     void set_group_cse(bool b) { group_cse = b; }
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
-    void set_max_kary_width(uint32_t w) { max_kary_width = w; }
+    void set_max_kary_width(uint32_t w) { max_kary_width = std::max<uint32_t>(2, w); }
 
 private:
     Solver& solver;
@@ -104,7 +104,7 @@ private:
 
     // Max MUX-chain fusion depth. Bounds the longest emitted clause (level+3
     // lits) so deep cegr ITE chains stay SAT-friendly while cutting helpers ~4×.
-    static constexpr uint32_t kMaxMuxChain = 8;
+    static constexpr uint32_t max_mux_chain = 8;
 
     // Fanout counted by node identity. Leaf nodes are never helpers and
     // don't need fanout tracking.
@@ -114,6 +114,18 @@ private:
         }
     };
     std::unordered_map<const AIG*, uint32_t, AigNodeHash> fanout;
+
+    // Every emitted clause must fit the widest shape any encoding rule can
+    // produce. A rule that flattens without honouring max_kary_width (or a
+    // counter that overflows into an exponential enumeration) breaks this.
+    uint64_t width_cap() const {
+        return std::max<uint64_t>(8, std::max<uint64_t>(max_kary_width + 1, max_mux_chain + 3));
+    }
+    // Set per encode_* entry from the AIG size. Sane encodings emit a couple of
+    // clauses per node, so tripping this means a blowup, not a big instance.
+    uint64_t emit_budget = 0;
+    uint64_t emit_calls = 0;
+    void set_emit_budget(size_t nodes) { emit_budget = emit_calls + 4096 + 256 * (uint64_t)nodes; }
 
     // Encoding cache by node identity: the CNF literal for the AND node's
     // POSITIVE value (caller applies edge-sign). Leaves aren't cached.
@@ -166,6 +178,7 @@ private:
     // Collect k-ary AND conjuncts as signed edges. Only flatten through
     // positive-reference, fanout-1 AND nodes — else sharing would be lost.
     void collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out);
+    bool may_flatten(const aig_lit& e, bool as_or);
 
     // ITE pattern detection. `n` is an OR-gate ref (n.neg, t_and, l!=r)
     // decomposing as OR(AND_T, AND_E). If the two sub-ANDs share one
@@ -236,6 +249,9 @@ private:
 
 template<class Solver>
 void AIGToCNF<Solver>::add_clause(const std::vector<CMSat::Lit>& cl) {
+    // Counts attempts, not kept clauses: a blowup emits mostly duplicates
+    emit_calls++;
+    if (emit_budget) release_assert(emit_calls < emit_budget && "AIG-to-CNF encoding blew up");
     // Degenerate gates (e.g. AND(x,x)) can yield repeated literals; collapse
     // duplicates and drop tautologies so each var appears at most once.
     std::vector<CMSat::Lit> tmp(cl);
@@ -244,6 +260,7 @@ void AIGToCNF<Solver>::add_clause(const std::vector<CMSat::Lit>& cl) {
     for (size_t i = 1; i < tmp.size(); i++) {
         if (tmp[i].var() == tmp[i-1].var()) return; // tautology
     }
+    assert(tmp.size() <= width_cap());
     solver.add_clause(tmp);
     stats.clauses_added++;
 }
@@ -290,6 +307,7 @@ template<class Solver>
 CMSat::Lit AIGToCNF<Solver>::encode(const aig_lit& root, bool force_helper) {
     assert(root);
     count_fanout(root);
+    set_emit_budget(fanout.size() + 1);
     CMSat::Lit out = encode_edge(root);
     if (force_helper && root->type != AIGT::t_and) {
         CMSat::Lit h = new_helper();
@@ -322,6 +340,7 @@ std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch(const std::vector<aig_lit
         if (r->type == AIGT::t_and) fanout[r.get()]++;
         dfs(r.get());
     }
+    set_emit_budget(visited.size() + roots.size());
     std::vector<CMSat::Lit> result;
     result.reserve(roots.size());
     for (const auto& r : roots) {
@@ -510,12 +529,15 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
 // AND with complemented children is the De Morgan pattern, implicit here
 // because negation lives on edges.
 template<class Solver>
+bool AIGToCNF<Solver>::may_flatten(const aig_lit& e, bool as_or) {
+    if (e->type != AIGT::t_and || e.neg != as_or || e->l == e->r) return false;
+    if (cache.find(e.get()) != cache.end()) return false;
+    return fanout[e.get()] <= 1;
+}
+
+template<class Solver>
 void AIGToCNF<Solver>::collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out) {
-    if (child->type == AIGT::t_and
-        && !child.neg
-        && child->l != child->r
-        && fanout[child.get()] <= 1
-        && cache.find(child.get()) == cache.end())
+    if (may_flatten(child, false))
     {
         collect_and_edges(child->l, out);
         collect_and_edges(child->r, out);
@@ -809,12 +831,12 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     // k-way MUX-chain fusion: while the else-branch is a consumable ITE-shaped
     // AND (fanout ≤ 1, uncached), fold it in. 1 helper + 2(k+1) clauses vs the
     // k-1 helpers chained MUX3 spends (4× cut on cegr's deep chains). Capped
-    // at kMaxMuxChain to keep the longest clause (level+3) SAT-friendly.
+    // at max_mux_chain to keep the longest clause (level+3) SAT-friendly.
     {
         std::vector<std::pair<CMSat::Lit, aig_lit>> levels;  // (selector, then)
         levels.emplace_back(p.s_lit, p.t_aig);
         aig_lit base = p.e_aig;
-        while (levels.size() < kMaxMuxChain) {
+        while (levels.size() < max_mux_chain) {
             if (!base || base->type != AIGT::t_and || !base.neg) break;
             const AIG* bn = base.get();
             if (cache.find(bn) != cache.end()) break;

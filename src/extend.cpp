@@ -370,7 +370,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             }
             verb_print(1, "[arjun] extend: after " << done_thr
                 << " still lots left. Lowering conflict limit by /" << divisor);
-            extend_max_confl = conf.extend_max_confl / divisor;
+            extend_max_confl /= divisor;
         }
 
         assert(test_var < orig_num_vars);

@@ -181,6 +181,7 @@ void add_arjun_options() {
           "L in t = L. Inputs are still tried first; non-inputs only after the "
           "input list is exhausted. 0 = inputs only");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
+    // CNF rewrite via AIG lifting
 
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
@@ -308,6 +309,8 @@ void add_arjun_options() {
     myopt("--iter1grow", simp_conf.bve_grow_iter1, fc_int,"Puura BVE grow rate allowed before Oracle");
     myopt("--iter2", simp_conf.iter2, fc_int,"Puura iterations after oracle");
     myopt("--iter2grow", simp_conf.bve_grow_iter2, fc_int,"Puura BVE grow rate allowed after Oracle");
+    myopt("--iter2growlarge", simp_conf.bve_grow_iter2_large, fc_int,"If >= 0: used instead of --iter2grow when more than --iter2growlargevars vars are left before iter2");
+    myopt("--iter2growlargevars", simp_conf.bve_grow_iter2_large_vars, fc_int,"Vars-left threshold for --iter2growlarge");
     myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, fc_int,"Puura BVE max resolvent size in literals. -1 == no limit");
     myopt("--bveresolvmaxsz2", simp_conf.bve_too_large_resolvent2, fc_int,"Like --bveresolvmaxsz, for the 2nd pass");
     myopt("--oraclemult", simp_conf.oracle_mult, fc_double,"Oracle multiplier for timeout (i.e. steps-out)");
@@ -412,6 +415,10 @@ void do_synthesis() {
     ArjunNS::SimplifiedCNF cnf(fg);
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
+    if (cnf.get_num_no_touch()) {
+        cout << "ERROR: synthesis with 'c p no-touch' is not supported" << endl;
+        exit(EXIT_FAILURE);
+    }
     if (etof_conf.all_indep) {
         // No projection (or it covers all vars) => no defined vars to synth.
         cout << "ERROR: no defined vars to synthesize "
@@ -517,6 +524,11 @@ void do_backward_pass() {
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
     cnf.check_cnf_sampl_sanity();
+    if (cnf.get_num_no_touch() && !etof_conf.do_renumber) {
+        cout << "ERROR: 'c p no-touch' needs --renumber 1, it's what puts the "
+            "no-touch variables back to 1..k" << endl;
+        exit(EXIT_FAILURE);
+    }
 
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.get_sampl_vars();

@@ -39,6 +39,19 @@ Useful top-level flags:
   `*-autarky.aig`, `*-cegr.aig`, `*-final.aig`) for debugging
 - `--verb N` — verbosity (0–2)
 
+## Experiments: small runs here, full runs on the cluster
+
+NEVER run full benchmark sweeps on this machine -- the cluster does that. Here,
+run small experiments only: ~16 instances (one per core), in parallel, each
+short. Pick them from existing cluster results instead of guessing:
+
+- `build/data/out-synth-<jobid>-<n>/` -- per-instance cluster logs.
+- `build/data/data.sqlite3`, table `arjun` -- parsed results (`dirname`,
+  `fname`, `timeout_call`, `arjun_time`, `cegr_time`, `start_to_define_vars`,
+  `last_stage`, ...). E.g. short instances that reach CEGR:
+  `select fname, arjun_time from arjun where dirname='out-synth-...' and cegr_time>0 order by arjun_time limit 16;`
+- Benchmarks: `build/benchmarks-qdimacs/*.qdimacs.gz`.
+
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
 
 One-line sanity bench for comparing simplification tweaks. Runs `arjun` on a

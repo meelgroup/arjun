@@ -208,7 +208,14 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // Now more expensive BVE, also RED linked in to occur
     if (!simp_conf.appmc) {
-        solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
+        int grow = simp_conf.bve_grow_iter2;
+        if (simp_conf.bve_grow_iter2_large >= 0) {
+            const uint32_t left = num_vars_left(solver.get());
+            if (left > (uint32_t)simp_conf.bve_grow_iter2_large_vars) grow = simp_conf.bve_grow_iter2_large;
+            verb_print(1, "[puura] vars left before iter2: " << left
+                << " threshold: " << simp_conf.bve_grow_iter2_large_vars << " iter2 grow: " << grow);
+        }
+        solver->set_min_bva_gain(grow);
         solver->set_varelim_check_resolvent_subs(true);
     }
     solver->set_max_red_linkin_size(20);
@@ -245,7 +252,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     auto new_sampl_vars = cnf.get_sampl_vars();
     vector<uint32_t> new_empty_sampl_vars;
-    solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
+
+    ArjunNS::clean_sampl_get_empties_prot(solver.get(), new_sampl_vars,
+            new_empty_sampl_vars, cnf.get_no_touch_cur());
+
+    // Set up dont_elim
     if (!cnf.get_weighted()) {
       dont_elim.clear();
       for(uint32_t v: new_sampl_vars) dont_elim.emplace_back(v, false);
@@ -267,6 +278,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
     ret_cnf.set_backbone_done(backbone_done);
     print_cnf_shape("out", ret_cnf);
+    ret_cnf.check_no_touch_mapping();
     if (cnf.get_need_aig()) {
         auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | verbose_debug_enabled, "end get_fully_simplified_renumbered_cnf");
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
@@ -336,11 +348,16 @@ void Puura::print_cnf_shape(const char* name, const ArjunNS::SimplifiedCNF& cnf)
         << " sampl: " << cnf.get_sampl_vars().size());
 }
 
+uint32_t Puura::num_vars_left(CMSat::SATSolver* solver) const {
+    uint32_t left = 0;
+    for(uint32_t v = 0; v < solver->nVars(); v++) if (!solver->removed_var(v)) left++;
+    return left;
+}
+
 void Puura::print_stage(const char* name, CMSat::SATSolver* solver, double stage_start) {
     if (conf.verb < 1) return;
     const uint32_t n = solver->nVars();
-    uint32_t removed = 0;
-    for(uint32_t v = 0; v < n; v++) if (solver->removed_var(v)) removed++;
+    const uint32_t removed = n - num_vars_left(solver);
     uint32_t left = 0;
     for(const auto& v: to_define) if (!solver->removed_var(v)) left++;
 

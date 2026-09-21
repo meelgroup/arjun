@@ -165,6 +165,7 @@ struct FuzzStats {
              << "  distrib="      << total_and_or_distrib
              << "  xor_simp="     << total_xor_simplify
              << "  hash_hits="    << total_struct_hash_hits
+
              << endl;
     }
 

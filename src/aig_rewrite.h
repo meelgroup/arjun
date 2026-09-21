@@ -28,6 +28,7 @@ struct AIGRewriteStats {
     uint64_t and_or_distrib = 0;
     uint64_t xor_simplify = 0;
     uint64_t structural_hash_hits = 0;
+    uint64_t cofactor = 0;
     uint64_t total_passes = 0;
     // Decision-list (repair-chain) compression
     uint64_t chain_defs = 0;      // defs rebuilt by compress_cube_chains
@@ -116,6 +117,11 @@ private:
     aig_lit try_or_sibling(const aig_lit& or_e, const aig_lit& other);
     aig_lit try_and_of_ands(const aig_lit& l, const aig_lit& r);
     aig_lit try_resolve_distribute(const aig_lit& l, const aig_lit& r);
+    aig_lit try_cofactor(const aig_lit& lit, const aig_lit& r, uint32_t r_refs);
+    std::unordered_map<const AIG*, uint32_t> src_refs;
+    void count_src_refs(const std::vector<aig_lit>& defs);
+    aig_lit cofactor_rebuild(const aig_lit& e, uint32_t var, bool val, std::unordered_map<const AIG*, aig_lit>& memo);
+    static constexpr uint32_t cofactor_max_nodes = 48;
 
     static bool is_complement(const aig_lit& a, const aig_lit& b) {
         return a.node && a.node == b.node && a.neg != b.neg;
