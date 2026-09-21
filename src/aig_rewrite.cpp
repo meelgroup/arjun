@@ -285,8 +285,7 @@ void AIGRewriter::count_src_refs(const std::vector<aig_lit>& defs) {
 }
 
 aig_lit AIGRewriter::try_cofactor(const aig_lit& lit, const aig_lit& r, uint32_t r_refs) {
-    if (cofactor_max_nodes == 0) return aig_lit();
-    if (!cofactor_shared && r_refs > 1) return aig_lit();
+    if (r_refs > 1) return aig_lit();
     if (lit->type != AIGT::t_lit || r->type != AIGT::t_and) return aig_lit();
     const uint32_t var = lit->var;
     std::vector<const AIG*> st{r.get()};
@@ -394,7 +393,7 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
         }
 
         if (!pos.node) pos = try_and_of_ands(l, r);
-        if (!pos.node && do_distribute) pos = try_resolve_distribute(l, r);
+        if (!pos.node) pos = try_resolve_distribute(l, r);
         if (!pos.node) pos = try_cofactor(l, r, src_refs.count(src->r.get()) ? src_refs.at(src->r.get()) : 1);
         if (!pos.node) pos = try_cofactor(r, l, src_refs.count(src->l.get()) ? src_refs.at(src->l.get()) : 1);
         if (!pos.node) pos = make_canonical(l, r);
@@ -1109,7 +1108,7 @@ void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb, bool balance) {
              << " defs: " << defs.size() << endl;
 
     // Chain compression first (needs the raw decision-list structure).
-    if (do_chain) compress_cube_chains(defs);
+    compress_cube_chains(defs);
     trace("chain_compress");
 
     // A single simplify sweep suffices; hash_cons last so new ANDs from

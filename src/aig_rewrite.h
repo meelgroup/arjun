@@ -60,15 +60,9 @@ public:
                      bool balance = false);
 
     const AIGRewriteStats& get_stats() const { return stats; }
-    void set_chain_compression(bool b) { do_chain = b; }
-    void set_distribute(bool b) { do_distribute = b; }
-    void set_cofactor_max_nodes(uint32_t n) { cofactor_max_nodes = n; }
-    void set_cofactor_shared(bool b) { cofactor_shared = b; }
 
 private:
     AIGRewriteStats stats;
-    bool do_chain = true;
-    bool do_distribute = true;
 
     // Hash-cons for AND nodes keyed on the two signed child edges (nid+sign).
     // AND has no output sign (it lives on the referring edge), so it's not in the key.
@@ -126,9 +120,8 @@ private:
     aig_lit try_cofactor(const aig_lit& lit, const aig_lit& r, uint32_t r_refs);
     std::unordered_map<const AIG*, uint32_t> src_refs;
     void count_src_refs(const std::vector<aig_lit>& defs);
-    bool cofactor_shared = false;
     aig_lit cofactor_rebuild(const aig_lit& e, uint32_t var, bool val, std::unordered_map<const AIG*, aig_lit>& memo);
-    uint32_t cofactor_max_nodes = 48;
+    static constexpr uint32_t cofactor_max_nodes = 48;
 
     static bool is_complement(const aig_lit& a, const aig_lit& b) {
         return a.node && a.node == b.node && a.neg != b.neg;

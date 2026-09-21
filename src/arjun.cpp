@@ -40,7 +40,6 @@
 #include "time_mem.h"
 #include "constants.h"
 #include "autarky.h"
-#include "cnf_rewrite.h"
 #include "unate_def.h"
 #include "cegr.h"
 #include "brute_force_synth.h"
@@ -136,14 +135,6 @@ DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF&
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
     Autarky autarky(arjdata->conf);
     autarky.find_autarkies(cnf);
-}
-
-DLL_PUBLIC bool Arjun::standalone_cnf_rewrite(SimplifiedCNF& cnf, const std::string& tag) {
-    CnfRewrite rw(arjdata->conf);
-    if (!arjdata->conf.cnfrw_dump.empty()) cnf.write_simpcnf(arjdata->conf.cnfrw_dump + tag + "-in.cnf", true);
-    const bool ret = rw.run(cnf, tag);
-    if (!arjdata->conf.cnfrw_dump.empty()) cnf.write_simpcnf(arjdata->conf.cnfrw_dump + tag + ".cnf", true);
-    return ret;
 }
 
 DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const InterpConf& iconf) {
@@ -258,41 +249,9 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf) {
     SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     cnf.remove_equiv_weights();
-    if (arjdata->conf.cnf_rewrite & 4) {
-        auto lits_of = [](const SimplifiedCNF& c) {
-            uint64_t lits = 0;
-            for (const auto& cl : c.get_clauses()) lits += cl.size();
-            return lits;
-        };
-        SimplifiedCNF alt = cnf;
-        const uint64_t lits_before = lits_of(cnf);
-        bool changed = standalone_cnf_rewrite(alt, "[pre-puura]");
-        if (changed && lits_of(alt) > lits_before * (1.0 - arjdata->conf.cnfrw_portfolio_min_gain / 100.0)) {
-            verb_print2(1, "[cnfrw-portfolio] rewrite gain below " << arjdata->conf.cnfrw_portfolio_min_gain
-                << "% of literals, not running the second puura");
-            changed = false;
-        }
-        cnf = standalone_get_simplified_cnf(cnf, simp_conf);
-        if (changed) {
-            alt = standalone_get_simplified_cnf(alt, simp_conf);
-            auto cost = [](const SimplifiedCNF& c) {
-                uint64_t lits = 0;
-                for (const auto& cl : c.get_clauses()) lits += cl.size();
-                return 4 * (uint64_t)c.nVars() + c.get_clauses().size() + lits / 4;
-            };
-            const bool take_alt = cost(alt) < cost(cnf);
-            verb_print2(1, "[cnfrw-portfolio] plain puura: vars " << cnf.nVars() << " cls " << cnf.get_clauses().size()
-                << " | rewrite+puura: vars " << alt.nVars() << " cls " << alt.get_clauses().size()
-                << " -> keeping " << (take_alt ? "rewrite+puura" : "plain puura"));
-            if (take_alt) cnf = alt;
-        }
-    } else {
-        if (arjdata->conf.cnf_rewrite & 2) standalone_cnf_rewrite(cnf, "[pre-puura]");
-        cnf = standalone_get_simplified_cnf(cnf, simp_conf);
-    }
+    cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     if (etof_conf.do_autarky) standalone_autarky(cnf);
     cnf.remove_equiv_weights();
-    if (arjdata->conf.cnf_rewrite & 1) standalone_cnf_rewrite(cnf, "[post-puura]");
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
     simp_conf2.bve_grow_iter2 = 0;
@@ -2828,43 +2787,3 @@ set_get_macro(int, oracle_find_bins)
 set_get_macro(double, cms_glob_mult)
 set_get_macro(int, extend_ccnr)
 set_get_macro(uint32_t, seed)
-set_get_macro(int, cnf_rewrite)
-set_get_macro(int, cnfrw_max_gate_inputs)
-set_get_macro(int, cnfrw_max_xor_size)
-set_get_macro(int, cnfrw_irreg)
-set_get_macro(int, cnfrw_pg)
-set_get_macro(int, cnfrw_constr)
-set_get_macro(int, cnfrw_half)
-set_get_macro(int, cnfrw_dup_var_weight)
-set_get_macro(int, cnfrw_chain)
-set_get_macro(int, cnfrw_pareto)
-set_get_macro(int, cnfrw_inline_fanout)
-set_get_macro(int, cnfrw_distrib)
-set_get_macro(int, cnfrw_cofactor)
-set_get_macro(int, cnfrw_cofactor_shared)
-set_get_macro(int, cnfrw_or_distrib)
-set_get_macro(std::string, cnfrw_dump)
-set_get_macro(int, cnfrw_irreg_max_prod)
-set_get_macro(int, cnfrw_irreg_max_vars)
-set_get_macro(int, cnfrw_rewrite)
-set_get_macro(int, cnfrw_balance)
-set_get_macro(int, cnfrw_group_cse)
-set_get_macro(int, cnfrw_cut_cnf)
-set_get_macro(int, cnfrw_detect_ite)
-set_get_macro(int, cnfrw_detect_xor)
-set_get_macro(int, cnfrw_guard)
-set_get_macro(int, cnfrw_var_weight)
-set_get_macro(int, cnfrw_cls_weight)
-set_get_macro(int, cnfrw_kary_fusion)
-set_get_macro(int, cnfrw_max_kary)
-set_get_macro(int, cnfrw_max_mux_chain)
-set_get_macro(int, cnfrw_min_gain)
-set_get_macro(int, cnfrw_tries)
-set_get_macro(int, cnfrw_max_cls_len)
-set_get_macro(int, cnfrw_no_widen)
-set_get_macro(int, cnfrw_edge_grow)
-set_get_macro(int, cnfrw_encoder)
-set_get_macro(int, cnfrw_map_leaves)
-set_get_macro(int, cnfrw_map_cuts)
-set_get_macro(double, cnfrw_map_helper_w)
-set_get_macro(double, cnfrw_portfolio_min_gain)

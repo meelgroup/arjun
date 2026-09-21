@@ -39,6 +39,19 @@ Useful top-level flags:
   `*-autarky.aig`, `*-cegr.aig`, `*-final.aig`) for debugging
 - `--verb N` — verbosity (0–2)
 
+## Experiments: small runs here, full runs on the cluster
+
+NEVER run full benchmark sweeps on this machine -- the cluster does that. Here,
+run small experiments only: ~16 instances (one per core), in parallel, each
+short. Pick them from existing cluster results instead of guessing:
+
+- `build/data/out-synth-<jobid>-<n>/` -- per-instance cluster logs.
+- `build/data/data.sqlite3`, table `arjun` -- parsed results (`dirname`,
+  `fname`, `timeout_call`, `arjun_time`, `cegr_time`, `start_to_define_vars`,
+  `last_stage`, ...). E.g. short instances that reach CEGR:
+  `select fname, arjun_time from arjun where dirname='out-synth-...' and cegr_time>0 order by arjun_time limit 16;`
+- Benchmarks: `build/benchmarks-qdimacs/*.qdimacs.gz`.
+
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
 
 One-line sanity bench for comparing simplification tweaks. Runs `arjun` on a
@@ -71,74 +84,6 @@ parallel tool calls in the same message) instead of sequentially.
 
 All must pass before reporting a change as complete.
 
-## CNF rewriting through AIG lifting (`--cnfrw`)
-
-`src/cnf_rewrite.{h,cpp}` recovers gates (AND/OR k-ary, XOR, ITE, EQUIV,
-irregular) syntactically from the clause set, lifts them into an AIG,
-rewrites it with `AIGRewriter`, and
-re-encodes it with `AIGToCNF` (or the cut mapper `src/aig_cnf_map.h`, see
-`--cnfrwenc`). Each connected gate group is only replaced when its cost
-(lits + `--cnfrwclsw`*cls + `--cnfrwvarw`*vars) drops. Sampling vars and
-weighted vars are never removed. Runs inside `standalone_elim_to_file`;
-`--cnfrw` is a bitmask: 1 = after the first puura pass (nearly a no-op
-since puura leaves few gates), 2 = before puura (default, also ganak's
-default), 4 = portfolio (first puura pass with and without the pre-rewrite,
-keep the smaller). Mode 2 gives 5-25% fewer variables before puura and
-smaller final CNFs on circuit-like/PG instances; note that in early paired
-ganak timings (same variable permutation, pre-PG code) t3_059/095 counted
-slower with it. puura's output size and ganak's time are both chaotic under
-variable renaming (±30%, 3x), so only paired/median comparisons mean anything.
-
-Plaisted-Greenbaum inputs (`--cnfrwpg`, default on): for a variable that is
-not counted over (not in the sampling set, unweighted), the clauses of one
-polarity, say `(¬g ∨ C_i)`, may be taken as its definition `g ↔ ∧ OR(C_i)`
-without changing the projected count (∃g F is unchanged), so one-directional
-Tseitin/PG encodings lift as gates too. Such outputs are re-emitted
-one-directionally (`--cnfrwhalf`), and the encoder in that mode emits only the
-needed implication direction per helper (polarity-aware Tseitin), flattens
-fanout-1 OR conjuncts into single clauses, and duplicates small shared
-sub-terms when a helper would cost more (`--cnfrwdupw`). On
-mc2025_track3_103 (a pure PG circuit, 19.5k aux vars) `--cnfrw 2` removes
-23% of the variables and 12% of the clauses before puura; the AIGRewriter's
-cube-chain compression is off in this path (`--cnfrwchain 0`) because
-sharing clause tails through helper nodes shrinks the AIG but grows the CNF.
-
-Other knobs (defaults chosen on 5-renaming medians of 033 and 103):
-`--cnfrwordistrib 1` distributes small nested ANDs into their OR clause when
-the fanout-amortised helper would cost more; `--cnfrwcofactor 48` is a new
-AIGRewriter rule AND(lit, f) -> AND(lit, f|lit=1) on unshared cones of at most
-48 nodes (`--cnfrwcofshared 1` also duplicates shared cones); `--cnfrwconstr 1`
-lifts non-gate clauses over removable gate outputs as asserted roots so the
-outputs can be inlined into the constraints (off: helped 033 slightly, cost
-103 its whole gain); `--cnfrwpareto N` allows N% clause/literal growth (1 =
-strict). Use `--cnfrwdump <prefix>` to write the CNF before/after each pass
-when debugging count changes (compare ganak counts of the two dumps).
-
-Tooling:
-- `build/cnf_gate_stats [--puura 0/1] [--backward 0/1] file.cnf` — gate and
-  AIG shape statistics (fanin histograms, cone shapes, NPN classes of small
-  cones, per-component rewrite table).
-- `scripts/cnfrw_bench.py --configs "base:--cnfrw 0" "pre:--cnfrw 2" [--perms 3] files…`
-  — A/B on output size and ganak count time; counts must agree across configs.
-  puura's output size is chaotic under variable renaming (±20%), so compare
-  medians over `--perms`.
-- `../count_fuzzer/fuzz.py` randomizes the `--cnfrw*` flags; it is the
-  count-preservation fuzzer for this module.
-
-## Output-size chaos under variable renaming
-
-The big source of chaos on t3_103 is cnfrw itself: its four largest
-gate components sit on the knife-edge of the strict Pareto rule (re-encoded
-literals within 0.1-2% of the original), and the encoder's result depends
-on the order of the component's roots, so a renaming flips a component
-between accepted and rejected and moves 600-800 pre-puura variables (and
-the puura result between ~1650 and ~1820 vars). `--cnfrwtries K` (default
-6) encodes each multi-root component in K root orders (original, reversed,
-seeded shuffles) and keeps the cheapest; it costs K times the encode time
-(0.08 -> 0.4 s on 103) and made the 103 result 1622-1657 vars over 3
-renamings (was 1648-1815). `[cnfrw-comp]` lines at `--verb 2` show each
-component's accept/reject decision with its before/after sizes.
-
 ## Source layout (`src/`)
 
 - `arjun.{h,cpp}` — public API, the `AIG` class, and the `SimplifiedCNF`
@@ -158,9 +103,6 @@ component's accept/reject decision with its before/after sizes.
 - `aig_to_cnf.{h,cpp}` — Tseitin encoding with fanout-based helper
   suppression, k-ary AND/OR fusion, ITE / MUX3 detection.
 - `puura.{h,cpp}` — SharpSAT-td-derived simplification.
-- `cnf_rewrite.{h,cpp}`, `aig_cnf_map.h` — CNF gate lifting / cut-based CNF
-  mapping (see `--cnfrw` above).
-- `cnf_gate_stats.cpp` — gate/AIG shape analyzer binary.
 - `autarky.cpp`, `backward.cpp`, `extend.cpp`, `minimize.cpp`,
   `unate_def.cpp` — independent-set extraction passes.
 - `metasolver.h`, `metasolver2.h`, `cachedsolver.h` — SAT-solver wrappers
