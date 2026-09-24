@@ -29,6 +29,7 @@
 #endif
 
 #include <charconv>
+#include <type_traits>
 #include <iostream>
 #include <iomanip>
 #include <vector>
@@ -93,44 +94,41 @@ string print_version() {
     return ss.str();
 }
 
-static int fc_int(const std::string& s) {
-    int val = 0;
-    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), val);
-    if (ec != std::errc{}) throw std::invalid_argument("not an integer: " + s);
-    if (ptr != s.data() + s.size()) throw std::invalid_argument("trailing characters in integer: " + s);
-    return val;
+template<class T> static T parse_opt(const std::string& s) {
+    if constexpr (std::is_same_v<T, std::string>) {
+        return s;
+    } else if constexpr (std::is_same_v<T, bool>) {
+        return parse_opt<int>(s) != 0;
+    } else if constexpr (std::is_floating_point_v<T>) {
+        size_t pos = 0;
+        double val;
+        try { val = std::stod(s, &pos); }
+        catch (const std::exception&) { throw std::invalid_argument("not a number: " + s); }
+        if (pos != s.size()) throw std::invalid_argument("trailing characters in number: " + s);
+        return val;
+    } else if constexpr (std::is_integral_v<T>) {
+        T val{};
+        auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), val);
+        if (ec == std::errc::result_out_of_range) throw std::invalid_argument("integer out of range: " + s);
+        if (ec != std::errc{}) throw std::invalid_argument("not an integer: " + s);
+        if (ptr != s.data() + s.size()) throw std::invalid_argument("trailing characters in integer: " + s);
+        return val;
+    } else {
+        static_assert(sizeof(T) == 0, "parse_opt: unsupported option type");
+    }
 }
-static double fc_double(const std::string& s) {
-    size_t pos = 0;
-    double val;
-    try { val = std::stod(s, &pos); }
-    catch (const std::exception&) { throw std::invalid_argument("not a double: " + s); }
-    if (pos != s.size()) throw std::invalid_argument("trailing characters in double: " + s);
-    return val;
-}
-static const std::string& fc_string(const std::string& s) { return s; }
 
-template<typename T, typename F>
-void myopt(const char* name, T& var, F fun, const char* hhelp) {
-    using r = std::decay_t<std::invoke_result_t<F, const std::string&>>;
-    static_assert(std::is_floating_point_v<r> == std::is_floating_point_v<T>,
-        "Floating-point mismatch: use fc_double for floating-point vars, fc_int for integral vars");
-    static_assert(std::is_integral_v<r> == std::is_integral_v<T>,
-        "Integral/string mismatch: use fc_int for integral vars, fc_string for string vars");
+template<typename T>
+void myopt(const char* name, T& var, const char* hhelp) {
     program.add_argument(name)
-        .action([&var, fun](const auto& a) { var = fun(a); })
+        .action([&var](const std::string& a) { var = parse_opt<T>(a); })
         .default_value(var)
         .help(hhelp);
 }
-template<typename T, typename F>
-void myopt2(const char* name1, const char* name2, T& var, F fun, const char* hhelp) {
-    using r = std::decay_t<std::invoke_result_t<F, const std::string&>>;
-    static_assert(std::is_floating_point_v<r> == std::is_floating_point_v<T>,
-        "Floating-point mismatch: use fc_double for floating-point vars, fc_int for integral vars");
-    static_assert(std::is_integral_v<r> == std::is_integral_v<T>,
-        "Integral/string mismatch: use fc_int for integral vars, fc_string for string vars");
+template<typename T>
+void myopt2(const char* name1, const char* name2, T& var, const char* hhelp) {
     program.add_argument(name1, name2)
-        .action([&var, fun](const auto& a) { var = fun(a); })
+        .action([&var](const std::string& a) { var = parse_opt<T>(a); })
         .default_value(var)
         .help(hhelp);
 }
@@ -145,48 +143,48 @@ void myflag(const char* name, T& var, const char* hhelp) {
 }
 
 void add_arjun_options() {
-    myopt2("-v", "--verb", conf.verb, fc_int, "Verbosity");
+    myopt2("-v", "--verb", conf.verb, "Verbosity");
     program.add_argument("--version") \
         .action([&](const auto&) {cout << print_version() << endl; exit(0);}) \
         .flag()
         .help("Print version and exit");
 
-    myopt("--mode", mode , fc_int, "0=counting, 1=weightd counting");
-    myopt("--allindep", etof_conf.all_indep, fc_int,
+    myopt("--mode", mode , "0=counting, 1=weightd counting");
+    myopt("--allindep", etof_conf.all_indep,
           "All variables can be made part of the indepedent support. Indep "
           "support is given ONLY to help the solver.");
-    myopt("--maxc", conf.backw_max_confl, fc_int,"Maximum conflicts per variable in backward mode");
-    myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout in K steps. 0 = no sbva");
-    myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");
-    myopt("--seed", conf.seed, fc_int, "Random seed");
-    myopt("--mpfrprec", mpfr_precision, fc_int, "MPFR precision in bits");
+    myopt("--maxc", conf.backw_max_confl,"Maximum conflicts per variable in backward mode");
+    myopt("--sbva", etof_conf.num_sbva_steps,"SBVA timeout in K steps. 0 = no sbva");
+    myopt("--prebackbone", do_pre_backbone,"Perform backbone before other things");
+    myopt("--seed", conf.seed, "Random seed");
+    myopt("--mpfrprec", mpfr_precision, "MPFR precision in bits");
 
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
-    myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Cegr");
-    myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
-    myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
-    myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
-    myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
-    myopt("--unatedefmaxconfl", conf.unate_def_max_confl, fc_int,"Conflict budget per SAT call in the standard unate_def probe");
-    myopt("--unatedefeq", conf.unate_def_eq, fc_int,"In unate_def, also detect equiv defs of the form t = L or t = ~L for some literal L");
-    myopt("--unatedefeqmax", conf.unate_def_eq_max_per_var, fc_int,"Max equiv candidates to test per to-define variable in unate_def");
-    myopt("--unatedefeqconfl", conf.unate_def_eq_max_confl, fc_int,"Conflict budget per SAT call inside the equiv unate_def search");
-    myopt("--unatedefmaxconfltot", conf.unate_def_max_confl_total, fc_int,"Conflict budget for the WHOLE unate_def pass, not per call. 0 = no limit");
-    myopt("--unatedefeqdry", conf.unate_def_eq_dry_streak, fc_int,
+    myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
+    myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
+    myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
+    myopt("--minimconfl", mconf.minimize_conflict,"Minimize conflict size when repairing");
+    myopt("--unatedef", do_unate_def,"Perform definition-aware unate analysis");
+    myopt("--unatedefmaxconfl", conf.unate_def_max_confl,"Conflict budget per SAT call in the standard unate_def probe");
+    myopt("--unatedefeq", conf.unate_def_eq,"In unate_def, also detect equiv defs of the form t = L or t = ~L for some literal L");
+    myopt("--unatedefeqmax", conf.unate_def_eq_max_per_var,"Max equiv candidates to test per to-define variable in unate_def");
+    myopt("--unatedefeqconfl", conf.unate_def_eq_max_confl,"Conflict budget per SAT call inside the equiv unate_def search");
+    myopt("--unatedefmaxconfltot", conf.unate_def_max_confl_total,"Conflict budget for the WHOLE unate_def pass, not per call. 0 = no limit");
+    myopt("--unatedefeqdry", conf.unate_def_eq_dry_streak,
           "Disable equiv unate_def probe after this many consecutive misses "
           "with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
-    myopt("--unatedefeqnoninp", conf.unate_def_eq_noninput, fc_int,
+    myopt("--unatedefeqnoninp", conf.unate_def_eq_noninput,
           "Allow non-input vars (to-define + already-tested) as the candidate "
           "L in t = L. Inputs are still tried first; non-inputs only after the "
           "input list is exhausted. 0 = inputs only");
-    myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
+    myopt("--autarky", etof_conf.do_autarky,"Perform autarky analysis");
     // CNF rewrite via AIG lifting
 
     // repairing on vars
-    myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
+    myopt("--bwequal", mconf.force_bw_equal,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
     // Strategy
-    myopt("--cstrategy", mstrategy, fc_string,
+    myopt("--cstrategy", mstrategy,
         "Comma-separated synthesis strategy list, e.g. "
         "\"learn(samples=1,max_repairs=100),learn(max_repairs=800),bve\". "
         "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
@@ -194,102 +192,102 @@ void add_arjun_options() {
         "max_depth, sampler_fixed_conflicts, and other CegrConf fields.");
 
     // Restarting
-    myopt("--crestart", mconf.restart, fc_int,
+    myopt("--crestart", mconf.restart,
         "Exit Cegr every N repairs, compact ALL per-var AIGs via the AIG rewriter, "
         "and re-enter Cegr with the compacted AIGs as the initial guess. 0 = never");
-    myopt("--dumprestartaig", conf.dump_restart_aig, fc_string,
+    myopt("--dumprestartaig", conf.dump_restart_aig,
         "Dump the pre-compaction guess AIGs at every Cegr restart to "
         "<prefix>-restart<N>.aig (binary defs) and .v (verilog), for offline "
         "rewrite experiments");
 
     // solver config
-    myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
-    myopt("--ctxlightinproc", mconf.ctx_light_inproc, fc_int,
+    myopt("--ctxsolver", mconf.ctx_solver_type,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--ctxlightinproc", mconf.ctx_light_inproc,
         "Cegr context solver CaDiCaL inprocessing: 0 = stock, 1 = no lucky phases under "
         "assumptions, 2 = also no inprobing/congruence/sweep/factor");
-    myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
-    myopt("--repaircache", mconf.repair_cache_size, fc_int,"Repair cache size. 0 = no cache");
+    myopt("--repairsolver", mconf.repair_solver_type,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--repaircache", mconf.repair_cache_size,"Repair cache size. 0 = no cache");
 
     // Cegr learn synth -- sampling
-    myopt("--samples", mconf.samples, fc_int,"Number of samples");
-    myopt("--uniqsamp", mconf.do_unique_input_samples, fc_int, "Unique samples on input vars");
-    myopt("--filtersamples", mconf.filter_samples, fc_int,"Filter samples from useless ones");
-    myopt("--fixedconf", mconf.sampler_fixed_conflicts, fc_int,"Restart conflict limit in CMSGen");
+    myopt("--samples", mconf.samples,"Number of samples");
+    myopt("--uniqsamp", mconf.do_unique_input_samples, "Unique samples on input vars");
+    myopt("--filtersamples", mconf.filter_samples,"Filter samples from useless ones");
+    myopt("--fixedconf", mconf.sampler_fixed_conflicts,"Restart conflict limit in CMSGen");
 
     // synth -- decision tree
-    myopt("--maxdepth", mconf.max_depth, fc_int,"Maximum depth of decision tree");
-    myopt("--minleaf", mconf.min_leaf_size, fc_int,"Minimum leaf size in decision tree");
-    myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
+    myopt("--maxdepth", mconf.max_depth,"Maximum depth of decision tree");
+    myopt("--minleaf", mconf.min_leaf_size,"Minimum leaf size in decision tree");
+    myopt("--mingainsplit", mconf.min_gain_split,"Minimum gain for a split in decision tree");
     // synth -- cutoff/tuning constants
-    myopt("--coneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
-    myopt("--cinvertguessed", mconf.inv_guess, fc_int,"Invert guessed functions");
-    myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
-    myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
-    myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");
-    myopt("--batchminimmin", mconf.batch_minim_min, fc_int, "Min conflict size for batch minimization");
-    myopt("--minimbudgetthresh", mconf.minim_budget_threshold, fc_int, "Conflict size above which minim budget is capped");
-    myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
-    myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
-    myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
-    myopt("--czlowratio", mconf.cz_low_ratio, fc_int, "cost_zero > tot_repaired * this triggers medium cz_threshold");
-    myopt("--czthreshhigh", mconf.cz_threshold_high, fc_int, "Consecutive cost-zero break count when high cz ratio");
-    myopt("--czthreshmid", mconf.cz_threshold_mid, fc_int, "Consecutive cost-zero break count when medium cz ratio");
-    myopt("--czthreshlow", mconf.cz_threshold_low, fc_int, "Consecutive cost-zero break count when low cz ratio");
+    myopt("--coneperloop", mconf.one_repair_per_loop,"One repair per CEX loop");
+    myopt("--cinvertguessed", mconf.inv_guess,"Invert guessed functions");
+    myopt("--statsevery", mconf.stats_every, "Print stats every N repair loops");
+    myopt("--detailedstatsevery", mconf.detailed_stats_every, "Print detailed stats every N repair loops");
+    myopt("--confldropy", mconf.conflict_drop_y_max, "Max conflict size to try dropping y-vars");
+    myopt("--batchminimmin", mconf.batch_minim_min, "Min conflict size for batch minimization");
+    myopt("--minimbudgetthresh", mconf.minim_budget_threshold, "Conflict size above which minim budget is capped");
+    myopt("--minimbudgetmax", mconf.minim_budget_max, "Max minimization solver calls");
+    myopt("--minimbudgetmult", mconf.minim_budget_mult, "Minim budget = conflict.size * mult (up to max)");
+    myopt("--czhighratio", mconf.cz_high_ratio, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
+    myopt("--czlowratio", mconf.cz_low_ratio, "cost_zero > tot_repaired * this triggers medium cz_threshold");
+    myopt("--czthreshhigh", mconf.cz_threshold_high, "Consecutive cost-zero break count when high cz ratio");
+    myopt("--czthreshmid", mconf.cz_threshold_mid, "Consecutive cost-zero break count when medium cz ratio");
+    myopt("--czthreshlow", mconf.cz_threshold_low, "Consecutive cost-zero break count when low cz ratio");
     // synth -- debug
-    myopt("--cegrcnf", mconf.write_cegr_cnf, fc_string, "Write Cegr CNF to this file");
-    myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
-    myopt("--interprebuildevery", iconf.interp_rebuild_every, fc_int,
+    myopt("--cegrcnf", mconf.write_cegr_cnf, "Write Cegr CNF to this file");
+    myopt("--debugsynth", conf.debug_synth,"Debug synthesis, prefix with this fname");
+    myopt("--interprebuildevery", iconf.interp_rebuild_every,
           "Rebuild the doubled-CNF interpolation solver every N interpolants "
           "(bounds tracer maps; smaller = exercise the rebuild path more).");
-    myopt("--interpmaxconfl", iconf.interp_max_confl, fc_int,
+    myopt("--interpmaxconfl", iconf.interp_max_confl,
           "Per-interpolant conflict budget; over this, skip the var. 0 = unlimited.");
-    myopt("--interprebuildmaxconfl", iconf.interp_rebuild_max_confl, fc_int,
+    myopt("--interprebuildmaxconfl", iconf.interp_rebuild_max_confl,
           "Rebuild the interpolation solver once it burns this many conflicts "
           "since the last rebuild (bounds tracer maps after "
           "skipped/conflict-heavy solves). 0 = off.");
     myflag("--checkrepair", mconf.check_repair,
            "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
-    myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
+    myopt("--ganakbin", mconf.ganak_binary, "Path to ganak binary (for --checkrepair)");
 
     // Brute-force synthesis
-    myopt("--bruteforcesynth", use_brute_force_synth, fc_int,
+    myopt("--bruteforcesynth", use_brute_force_synth,
           "Try brute-force synthesis for the final synthesis "
           "step before Cegr. Viable when |orig_sampl_cnf| ≤ "
           "--bruteforcesynththresh (after the minim pre-pass); above that it "
           "declines and Cegr takes over. 0=Cegr only, 1=try brute-force "
           "first (default).");
-    myopt("--bruteforcesynththresh", mconf.brute_force_synth_threshold, fc_int,
+    myopt("--bruteforcesynththresh", mconf.brute_force_synth_threshold,
           "Cap: brute_force_synth runs only when |orig_sampl_cnf| ≤ this "
           "(after the minim pre-pass); above it it declines to Cegr. Each y "
           "allocates 2^N truth-table entries, so raising past ~20 OOMs.");
-    myopt("--bruteforcesynthminim", mconf.brute_force_synth_minim, fc_int,
+    myopt("--bruteforcesynthminim", mconf.brute_force_synth_minim,
           "Dry-run backward minim on orig_sampl_cnf before enumeration: prunes "
           "sampling vars that the post-preproc CNF defines from the rest, "
           "shrinking the 2^N truth tables. 0=off, 1=on (default).");
-    myopt("--bruteforcesynthminimmax", mconf.brute_force_synth_minim_max, fc_int,
+    myopt("--bruteforcesynthminimmax", mconf.brute_force_synth_minim_max,
         "Only attempt the minim pre-pass when |orig_sampl_cnf| ≤ this (default "
         "40). Above it the doubled-CNF minim is too expensive and unlikely to "
         "shrink below --bruteforcesynththresh, so it is skipped.");
 
     // Simplification options for minim
-    myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
-    myopt("--bvepresimp", conf.bve_pre_simplify, fc_int,"simplify");
-    myopt("--simp", conf.simp, fc_int,"Do ~ sort of simplification during indep minimixation");
-    myopt("--intree", conf.intree, fc_int,"intree");
+    myopt("--probe", conf.probe_based,"Use simple probing to set (and define) some variables");
+    myopt("--bvepresimp", conf.bve_pre_simplify,"simplify");
+    myopt("--simp", conf.simp,"Do ~ sort of simplification during indep minimixation");
+    myopt("--intree", conf.intree,"intree");
 
     // Gate options
-    myopt("--gates", do_gates, fc_int,"Turn on/off all gate-based definability");
-    myopt("--nogatebelow", conf.no_gates_below, fc_double,
+    myopt("--gates", do_gates,"Turn on/off all gate-based definability");
+    myopt("--nogatebelow", conf.no_gates_below,
           "Don't use gates below this incidence relative position (1.0-0.0) to "
           "minimize the independent set. Gates are not very accurate, but can "
           "save a LOT of time. We use them to get rid of most of the uppert "
           "part of the sampling set only. Default is 99% is free-for-all, the "
           "last 1% we test. At 1.0 we test everything, at 0.0 we try using "
           "gates for everything.");
-    myopt("--orgate", conf.or_gate_based, fc_int,"Use 3-long gate detection in SAT solver to-define variables");
-    myopt("--irreggate", conf.irreg_gate_based, fc_int,"Use irregular gate-based removal of vars from indep set");
-    myopt("--itegate", conf.ite_gate_based, fc_int,"Use ITE gate detection in SAT solver to-define some variables");
-    myopt("--xorgate", conf.xor_gates_based, fc_int,"Use XOR detection in SAT solver to-define some variables");
+    myopt("--orgate", conf.or_gate_based,"Use 3-long gate detection in SAT solver to-define variables");
+    myopt("--irreggate", conf.irreg_gate_based,"Use irregular gate-based removal of vars from indep set");
+    myopt("--itegate", conf.ite_gate_based,"Use ITE gate detection in SAT solver to-define some variables");
+    myopt("--xorgate", conf.xor_gates_based,"Use XOR detection in SAT solver to-define some variables");
 
     // AppMC
     program.add_argument("--appmc")
@@ -298,44 +296,44 @@ void add_arjun_options() {
         .help("Set CNF simplification options for appmc");
 
     // Detailed Configuration
-    myopt("--sbvaclcut", etof_conf.sbva_cls_cutoff, fc_int,"SBVA heuristic cutoff. Higher -> only appied to more clauses");
-    myopt("--sbvalitcut", etof_conf.sbva_lits_cutoff, fc_int,"SBVA heuristic cutoff. Higher -> only appied to larger clauses");
-    myopt("--findbins", conf.oracle_find_bins, fc_int,"How aggressively find binaries via oracle");
-    myopt("--sbvabreak",  etof_conf.sbva_tiebreak, fc_int,"SBVA tie break: 1=sbva or 0=bva");
-    myopt("--sbvamaxnewvars", etof_conf.sbva_max_new_vars, fc_int,"Max number of new variables SBVA may add. 0 = no limit");
-    myopt("--gaussj", conf.gauss_jordan, fc_int,"Use XOR finding and Gauss-Jordan elimination");
-    myopt("--bve", simp_conf.do_bve, fc_int,"Perform BVE during CNF simplification");
-    myopt("--iter1", simp_conf.iter1, fc_int,"Puura iterations before oracle");
-    myopt("--iter1grow", simp_conf.bve_grow_iter1, fc_int,"Puura BVE grow rate allowed before Oracle");
-    myopt("--iter2", simp_conf.iter2, fc_int,"Puura iterations after oracle");
-    myopt("--iter2grow", simp_conf.bve_grow_iter2, fc_int,"Puura BVE grow rate allowed after Oracle");
-    myopt("--iter2growlarge", simp_conf.bve_grow_iter2_large, fc_int,"If >= 0: used instead of --iter2grow when more than --iter2growlargevars vars are left before iter2");
-    myopt("--iter2growlargevars", simp_conf.bve_grow_iter2_large_vars, fc_int,"Vars-left threshold for --iter2growlarge");
-    myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, fc_int,"Puura BVE max resolvent size in literals. -1 == no limit");
-    myopt("--bveresolvmaxsz2", simp_conf.bve_too_large_resolvent2, fc_int,"Like --bveresolvmaxsz, for the 2nd pass");
-    myopt("--oraclemult", simp_conf.oracle_mult, fc_double,"Oracle multiplier for timeout (i.e. steps-out)");
-    myopt("--oraclesparsify", simp_conf.oracle_sparsify, fc_int,"Use Oracle to sparsify");
-    myopt("--oraclevivif", simp_conf.oracle_vivify, fc_int,"Use oracle to vivify");
-    myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts, fc_int,"Use oracle to vivify get learnts");
-    myopt("--oracleextra", simp_conf.oracle_extra, fc_int,"Run an extra oracle-vivif-fast + oracle-sparsify-fast + occ-bve pass at the end of Puura's strategy");
-    myopt("--distill", conf.distill, fc_int, "Distill clauses before minimization of indep");
-    myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
-    myopt("--xorgatemaxsize", simp_conf.xor_gate_find_maxsize, fc_int, "Max clause size for XOR-gate finding");
-    myopt("--bveocclim", simp_conf.bve_occ_cutoff, fc_int, "BVE: refuse a var whose more frequent polarity occurs more than this often (CaDiCaL's elimocclim). 0 = no such limit");
-    myopt("--bveprodlim", simp_conf.bve_occ_prod_cutoff, fc_int, "BVE: refuse a var whose pos*neg occurrence product is over this. This is the bound on resolution work");
-    myopt("--bveclsmaxsz", simp_conf.bve_cls_max_size, fc_int, "BVE: refuse a var that occurs in a clause longer than this. 0 = no limit");
-    myopt("--bveschedtouched", simp_conf.bve_sched_only_touched, fc_int, "BVE: only schedule vars whose clauses changed since BVE last looked. 0 = schedule every eligible var");
-    myopt("--ccnrbudget", simp_conf.backbone_ccnr_mems_limitM, fc_int, "Mems budget, in millions, for each CCNR local search try that pre-filters backbone candidates. If no model is found, cadiback must test every variable");
-    myopt("--puuradistill", simp_conf.puura_distill, fc_int, "Distillation inside Puura's simplification strategy. 1 = as scheduled, 0 = drop every distill token, 2 = drop only the ones that run before the first occ-bve");
-    myopt("--distillremlevel", simp_conf.distill_rem_level, fc_int, "Clause removal during Puura's distillation. 0 = never, 1 = only on a real conflict, 2 = also when a literal is positively implied. Levels below 2 keep gate clauses that BVE needs to recover definitions");
-    myopt("--red", redundant_cls, fc_int,"Also dump redundant clauses");
+    myopt("--sbvaclcut", etof_conf.sbva_cls_cutoff,"SBVA heuristic cutoff. Higher -> only appied to more clauses");
+    myopt("--sbvalitcut", etof_conf.sbva_lits_cutoff,"SBVA heuristic cutoff. Higher -> only appied to larger clauses");
+    myopt("--findbins", conf.oracle_find_bins,"How aggressively find binaries via oracle");
+    myopt("--sbvabreak",  etof_conf.sbva_tiebreak,"SBVA tie break: 1=sbva or 0=bva");
+    myopt("--sbvamaxnewvars", etof_conf.sbva_max_new_vars,"Max number of new variables SBVA may add. 0 = no limit");
+    myopt("--gaussj", conf.gauss_jordan,"Use XOR finding and Gauss-Jordan elimination");
+    myopt("--bve", simp_conf.do_bve,"Perform BVE during CNF simplification");
+    myopt("--iter1", simp_conf.iter1,"Puura iterations before oracle");
+    myopt("--iter1grow", simp_conf.bve_grow_iter1,"Puura BVE grow rate allowed before Oracle");
+    myopt("--iter2", simp_conf.iter2,"Puura iterations after oracle");
+    myopt("--iter2grow", simp_conf.bve_grow_iter2,"Puura BVE grow rate allowed after Oracle");
+    myopt("--iter2growlarge", simp_conf.bve_grow_iter2_large,"If >= 0: used instead of --iter2grow when more than --iter2growlargevars vars are left before iter2");
+    myopt("--iter2growlargevars", simp_conf.bve_grow_iter2_large_vars,"Vars-left threshold for --iter2growlarge");
+    myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent,"Puura BVE max resolvent size in literals. -1 == no limit");
+    myopt("--bveresolvmaxsz2", simp_conf.bve_too_large_resolvent2,"Like --bveresolvmaxsz, for the 2nd pass");
+    myopt("--oraclemult", simp_conf.oracle_mult,"Oracle multiplier for timeout (i.e. steps-out)");
+    myopt("--oraclesparsify", simp_conf.oracle_sparsify,"Use Oracle to sparsify");
+    myopt("--oraclevivif", simp_conf.oracle_vivify,"Use oracle to vivify");
+    myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts,"Use oracle to vivify get learnts");
+    myopt("--oracleextra", simp_conf.oracle_extra,"Run an extra oracle-vivif-fast + oracle-sparsify-fast + occ-bve pass at the end of Puura's strategy");
+    myopt("--distill", conf.distill, "Distill clauses before minimization of indep");
+    myopt("--weakenlim", simp_conf.weaken_limit, "Limit to weaken BVE resolvents");
+    myopt("--xorgatemaxsize", simp_conf.xor_gate_find_maxsize, "Max clause size for XOR-gate finding");
+    myopt("--bveocclim", simp_conf.bve_occ_cutoff, "BVE: refuse a var whose more frequent polarity occurs more than this often (CaDiCaL's elimocclim). 0 = no such limit");
+    myopt("--bveprodlim", simp_conf.bve_occ_prod_cutoff, "BVE: refuse a var whose pos*neg occurrence product is over this. This is the bound on resolution work");
+    myopt("--bveclsmaxsz", simp_conf.bve_cls_max_size, "BVE: refuse a var that occurs in a clause longer than this. 0 = no limit");
+    myopt("--bveschedtouched", simp_conf.bve_sched_only_touched, "BVE: only schedule vars whose clauses changed since BVE last looked. 0 = schedule every eligible var");
+    myopt("--ccnrbudget", simp_conf.backbone_ccnr_mems_limitM, "Mems budget, in millions, for each CCNR local search try that pre-filters backbone candidates. If no model is found, cadiback must test every variable");
+    myopt("--puuradistill", simp_conf.puura_distill, "Distillation inside Puura's simplification strategy. 1 = as scheduled, 0 = drop every distill token, 2 = drop only the ones that run before the first occ-bve");
+    myopt("--distillremlevel", simp_conf.distill_rem_level, "Clause removal during Puura's distillation. 0 = never, 1 = only on a real conflict, 2 = also when a literal is positively implied. Levels below 2 keep gate clauses that BVE needs to recover definitions");
+    myopt("--red", redundant_cls,"Also dump redundant clauses");
 
     // Debug
-    myopt("--renumber", etof_conf.do_renumber, fc_int,"Renumber variables to start from 1...N in CNF.");
-    myopt("--specifiedorder", conf.specified_order_fname, fc_string, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
-    myopt("--backward", do_backward, fc_int,"Run the backward pass to minimize the independent set");
-    myopt("--debugminim", debug_minim, fc_string,"Create this file that is the CNF after indep set minimization");
-    myopt("--cmsmult", conf.cms_glob_mult, fc_double,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
+    myopt("--renumber", etof_conf.do_renumber,"Renumber variables to start from 1...N in CNF.");
+    myopt("--specifiedorder", conf.specified_order_fname, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
+    myopt("--backward", do_backward,"Run the backward pass to minimize the independent set");
+    myopt("--debugminim", debug_minim,"Create this file that is the CNF after indep set minimization");
+    myopt("--cmsmult", conf.cms_glob_mult,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
