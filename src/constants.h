@@ -25,6 +25,8 @@
 #pragma once
 
 #include <cryptominisat5/solvertypesmini.h>
+#include <cryptominisat5/cryptominisat.h>
+#include "config.h"
 #include <iostream>
 #include <set>
 #include <string>
@@ -63,6 +65,14 @@ constexpr int slow_debug_enabled = 1;
 #define SLOW_DEBUG_DO(x) do { } while (0)
 constexpr int slow_debug_enabled = 0;
 #endif
+
+// No search runs between our simplify() calls, so CMS's search-relative
+// inprocessing budgets would starve without absbudget
+inline void set_cms_opts(CMSat::SATSolver& s, const ArjunInt::Config& conf) {
+    s.set_option("absbudget", std::to_string(conf.cms_abs_budget));
+    s.set_option("distillbinsingle", std::to_string(conf.cms_distill_bin_single));
+    s.set_option("sweep", std::to_string(conf.cms_sweep));
+}
 
 inline double safe_div(double a, double b) noexcept {
     if (b == 0) {

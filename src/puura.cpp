@@ -80,6 +80,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
 
 std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) const {
     auto solver = std::make_unique<SATSolver>();
+    set_cms_opts(*solver, conf);
     solver->set_verbosity(conf.verb);
     solver->set_prefix("c o ");
     solver->set_find_xors(false);
