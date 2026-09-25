@@ -70,6 +70,7 @@ constexpr int slow_debug_enabled = 0;
 // inprocessing budgets would starve without absbudget
 inline void set_cms_opts(CMSat::SATSolver& s, const ArjunInt::Config& conf) {
     s.set_option("absbudget", std::to_string(conf.cms_abs_budget));
+    s.set_option("absbudgetmult", std::to_string(conf.cms_abs_budget_mult));
     s.set_option("distillbinsingle", std::to_string(conf.cms_distill_bin_single));
     s.set_option("sweep", std::to_string(conf.cms_sweep));
 }
