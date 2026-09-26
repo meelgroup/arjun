@@ -58,10 +58,10 @@ struct Config {
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
     // CMS knobs for our simplify()-only use, see set_cms_opts()
-    int cms_abs_budget = 1;
+    int cms_abs_budget = 0;
     double cms_abs_budget_mult = 1.0;
-    int cms_distill_bin_single = 1;
-    int cms_sweep = 0;
+    int cms_distill_bin_single = 0;
+    int cms_sweep = 1;
     int extend_ccnr = 0;
     std::string debug_synth;
     // If set, dump guess AIGs at each restart to <prefix>-restart<N>.aig/.v.
