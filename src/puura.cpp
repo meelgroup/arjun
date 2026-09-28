@@ -80,7 +80,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
 
 std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) const {
     auto solver = std::make_unique<SATSolver>();
-    set_cms_opts(*solver, conf);
+    set_cms_opts(*solver, conf, true);
     solver->set_verbosity(conf.verb);
     solver->set_prefix("c o ");
     solver->set_find_xors(false);
@@ -181,6 +181,14 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         const double t = cpuTime();
         solver->simplify(&dont_elim, &str);
         print_stage(("iter1-" + std::to_string(i)).c_str(), solver.get(), t);
+    }
+    // Sweeping before BVE merges gate outputs BVE would eliminate anyway, and a
+    // var with two gate definitions often can not be eliminated
+    if (conf.cms_sweep == 2) {
+        const double t = cpuTime();
+        string s = "occ-sweep, must-scc-vrepl";
+        solver->simplify(&dont_elim, &s);
+        print_stage("sweep", solver.get(), t);
     }
 
     // Now doing Oracle

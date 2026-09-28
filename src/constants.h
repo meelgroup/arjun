@@ -68,11 +68,13 @@ constexpr int slow_debug_enabled = 0;
 
 // No search runs between our simplify() calls, so CMS's search-relative
 // inprocessing budgets would starve without absbudget
-inline void set_cms_opts(CMSat::SATSolver& s, const ArjunInt::Config& conf) {
+// cms_sweep: 0 = off, 1 = CMS's default schedules sweep (before any BVE),
+// 2 = only Puura sweeps, once after its first BVE rounds
+inline void set_cms_opts(CMSat::SATSolver& s, const ArjunInt::Config& conf, bool puura) {
     s.set_option("absbudget", std::to_string(conf.cms_abs_budget));
     s.set_option("absbudgetmult", std::to_string(conf.cms_abs_budget_mult));
     s.set_option("distillbinsingle", std::to_string(conf.cms_distill_bin_single));
-    s.set_option("sweep", std::to_string(conf.cms_sweep));
+    s.set_option("sweep", (conf.cms_sweep == 1 || (puura && conf.cms_sweep == 2)) ? "1" : "0");
 }
 
 inline double safe_div(double a, double b) noexcept {
