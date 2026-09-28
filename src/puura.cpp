@@ -176,6 +176,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     if (simp_conf.puura_distill != 1)
         str = strip_distill_tokens(str, simp_conf.puura_distill == 2);
+    if (conf.cms_congruence) str = "congruence, " + str;
     string str_iter2 = str + string("occ-backw-sub, ");
     for (int i = 0; i < simp_conf.iter1; i++) {
         const double t = cpuTime();

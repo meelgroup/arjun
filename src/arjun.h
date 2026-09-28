@@ -2154,6 +2154,7 @@ public:
     void set_cms_abs_budget_mult(double cms_abs_budget_mult);
     void set_cms_distill_bin_single(int cms_distill_bin_single);
     void set_cms_sweep(int cms_sweep);
+    void set_cms_congruence(int cms_congruence);
     void set_extend_ccnr(int extend_ccnr);
     void set_seed(uint32_t seed);
 
@@ -2189,6 +2190,7 @@ public:
     [[nodiscard]] double get_cms_abs_budget_mult() const;
     [[nodiscard]] int get_cms_distill_bin_single() const;
     [[nodiscard]] int get_cms_sweep() const;
+    [[nodiscard]] int get_cms_congruence() const;
     [[nodiscard]] int get_extend_ccnr() const;
     [[nodiscard]] uint32_t get_seed() const;
 
