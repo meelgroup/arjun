@@ -135,7 +135,7 @@ void Backward::set_up_solver()
 {
     assert(solver == nullptr);
     solver = std::make_unique<SATSolver>();
-    set_cms_opts(*solver, conf, false);
+    set_cms_opts(*solver, conf);
     solver->set_up_for_arjun();
     solver->set_prefix("c o ");
     solver->set_renumber(0);

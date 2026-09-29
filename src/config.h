@@ -59,10 +59,7 @@ struct Config {
     double cms_glob_mult = -1.0;
     // CMS knobs for our simplify()-only use, see set_cms_opts()
     int cms_abs_budget = 1;
-    double cms_abs_budget_mult = 1.0;
-    int cms_distill_bin_single = 0;
     int cms_sweep = 0;
-    int cms_congruence = 0;
     int extend_ccnr = 0;
     std::string debug_synth;
     // If set, dump guess AIGs at each restart to <prefix>-restart<N>.aig/.v.

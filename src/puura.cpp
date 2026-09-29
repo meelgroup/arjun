@@ -80,7 +80,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
 
 std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) const {
     auto solver = std::make_unique<SATSolver>();
-    set_cms_opts(*solver, conf, true);
+    set_cms_opts(*solver, conf);
     solver->set_verbosity(conf.verb);
     solver->set_prefix("c o ");
     solver->set_find_xors(false);
@@ -176,20 +176,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     if (simp_conf.puura_distill != 1)
         str = strip_distill_tokens(str, simp_conf.puura_distill == 2);
-    if (conf.cms_congruence) str = "congruence, " + str;
     string str_iter2 = str + string("occ-backw-sub, ");
     for (int i = 0; i < simp_conf.iter1; i++) {
         const double t = cpuTime();
         solver->simplify(&dont_elim, &str);
         print_stage(("iter1-" + std::to_string(i)).c_str(), solver.get(), t);
-    }
-    // Sweeping before BVE merges gate outputs BVE would eliminate anyway, and a
-    // var with two gate definitions often can not be eliminated
-    if (conf.cms_sweep == 2) {
-        const double t = cpuTime();
-        string s = "occ-sweep, must-scc-vrepl";
-        solver->simplify(&dont_elim, &s);
-        print_stage("sweep", solver.get(), t);
     }
 
     // Now doing Oracle
