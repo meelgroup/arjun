@@ -839,18 +839,34 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
     return cex;
 }
 
-DLL_PUBLIC lbool SimplifiedCNF::cegar(const double budget, const bool stop_at_cex, vector<lbool>& cex) {
+DLL_PUBLIC lbool SimplifiedCNF::cegar(const vector<vector<Lit>>& cls, const double budget,
+        const bool stop_at_cex, vector<lbool>& cex) {
     MetaSolver abs, f;
     abs.set_no_lucky();
     // few true existentials, alike from round to round: short refinements
     f.set_no_lucky();
     f.set_decide_false();
-    f.new_vars(defs.size());
-    for (const auto& cl : orig_clauses) f.add_clause(cl);
-    vector<uint32_t> to_abs(defs.size());
+    // The solvers only get the vars they have clauses on: the universals,
+    // at the same index in both, then for f the existentials of cls
+    const uint32_t none = std::numeric_limits<uint32_t>::max();
+    vector<uint32_t> to_f(defs.size(), none), ys;
     for (const auto& v : orig_sampl_vars) {
-        to_abs[v] = abs.nVars();
+        to_f[v] = f.nVars();
+        f.new_var();
         abs.new_var();
+    }
+    auto in_f = [&](const Lit l) { return Lit(to_f[l.var()], l.sign()); };
+    for (const auto& cl : cls) {
+        vector<Lit> cl2;
+        for (const auto& l : cl) {
+            if (to_f[l.var()] == none) {
+                to_f[l.var()] = f.nVars();
+                f.new_var();
+                ys.push_back(l.var());
+            }
+            cl2.push_back(in_f(l));
+        }
+        f.add_clause(cl2);
     }
 
     // per clause with universals: its existentials, and a helper that
@@ -858,9 +874,12 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar(const double budget, const bool stop_at_ce
     map<vector<Lit>, Lit> univ_to_helper;
     vector<std::pair<vector<Lit>, Lit>> mixed;
     vector<aig_lit> univ_true; // per helper: some universal literal of it is true
-    for (const auto& cl : orig_clauses) {
+    for (const auto& cl : cls) {
         vector<Lit> univ, exist;
-        for (const auto& l : cl) (orig_sampl_vars.count(l.var()) ? univ : exist).push_back(l);
+        for (const auto& l : cl) {
+            if (orig_sampl_vars.count(l.var())) univ.push_back(l);
+            else exist.push_back(in_f(l));
+        }
         if (univ.empty()) continue;
         std::sort(univ.begin(), univ.end());
         const auto [it, inserted] = univ_to_helper.try_emplace(univ, lit_Undef);
@@ -869,7 +888,7 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar(const double budget, const bool stop_at_ce
             it->second = Lit(abs.nVars()-1, false);
             univ_true.push_back(aig_mng.new_const(false));
             for (const auto& l : univ) {
-                abs.add_clause({~it->second, Lit(to_abs[l.var()], !l.sign())});
+                abs.add_clause({~it->second, ~in_f(l)});
                 univ_true.back() = AIG::new_or(univ_true.back(), AIG::new_lit(l));
             }
         }
@@ -885,21 +904,21 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar(const double budget, const bool stop_at_ce
     double cost = 0;
     while (cost < budget) {
         if (abs.solve() == l_False) {
-            for (uint32_t v = 0; v < defs.size(); v++) if (!orig_sampl_vars.count(v)) defs[v] = funs[v];
+            for (uint32_t v = 0; v < defs.size(); v++)
+                if (!orig_sampl_vars.count(v) && defs[v] == nullptr) defs[v] = funs[v];
             return l_True;
         }
         assumps.clear();
-        for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, abs.get_model()[to_abs[v]] != l_True);
+        for (const auto& v : orig_sampl_vars) assumps.emplace_back(to_f[v], abs.get_model()[to_f[v]] != l_True);
         if (f.solve(&assumps) == l_False) {
             if (stop_at_cex) {
                 cex.assign(defs.size(), l_Undef);
-                for (const auto& l : assumps) cex[l.var()] = boolToLBool(!l.sign());
+                for (const auto& v : orig_sampl_vars) cex[v] = abs.get_model()[to_f[v]];
                 return l_False;
             }
             // no X in this cube has a Y, so any function will do there
             auto cube = f.get_conflict();
             cost += sq_frac(cube.size(), orig_sampl_vars.size());
-            for (auto& l : cube) l = Lit(to_abs[l.var()], l.sign());
             abs.add_clause(cube);
             continue;
         }
@@ -920,8 +939,7 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar(const double budget, const bool stop_at_ce
         for (const auto& h : some_false) works = AIG::new_and(works, univ_true[h.var() - orig_sampl_vars.size()]);
         const aig_lit first = AIG::new_and(works, ~covered);
         covered = AIG::new_or(covered, works);
-        for (uint32_t v = 0; v < defs.size(); v++)
-            if (model[v] == l_True && !orig_sampl_vars.count(v)) funs[v] = AIG::new_or(funs[v], first);
+        for (const auto& v : ys) if (model[to_f[v]] == l_True) funs[v] = AIG::new_or(funs[v], first);
     }
     return l_Undef;
 }

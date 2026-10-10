@@ -521,15 +521,17 @@ void do_synthesis() {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
     }
-    {
+    auto try_cegar = [&](const vector<vector<CMSat::Lit>>& cls) {
         vector<CMSat::lbool> cex;
-        const auto ret = cnf.cegar(cegar_budget, qbf2, cex);
+        auto ret = cnf.cegar(cls, cegar_budget, qbf2, cex);
+        if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
         if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by CEGAR");
         // the functions are in place, and get written out below
         cegar_done = ret == CMSat::l_True;
         const bool need_funs = !qbf2 || !output_file.empty() || !conf.debug_synth.empty();
         if (ret == CMSat::l_False || (cegar_done && !need_funs)) qbf2_result(cnf, cegar_done, cex);
-    }
+    };
+    try_cegar(cnf.get_orig_clauses());
     if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
