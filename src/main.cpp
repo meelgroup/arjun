@@ -530,8 +530,11 @@ void do_synthesis() {
         }
     };
 
+    // 2QBF: the clauses that F(X, f(X)) will be checked on, over orig vars
+    auto qbf2_cls = cnf.get_orig_clauses();
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+        if (qbf2 && cnf.get_2qbf_cls(qbf2_cls)) verb_print(1, "[2qbf] checking on the simplified CNF");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
     }
@@ -602,8 +605,12 @@ void do_synthesis() {
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
     if (qbf2) {
-        cnf.clear_orig_sampl_defs();
-        const auto cex = cnf.get_2qbf_cex();
+        auto cex = cnf.get_2qbf_cex(qbf2_cls);
+        // the simplified CNF can add constraints the defs need not follow
+        if (!cex.empty() && !cnf.is_2qbf_cex(cex)) {
+            verb_print(1, "[2qbf] spurious counterexample, checking on the orig CNF");
+            cex = cnf.get_2qbf_cex(cnf.get_orig_clauses());
+        }
         qbf2_result(cnf, cex.empty(), cex);
     }
 }

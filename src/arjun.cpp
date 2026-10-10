@@ -793,18 +793,26 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     return -1;
 }
 
-DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
+DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& cls) const {
     assert(need_aig && synth_done());
     MetaSolver s;
     s.new_vars(defs.size());
 
-    // y <-> def(y) for every non-input var; inputs stay free
+    // y <-> def(y) for every non-input var the clauses depend on; inputs stay free
     vector<uint32_t> ys;
-    vector<aig_lit> roots;
-    for (uint32_t v = 0; v < defs.size(); v++) {
-        if (defs[v] == nullptr || orig_sampl_vars.count(v)) continue;
+    vector<char> seen(defs.size(), 0);
+    auto add = [&](const uint32_t v) {
+        if (seen[v] || defs[v] == nullptr || orig_sampl_vars.count(v)) return;
+        seen[v] = 1;
         ys.push_back(v);
-        roots.push_back(defs[v]);
+    };
+    for (const auto& cl : cls) for (const auto& l : cl) add(l.var());
+    vector<aig_lit> roots;
+    for (size_t i = 0; i < ys.size(); i++) {
+        roots.push_back(defs[ys[i]]);
+        set<uint32_t> deps;
+        AIG::get_dependent_vars(defs[ys[i]], deps, ys[i]);
+        for (const auto& v : deps) add(v);
     }
     AIGToCNF<MetaSolver> enc(s);
     const auto outs = enc.encode_batch(roots);
@@ -814,9 +822,9 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
         s.add_clause({y, ~outs[i]});
     }
 
-    // at least one original clause is falsified
+    // at least one clause is falsified
     vector<Lit> some_false;
-    for (const auto& cl : orig_clauses) {
+    for (const auto& cl : cls) {
         s.new_var();
         const Lit f(s.nVars()-1, false);
         for (const auto& l : cl) s.add_clause({~f, ~l});
@@ -830,6 +838,40 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
     vector<lbool> cex(defs.size(), l_Undef);
     for (const auto& v : orig_sampl_vars) cex[v] = s.get_model()[v];
     return cex;
+}
+
+DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {
+    MetaSolver s;
+    s.new_vars(defs.size());
+    for (const auto& cl : orig_clauses) s.add_clause(cl);
+    vector<Lit> assumps;
+    for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, cex[v] != l_True);
+    return s.solve(&assumps) == l_False;
+}
+
+DLL_PUBLIC bool SimplifiedCNF::get_2qbf_cls(vector<vector<Lit>>& cls) const {
+    // a universal that left the CNF must be a free one: each doubles the count
+    auto mult = fg->one();
+    auto two = fg->one();
+    *two += *fg->one();
+    for (const auto& v : orig_sampl_vars) if (!orig_to_new_var.count(v)) *mult *= *two;
+    if (!(*mult == *multiplier_weight)) return false;
+
+    vector<Lit> to_orig(nVars(), lit_Undef);
+    for (const auto& [orig, l] : orig_to_new_var) {
+        if (to_orig[l.var()] != lit_Undef && !orig_sampl_vars.count(orig)) continue;
+        to_orig[l.var()] = Lit(orig, l.sign());
+    }
+    vector<vector<Lit>> ret;
+    for (const auto& cl : clauses) {
+        ret.emplace_back();
+        for (const auto& l : cl) {
+            if (to_orig[l.var()] == lit_Undef) return false;
+            ret.back().push_back(to_orig[l.var()] ^ l.sign());
+        }
+    }
+    cls = std::move(ret);
+    return true;
 }
 
 DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(

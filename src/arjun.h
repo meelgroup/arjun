@@ -1897,10 +1897,18 @@ public:
     // def is wrong. Expensive; intended for debugging BVE/synthesis issues.
     [[nodiscard]] int check_synth_funs_sat() const;
 
-    // 2QBF verdict once synthesis is done: forall X exists Y. F holds iff
-    // F(X, defs(X)) is valid. Returns an X (over orig vars, l_Undef elsewhere)
-    // that no Y can extend to a model, or an empty vector if F is true.
-    [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex() const;
+    // 2QBF, once synthesis is done: forall X exists Y. `cls` holds iff
+    // cls(X, defs(X)) is valid. Returns a falsifying X (over orig vars,
+    // l_Undef elsewhere), or an empty vector if there is none.
+    [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex(
+            const std::vector<std::vector<CMSat::Lit>>& cls) const;
+    // No Y extends this X to a model of the orig clauses
+    [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
+    // The clauses over ORIG vars. Simplification keeps the number of solutions
+    // projected on the universals, times the multiplier, so if all universals
+    // that left the CNF are free, then `cls` is true as a 2QBF iff the orig
+    // clauses are. Returns false if that cannot be established.
+    [[nodiscard]] bool get_2qbf_cls(std::vector<std::vector<CMSat::Lit>>& cls) const;
 
     void set_backbone_done(const bool bb_done) {
         backbone_done = bb_done;
