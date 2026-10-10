@@ -65,7 +65,8 @@ an X that has no Y. All of it is in `do_synthesis()` in `main.cpp` and the
    family), gives up quickly otherwise. The models of F it refines with
    are the decide-false ones: that is what keeps them short. When it
    finishes, its models give the Skolem functions. `--synth` runs it too,
-   skipping the X that have no Y instead of stopping at the first one.
+   skipping the X that have no Y instead of stopping at the first one. It
+   runs twice: on the orig clauses, and again on the simplified CNF.
 2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
    X that have a Y, so:
 3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)). It runs on the
