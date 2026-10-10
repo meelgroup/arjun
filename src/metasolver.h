@@ -81,6 +81,13 @@ public:
         cadical->set("luckyassumptions", 0);
     }
 
+    // Always decide false: models stay small and alike from call to call
+    void set_decide_false() {
+        if (solver_type != SolverType::cadical) return;
+        cadical->set("forcephase", 1);
+        cadical->set("phase", 0);
+    }
+
     // Variable management
     void new_var() {
         if (solver_type == SolverType::cms) cms->new_var();

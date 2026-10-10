@@ -72,7 +72,7 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 
 int synthesis = false;
 int qbf2 = false;
-uint64_t qbf2_cegar = 50000;
+uint64_t qbf2_cegar = 150;
 bool qbf2_cegar_true = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
@@ -165,7 +165,7 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
-    myopt("--2qbfcegar", qbf2_cegar, "2QBF: before synthesis, try counterexample-guided expansion until its refinements add up to this many literals. 0 = off");
+    myopt("--2qbfcegar", qbf2_cegar, "2QBF: before synthesis, try counterexample-guided expansion until its refinements add up to this many times its helper variables. 0 = off");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");

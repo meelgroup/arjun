@@ -62,7 +62,8 @@ an X that has no Y. All of it is in `do_synthesis()` in `main.cpp` and the
 
 1. `cegar_2qbf()` — budgeted counterexample-guided expansion on the orig
    CNF (`--2qbfcegar`, 0 = off). Wins when its refinements are short
-   (sortnetsort family), gives up quickly otherwise.
+   (sortnetsort family), gives up quickly otherwise. The models of F it
+   refines with are the decide-false ones: that is what keeps them short.
 2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
    X that have a Y, so:
 3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)). It runs on the

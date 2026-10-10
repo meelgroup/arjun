@@ -843,20 +843,26 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
 // The abstraction is the AND of ~F(X, y) over the Y-models y seen so far: an X
 // that satisfies it is a candidate counterexample, and a model of F under
 // that X refines it.
-DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t max_lits, vector<lbool>& cex) const {
+DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>& cex) const {
     MetaSolver abs, f;
-    // not for f: the models its lucky phases find give far shorter refinements
     abs.set_no_lucky();
+    // The fewer the true existentials, and the more alike the models of F,
+    // the shorter the refinements. Lucky phases would pick their own models.
+    f.set_no_lucky();
+    f.set_decide_false();
     abs.new_vars(defs.size());
     f.new_vars(defs.size());
     for (const auto& cl : orig_clauses) f.add_clause(cl);
 
-    // helper[i]: every universal literal of clause i is false
+    // For each clause with universals: its existential part, and a helper that
+    // can only be true if all its universal literals are false. The other
+    // clauses are satisfied by every model of F.
     map<vector<Lit>, Lit> univ_to_helper;
-    vector<Lit> helper;
+    vector<std::pair<vector<Lit>, Lit>> mixed;
     for (const auto& cl : orig_clauses) {
-        vector<Lit> univ;
-        for (const auto& l : cl) if (orig_sampl_vars.count(l.var())) univ.push_back(l);
+        vector<Lit> univ, exist;
+        for (const auto& l : cl) (orig_sampl_vars.count(l.var()) ? univ : exist).push_back(l);
+        if (univ.empty()) continue;
         std::sort(univ.begin(), univ.end());
         const auto [it, inserted] = univ_to_helper.try_emplace(univ, lit_Undef);
         if (inserted) {
@@ -864,11 +870,11 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t max_lits, vector<lbool
             it->second = Lit(abs.nVars()-1, false);
             for (const auto& l : univ) abs.add_clause({~it->second, ~l});
         }
-        helper.push_back(it->second);
+        mixed.emplace_back(exist, it->second);
     }
 
     vector<Lit> assumps, some_false;
-    for (uint64_t lits = 0; lits < max_lits; lits += some_false.size()) {
+    for (uint64_t lits = 0; lits < budget * univ_to_helper.size(); lits += some_false.size()) {
         if (abs.solve() == l_False) return l_True;
         assumps.clear();
         for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, abs.get_model()[v] != l_True);
@@ -880,12 +886,13 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t max_lits, vector<lbool
         // some clause that y does not satisfy has all its universals false
         const auto& model = f.get_model();
         some_false.clear();
-        for (size_t i = 0; i < orig_clauses.size(); i++) {
-            bool sat = false;
-            for (const auto& l : orig_clauses[i])
-                sat |= !orig_sampl_vars.count(l.var()) && model[l.var()] == boolToLBool(!l.sign());
-            if (!sat) some_false.push_back(helper[i]);
+        for (const auto& [exist, helper] : mixed) {
+            const bool sat = std::any_of(exist.begin(), exist.end(),
+                    [&](const Lit l) { return model[l.var()] == boolToLBool(!l.sign()); });
+            if (!sat) some_false.push_back(helper);
         }
+        std::sort(some_false.begin(), some_false.end());
+        some_false.erase(std::unique(some_false.begin(), some_false.end()), some_false.end());
         abs.add_clause(some_false);
     }
     return l_Undef;

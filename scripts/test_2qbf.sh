@@ -10,7 +10,7 @@ fail=0
 check() {
     local expected=$1 name=$2 body=$3
     printf "$body" > "$tmpd/in.qdimacs"
-    for cegar in 0 50000; do
+    for cegar in 0 150; do
         ./arjun --2qbf --2qbfcegar $cegar "$tmpd/in.qdimacs" > "$tmpd/log" 2>&1
         local ret=$?
         if [ $ret -ne "$expected" ]; then
