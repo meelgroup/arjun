@@ -839,7 +839,7 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
     return cex;
 }
 
-DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>& cex) const {
+DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>& cex) {
     MetaSolver abs, f;
     abs.set_no_lucky();
     // few true existentials, alike from round to round: short refinements
@@ -857,6 +857,7 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>&
     // implies all of its universal literals are false
     map<vector<Lit>, Lit> univ_to_helper;
     vector<std::pair<vector<Lit>, Lit>> mixed;
+    vector<aig_lit> univ_true; // per helper: some universal literal of it is true
     for (const auto& cl : orig_clauses) {
         vector<Lit> univ, exist;
         for (const auto& l : cl) (orig_sampl_vars.count(l.var()) ? univ : exist).push_back(l);
@@ -866,15 +867,26 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>&
         if (inserted) {
             abs.new_var();
             it->second = Lit(abs.nVars()-1, false);
-            for (const auto& l : univ) abs.add_clause({~it->second, Lit(to_abs[l.var()], !l.sign())});
+            univ_true.push_back(aig_mng.new_const(false));
+            for (const auto& l : univ) {
+                abs.add_clause({~it->second, Lit(to_abs[l.var()], !l.sign())});
+                univ_true.back() = AIG::new_or(univ_true.back(), AIG::new_lit(l));
+            }
         }
         mixed.emplace_back(exist, it->second);
     }
 
+    // Skolem functions: y takes its value from the first model that works for X
+    vector<aig_lit> funs(defs.size(), aig_mng.new_const(false));
+    aig_lit covered = aig_mng.new_const(false);
+
     vector<Lit> assumps, some_false;
     const uint64_t helpers = univ_to_helper.size();
     for (uint64_t cost = 0; cost < budget * helpers * helpers; cost += some_false.size() * some_false.size()) {
-        if (abs.solve() == l_False) return l_True;
+        if (abs.solve() == l_False) {
+            for (uint32_t v = 0; v < defs.size(); v++) if (!orig_sampl_vars.count(v)) defs[v] = funs[v];
+            return l_True;
+        }
         assumps.clear();
         for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, abs.get_model()[to_abs[v]] != l_True);
         if (f.solve(&assumps) == l_False) {
@@ -893,6 +905,13 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>&
         std::sort(some_false.begin(), some_false.end());
         some_false.erase(std::unique(some_false.begin(), some_false.end()), some_false.end());
         abs.add_clause(some_false);
+
+        aig_lit works = aig_mng.new_const(true);
+        for (const auto& h : some_false) works = AIG::new_and(works, univ_true[h.var() - orig_sampl_vars.size()]);
+        const aig_lit first = AIG::new_and(works, ~covered);
+        covered = AIG::new_or(covered, works);
+        for (uint32_t v = 0; v < defs.size(); v++)
+            if (model[v] == l_True && !orig_sampl_vars.count(v)) funs[v] = AIG::new_or(funs[v], first);
     }
     return l_Undef;
 }

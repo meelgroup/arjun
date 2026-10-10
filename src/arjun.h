@@ -1900,10 +1900,11 @@ public:
     // An X with ~cls(X, defs(X)), or empty if forall X exists Y. cls holds
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex(
             const std::vector<std::vector<CMSat::Lit>>& cls) const;
-    // Counterexample-guided expansion on the orig clauses. l_False: `cex` is
-    // an X with no Y, l_Undef: gave up. A refinement naming fraction f of the
-    // helpers costs f^2 of the budget: next to nothing while it converges.
-    [[nodiscard]] CMSat::lbool cegar_2qbf(const uint64_t budget, std::vector<CMSat::lbool>& cex) const;
+    // Counterexample-guided expansion on the orig clauses. l_True: defs are
+    // set to the Skolem functions, l_False: `cex` is an X with no Y, l_Undef:
+    // gave up. A refinement naming fraction f of the helpers costs f^2 of the
+    // budget: next to nothing while it converges.
+    [[nodiscard]] CMSat::lbool cegar_2qbf(const uint64_t budget, std::vector<CMSat::lbool>& cex);
     // No Y extends X to a model of the orig clauses
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
     // The clauses over ORIG vars. False if they cannot stand in for the orig

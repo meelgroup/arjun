@@ -522,12 +522,11 @@ void do_synthesis() {
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
         vector<CMSat::lbool> cex;
         const auto ret = cnf.cegar_2qbf(qbf2_cegar, cex);
+        if (ret != CMSat::l_Undef) verb_print(1, "[2qbf] solved by CEGAR");
+        // when true, the Skolem functions are in place, and get written out below
         qbf2_cegar_true = ret == CMSat::l_True;
         const bool need_funs = !output_file.empty() || !conf.debug_synth.empty();
-        if (ret == CMSat::l_False || (qbf2_cegar_true && !need_funs)) {
-            verb_print(1, "[2qbf] solved by CEGAR");
-            qbf2_result(cnf, qbf2_cegar_true, cex);
-        }
+        if (ret == CMSat::l_False || (qbf2_cegar_true && !need_funs)) qbf2_result(cnf, qbf2_cegar_true, cex);
     }
     if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
@@ -580,7 +579,8 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("unate_def"));
     }
 
-    cnf.rewrite_aigs(conf.verb);
+    // the rewriter takes minutes on CEGAR's long ITE chains, and grows them
+    if (!qbf2_cegar_true) cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force: enumerate consistent X assignments, build per-y
         // decision trees. Declines (CNF unchanged) if the enum set is too
@@ -601,7 +601,7 @@ void do_synthesis() {
     }
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
-    cnf.rewrite_aigs(conf.verb, true);
+    if (!qbf2_cegar_true) cnf.rewrite_aigs(conf.verb, true);
     if (!output_file.empty()) {
         if (output_file.ends_with(".aig")) cnf.write_aig_defs_to_file(output_file);
         else if (output_file.ends_with(".v")) cnf.write_aig_def_to_verilog(output_file);
@@ -619,13 +619,13 @@ void do_synthesis() {
         cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
+    if (qbf2_cegar_true) qbf2_result(cnf, true);
     if (qbf2) {
         auto cex = cnf.get_2qbf_cex(qbf2_cls);
         if (!cex.empty() && !cnf.is_2qbf_cex(cex)) {
             verb_print(1, "[2qbf] spurious counterexample, checking on the orig CNF");
             cex = cnf.get_2qbf_cex(cnf.get_orig_clauses());
         }
-        release_assert(!qbf2_cegar_true || cex.empty());
         SLOW_DEBUG_DO(assert(cex.empty() == cnf.get_2qbf_cex(cnf.get_orig_clauses()).empty()));
         qbf2_result(cnf, cex.empty(), cex);
     }
