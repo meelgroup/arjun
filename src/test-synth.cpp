@@ -101,6 +101,7 @@ int num_samples = 100;
 long long seed = 42;
 std::mt19937 mt;
 int unsat_verif = 0;
+int qbf2 = 0;
 
 
 set<uint32_t> aig_vs;
@@ -413,7 +414,9 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     // Create verification solver
     ArjunInt::MetaSolver verify_solver;
     verify_solver.new_vars(orig_cnf.nVars());
-    for (const auto& clause : orig_cnf.get_clauses()) {
+    // 2QBF: the AIGs must satisfy F for EVERY x, so F(x,y) is left out and
+    // the miter is ~F(x, y_hat) alone
+    if (!qbf2) for (const auto& clause : orig_cnf.get_clauses()) {
         verb_print(2, "adding orig clause: " << clause);
         verify_solver.add_clause(clause);
     }
@@ -512,6 +515,11 @@ int main(int argc, char** argv) {
         .action([&](const auto&) {unsat_verif = true;}) \
         .flag()
         .help("UNSAT verify, i.e. all AIGs must be present and correct");
+
+    program.add_argument("-q", "--2qbf") \
+        .action([&](const auto&) {qbf2 = true;}) \
+        .flag()
+        .help("With -u: AIGs must be a Skolem function of the true 2QBF forall X exists Y. F");
 
     // Add positional argument for input file
     program.add_argument("files").remaining().help("input AIG file");
