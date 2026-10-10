@@ -34,6 +34,7 @@ check 10 "c p show prefix"     'p cnf 2 2\nc p show 1 0\n1 2 0\n-1 -2 0\n'
 check 1  "exists-forall-exists" 'p cnf 3 1\ne 1 0\na 2 0\ne 3 0\n1 2 3 0\n'
 check 1  "exists-forall"       'p cnf 2 1\ne 1 0\na 2 0\n1 2 0\n'
 check 1  "free variable"       'p cnf 3 1\na 1 0\ne 2 0\n1 2 3 0\n'
+check 1  "multiplier"          'p cnf 2 1\nc MUST MULTIPLY BY 2\na 1 0\ne 2 0\n1 2 0\n'
 
 # the counterexample must be the universal assignment that has no model
 printf 'p cnf 3 3\na 1 2 0\ne 3 0\n-1 3 0\n-1 -3 2 0\n1 3 0\n' > "$tmpd/in.qdimacs"

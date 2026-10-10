@@ -498,6 +498,10 @@ void do_synthesis() {
     }
     if (qbf2) {
         check_2qbf_prefix(cnf);
+        if (cnf.get_weighted() || !cnf.get_multiplier_weight()->is_one()) {
+            cout << "ERROR: --2qbf does not take weights or a multiplier" << endl;
+            exit(EXIT_FAILURE);
+        }
         // neither 'a' nor 'c p show': no universals, a plain SAT problem
         if (!cnf.get_sampl_vars_set()) cnf.set_sampl_vars(vector<uint32_t>(), true);
     } else if (etof_conf.all_indep) {
