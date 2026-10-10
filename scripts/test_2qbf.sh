@@ -44,5 +44,16 @@ if [ "$(cat "$tmpd/log")" != "s cnf 0 3 3 V 1 0 V -2 0 " ]; then
     fail=1
 fi
 
+# the functions written for a true formula must work for every universal
+# assignment, whether CEGAR or synthesis made them
+printf 'p cnf 4 5\na 1 2 0\ne 3 4 0\n1 2 -3 0\n-1 -2 -3 0\n1 -2 3 0\n-1 2 3 0\n3 4 0\n' > "$tmpd/in.qdimacs"
+for cegar in 0 50; do
+    ./arjun --2qbf --cegar $cegar "$tmpd/in.qdimacs" "$tmpd/skolem.aig" > "$tmpd/log" 2>&1
+    if ! ./test-synth -u -q "$tmpd/in.qdimacs" "$tmpd/skolem.aig" | grep -q "verified CORRECT"; then
+        echo "FAIL: wrong Skolem functions (--cegar $cegar)"
+        fail=1
+    fi
+done
+
 [ $fail -eq 0 ] && echo "All 2QBF tests passed"
 exit $fail
