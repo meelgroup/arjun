@@ -456,15 +456,16 @@ void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
 
 // Universal reduction: a clause with no existential literal is falsified by
 // the universals alone
-void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf) {
-    for(const auto& cl: cnf.get_clauses()) {
-        vector<CMSat::lbool> cex(cnf.nVars(), CMSat::l_Undef);
+void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf,
+        const vector<vector<CMSat::Lit>>& cls) {
+    for(const auto& cl: cls) {
+        vector<CMSat::lbool> cex(cnf.num_defs(), CMSat::l_Undef);
         bool all_univ = true;
         for(const auto& l: cl) {
             all_univ &= cnf.get_orig_sampl_vars().count(l.var());
             cex[l.var()] = CMSat::boolToLBool(l.sign());
         }
-        if (all_univ) qbf2_result(cnf, false, cex);
+        if (all_univ && cnf.is_2qbf_cex(cex)) qbf2_result(cnf, false, cex);
     }
 }
 
@@ -514,7 +515,7 @@ void do_synthesis() {
     check_cnf_sat(cnf);
     if (qbf2) {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
-        check_2qbf_univ_clause(cnf);
+        check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
     }
     if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
@@ -534,7 +535,10 @@ void do_synthesis() {
     auto qbf2_cls = cnf.get_orig_clauses();
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-        if (qbf2 && cnf.get_2qbf_cls(qbf2_cls)) verb_print(1, "[2qbf] checking on the simplified CNF");
+        if (qbf2 && cnf.get_2qbf_cls(qbf2_cls)) {
+            verb_print(1, "[2qbf] checking on the simplified CNF");
+            check_2qbf_univ_clause(cnf, qbf2_cls);
+        }
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
     }
