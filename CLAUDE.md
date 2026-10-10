@@ -60,10 +60,12 @@ block (or `c p show`). Exit code 10 = true, 20 = false plus `V` lines giving
 an X that has no Y. All of it is in `do_synthesis()` in `main.cpp` and the
 `*2qbf*` methods of `SimplifiedCNF`:
 
-1. `cegar_2qbf()` — budgeted counterexample-guided expansion on the orig
-   CNF (`--2qbfcegar`, 0 = off). Wins when its refinements are short
-   (sortnetsort family), gives up quickly otherwise. The models of F it
-   refines with are the decide-false ones: that is what keeps them short.
+1. `cegar()` — budgeted counterexample-guided expansion on the orig CNF
+   (`--cegar`, 0 = off). Wins when its refinements are short (sortnetsort
+   family), gives up quickly otherwise. The models of F it refines with
+   are the decide-false ones: that is what keeps them short. When it
+   finishes, its models give the Skolem functions. `--synth` runs it too,
+   skipping the X that have no Y instead of stopping at the first one.
 2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
    X that have a Y, so:
 3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)). It runs on the

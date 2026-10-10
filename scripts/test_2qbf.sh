@@ -11,10 +11,10 @@ check() {
     local expected=$1 name=$2 body=$3
     printf "$body" > "$tmpd/in.qdimacs"
     for cegar in 0 50; do
-        ./arjun --2qbf --2qbfcegar $cegar "$tmpd/in.qdimacs" > "$tmpd/log" 2>&1
+        ./arjun --2qbf --cegar $cegar "$tmpd/in.qdimacs" > "$tmpd/log" 2>&1
         local ret=$?
         if [ $ret -ne "$expected" ]; then
-            echo "FAIL: $name (--2qbfcegar $cegar): exit code $ret, expected $expected"
+            echo "FAIL: $name (--cegar $cegar): exit code $ret, expected $expected"
             fail=1
         fi
     done

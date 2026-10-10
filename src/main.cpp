@@ -72,8 +72,8 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 
 int synthesis = false;
 int qbf2 = false;
-uint64_t qbf2_cegar = 50;
-bool qbf2_cegar_true = false;
+double cegar_budget = 50;
+bool cegar_done = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
 int do_backward = true;
@@ -165,7 +165,7 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
-    myopt("--2qbfcegar", qbf2_cegar, "2QBF: before synthesis, try counterexample-guided expansion. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
+    myopt("--cegar", cegar_budget, "Before synthesis, try counterexample-guided expansion. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
@@ -520,13 +520,15 @@ void do_synthesis() {
     if (qbf2) {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
+    }
+    {
         vector<CMSat::lbool> cex;
-        const auto ret = cnf.cegar_2qbf(qbf2_cegar, cex);
-        if (ret != CMSat::l_Undef) verb_print(1, "[2qbf] solved by CEGAR");
-        // when true, the Skolem functions are in place, and get written out below
-        qbf2_cegar_true = ret == CMSat::l_True;
-        const bool need_funs = !output_file.empty() || !conf.debug_synth.empty();
-        if (ret == CMSat::l_False || (qbf2_cegar_true && !need_funs)) qbf2_result(cnf, qbf2_cegar_true, cex);
+        const auto ret = cnf.cegar(cegar_budget, qbf2, cex);
+        if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by CEGAR");
+        // the functions are in place, and get written out below
+        cegar_done = ret == CMSat::l_True;
+        const bool need_funs = !qbf2 || !output_file.empty() || !conf.debug_synth.empty();
+        if (ret == CMSat::l_False || (cegar_done && !need_funs)) qbf2_result(cnf, cegar_done, cex);
     }
     if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
@@ -580,7 +582,7 @@ void do_synthesis() {
     }
 
     // the rewriter takes minutes on CEGAR's long ITE chains, and grows them
-    if (!qbf2_cegar_true) cnf.rewrite_aigs(conf.verb);
+    if (!cegar_done) cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force: enumerate consistent X assignments, build per-y
         // decision trees. Declines (CNF unchanged) if the enum set is too
@@ -601,7 +603,7 @@ void do_synthesis() {
     }
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
-    if (!qbf2_cegar_true) cnf.rewrite_aigs(conf.verb, true);
+    if (!cegar_done) cnf.rewrite_aigs(conf.verb, true);
     if (!output_file.empty()) {
         if (output_file.ends_with(".aig")) cnf.write_aig_defs_to_file(output_file);
         else if (output_file.ends_with(".v")) cnf.write_aig_def_to_verilog(output_file);
@@ -619,7 +621,7 @@ void do_synthesis() {
         cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
-    if (qbf2_cegar_true) qbf2_result(cnf, true);
+    if (qbf2 && cegar_done) qbf2_result(cnf, true);
     if (qbf2) {
         auto cex = cnf.get_2qbf_cex(qbf2_cls);
         if (!cex.empty() && !cnf.is_2qbf_cex(cex)) {
