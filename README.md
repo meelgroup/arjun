@@ -140,3 +140,15 @@ skolem functions:
   ```shell
   ./arjun --synth input.cnf output.v
   ```
+- **2QBF (`--2qbf`)** — decide a forall-exists quantified Boolean formula.
+  The input is QDIMACS with an `a` block followed by an `e` block (or a CNF
+  with `c p show` naming the universals). Arjun prints `s cnf 1 ...` and exits
+  with 10 if the formula is true, or prints `s cnf 0 ...` and exits with 20 if
+  it is false. A false formula comes with `V` lines: an assignment to the
+  universals that no assignment to the existentials can extend to a model. A
+  true formula can come with its skolem functions, if you give an output file:
+
+  ```shell
+  ./arjun --2qbf input.qdimacs
+  ./arjun --2qbf input.qdimacs skolem.aig
+  ```

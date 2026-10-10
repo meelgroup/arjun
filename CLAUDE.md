@@ -35,6 +35,7 @@ From `build/`:
 
 Useful top-level flags:
 - `--synth` — enable synthesis (cegr)
+- `--2qbf` — solve the forall-exists 2QBF instead (see "2QBF" below)
 - `--debugsynth` — emit intermediate AIGs (`*-simplified_cnf.aig`,
   `*-autarky.aig`, `*-cegr.aig`, `*-final.aig`) for debugging
 - `--verb N` — verbosity (0–2)
@@ -51,6 +52,30 @@ short. Pick them from existing cluster results instead of guessing:
   `last_stage`, ...). E.g. short instances that reach CEGR:
   `select fname, arjun_time from arjun where dirname='out-synth-...' and cegr_time>0 order by arjun_time limit 16;`
 - Benchmarks: `build/benchmarks-qdimacs/*.qdimacs.gz`.
+
+## 2QBF (`--2qbf`)
+
+`arjun --2qbf file.qdimacs` decides forall X exists Y. F, with X the `a`
+block (or `c p show`). Exit code 10 = true, 20 = false plus `V` lines giving
+an X that has no Y. All of it is in `do_synthesis()` in `main.cpp` and the
+`*2qbf*` methods of `SimplifiedCNF`:
+
+1. `cegar_2qbf()` — budgeted counterexample-guided expansion on the orig
+   CNF (`--2qbfcegar`, 0 = off). Wins when its refinements are short
+   (sortnetsort family), gives up quickly otherwise.
+2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
+   X that have a Y, so:
+3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)). It runs on the
+   simplified CNF (`get_2qbf_cls()`), which is sound because simplification
+   keeps the projected solution count. A counterexample is confirmed on the
+   orig clauses with `is_2qbf_cex()`.
+
+Testing: `fuzz_synth.py` runs `--2qbf` on half of its iterations. A true
+verdict is checked with `test-synth -u -q` (the final AIG must be a total
+Skolem function), a false one by checking the CNF is UNSAT under the `V`
+lines. `scripts/test_2qbf.sh` (ctest `test-2qbf`) checks verdicts on tiny
+files. `scripts/bench_2qbf.py` compares against `../cadet/cadet`; benchmarks
+are in `~/media/2qbf/qbfeval16` (QBFEVAL'16 2QBF track).
 
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
 
