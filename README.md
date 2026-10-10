@@ -152,3 +152,7 @@ skolem functions:
   ./arjun --2qbf input.qdimacs
   ./arjun --2qbf input.qdimacs skolem.aig
   ```
+
+  Both `--synth` and `--2qbf` first try a cheap counterexample-guided
+  expansion, which gives up by itself when it is not converging. Its budget
+  is `--cegar` (a work measure, not a time limit); `--cegar 0` turns it off.
