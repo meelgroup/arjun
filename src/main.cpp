@@ -582,7 +582,8 @@ void do_synthesis() {
     }
 
     // the rewriter takes minutes on CEGAR's long ITE chains, and grows them
-    if (!cegar_done) cnf.rewrite_aigs(conf.verb);
+    const bool rewrite = !cegar_done || cnf.num_def_nodes() < 10000;
+    if (rewrite) cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force: enumerate consistent X assignments, build per-y
         // decision trees. Declines (CNF unchanged) if the enum set is too
@@ -603,7 +604,7 @@ void do_synthesis() {
     }
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
-    if (!cegar_done) cnf.rewrite_aigs(conf.verb, true);
+    if (rewrite) cnf.rewrite_aigs(conf.verb, true);
     if (!output_file.empty()) {
         if (output_file.ends_with(".aig")) cnf.write_aig_defs_to_file(output_file);
         else if (output_file.ends_with(".v")) cnf.write_aig_def_to_verilog(output_file);

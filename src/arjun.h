@@ -1966,6 +1966,11 @@ public:
         AIG::simplify_aigs(verb, defs);
     }
     void rewrite_aigs(const uint32_t verb = 0, bool balance = false);
+    [[nodiscard]] size_t num_def_nodes() const {
+        std::vector<aig_lit> roots;
+        for (const auto& d : defs) if (d != nullptr) roots.push_back(d);
+        return AIG::count_aig_nodes_fast(roots);
+    }
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void check_red_cls_deriveable() const;
 
