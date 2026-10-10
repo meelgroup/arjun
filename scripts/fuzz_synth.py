@@ -81,7 +81,7 @@ def gen_fuzz_call_brummayer(fuzzer, fname):
     # call = "{0} -s {1} -i 2 -I 4 > {2}".format(fuzzer, seed, fname)
     return call
 
-def add_projection(fname, few=False) :
+def add_projection(fname, few=False, qdimacs=False) :
     vars = 0
     with open(fname, "r") as f:
         for line in f:
@@ -126,6 +126,17 @@ def add_projection(fname, few=False) :
 
     for a,_ in proj_set.items():
         proj.append(a)
+
+    if qdimacs:
+        # QDIMACS prefix: forall the projection, exists the rest
+        with open(fname, "r") as f:
+            lines = f.readlines()
+        at = next(i for i, l in enumerate(lines) if l.startswith("p cnf")) + 1
+        rest = [v for v in all_vars if v not in proj_set]
+        lines.insert(at, "a %s 0\ne %s 0\n" % (" ".join(map(str, proj)), " ".join(map(str, rest))))
+        with open(fname, "w") as f:
+            f.writelines(lines)
+        return proj
 
     with open(fname, "a") as f:
         f.write("c p show ")
@@ -513,7 +524,8 @@ if __name__ == "__main__":
 
         fname = gen_fuzz(seed)
         qbf2 = random.choice([True, False])
-        proj = add_projection(fname, few=qbf2 and random.choice([True, False]))
+        proj = add_projection(fname, few=qbf2 and random.choice([True, False]),
+                              qdimacs=qbf2 and random.choice([True, False]))
         if proj is None:
             print("Generated file %s has <2 vars (no defined var possible), skipping" % fname)
             os.unlink(fname)
