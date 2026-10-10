@@ -47,6 +47,7 @@ set(libfiles
     unate_def_common.cpp
     autarky.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
+    cegar.cpp
     cegr.cpp
     brute_force_synth.cpp
     aig_rewrite.cpp

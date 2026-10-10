@@ -57,8 +57,8 @@ short. Pick them from existing cluster results instead of guessing:
 
 `arjun --2qbf file.qdimacs` decides forall X exists Y. F, with X the `a`
 block (or `c p show`). Exit code 10 = true, 20 = false plus `V` lines giving
-an X that has no Y. All of it is in `do_synthesis()` in `main.cpp` and the
-`*2qbf*` methods of `SimplifiedCNF`:
+an X that has no Y. All of it is in `do_synthesis()` in `main.cpp`,
+`cegar.{h,cpp}` and the `*2qbf*` methods of `SimplifiedCNF`:
 
 1. `cegar()` — budgeted counterexample-guided expansion on the orig CNF
    (`--cegar`, 0 = off). Wins when its refinements are short (sortnetsort
@@ -123,6 +123,8 @@ All must pass before reporting a change as complete.
   non-deterministic across runs).
 - `cegr.{h,cpp}`, `cegr_learn.{h,cpp}` — counterexample-guided
   synthesis / repair loop. Hot path for large benchmarks.
+- `cegar.{h,cpp}` — counterexample-guided expansion (see "2QBF"). Not to be
+  confused with cegr.
 - `aig_rewrite.{h,cpp}` — structural hashing, CSE, absorption, ITE
   flattening. Runs before cegr and between repair rounds.
 - `interpolant.{h,cpp}` — definition extraction by Craig interpolation

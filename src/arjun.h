@@ -1900,13 +1900,6 @@ public:
     // An X with ~cls(X, defs(X)), or empty if forall X exists Y. cls holds
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex(
             const std::vector<std::vector<CMSat::Lit>>& cls) const;
-    // Counterexample-guided expansion on `cls`, over ORIG vars. l_True: the
-    // vars with no def yet got their Skolem functions, l_Undef: gave up. An X
-    // with no Y is returned in `cex` with l_False if stop_at_cex, else its
-    // cube is skipped. A refinement naming fraction f of the helpers costs
-    // f^2 of the budget: next to nothing while it converges.
-    [[nodiscard]] CMSat::lbool cegar(const std::vector<std::vector<CMSat::Lit>>& cls,
-            const double budget, const bool stop_at_cex, std::vector<CMSat::lbool>& cex);
     // No Y extends X to a model of the orig clauses
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
     // The clauses over ORIG vars. False if they cannot stand in for the orig
@@ -2142,6 +2135,9 @@ public:
     SimplifiedCNF standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& cegr_conf);
     SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
+    // Counterexample-guided expansion, see cegar.h
+    CMSat::lbool standalone_cegar(SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
+            const double budget, const bool stop_at_cex, std::vector<CMSat::lbool>& cex);
 
     //Set config
     void set_verb(uint32_t verb);

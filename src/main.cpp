@@ -523,7 +523,7 @@ void do_synthesis() {
     }
     auto try_cegar = [&](const vector<vector<CMSat::Lit>>& cls) {
         vector<CMSat::lbool> cex;
-        auto ret = cnf.cegar(cls, cegar_budget, qbf2, cex);
+        auto ret = arjun->standalone_cegar(cnf, cls, cegar_budget, qbf2, cex);
         if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
         if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by CEGAR");
         // the functions are in place, and get written out below
