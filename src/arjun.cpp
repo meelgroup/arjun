@@ -845,9 +845,13 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>&
     // few true existentials, alike from round to round: short refinements
     f.set_no_lucky();
     f.set_decide_false();
-    abs.new_vars(defs.size());
     f.new_vars(defs.size());
     for (const auto& cl : orig_clauses) f.add_clause(cl);
+    vector<uint32_t> to_abs(defs.size());
+    for (const auto& v : orig_sampl_vars) {
+        to_abs[v] = abs.nVars();
+        abs.new_var();
+    }
 
     // per clause with universals: its existentials, and a helper that
     // implies all of its universal literals are false
@@ -862,7 +866,7 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>&
         if (inserted) {
             abs.new_var();
             it->second = Lit(abs.nVars()-1, false);
-            for (const auto& l : univ) abs.add_clause({~it->second, ~l});
+            for (const auto& l : univ) abs.add_clause({~it->second, Lit(to_abs[l.var()], !l.sign())});
         }
         mixed.emplace_back(exist, it->second);
     }
@@ -872,9 +876,10 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>&
     for (uint64_t cost = 0; cost < budget * helpers * helpers; cost += some_false.size() * some_false.size()) {
         if (abs.solve() == l_False) return l_True;
         assumps.clear();
-        for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, abs.get_model()[v] != l_True);
+        for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, abs.get_model()[to_abs[v]] != l_True);
         if (f.solve(&assumps) == l_False) {
-            cex = abs.get_model();
+            cex.assign(defs.size(), l_Undef);
+            for (const auto& l : assumps) cex[l.var()] = boolToLBool(!l.sign());
             return l_False;
         }
 
