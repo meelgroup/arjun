@@ -72,7 +72,7 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 
 int synthesis = false;
 int qbf2 = false;
-uint64_t qbf2_cegar = 20000;
+uint64_t qbf2_cegar = 50000;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
 int do_backward = true;
