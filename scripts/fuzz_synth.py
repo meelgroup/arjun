@@ -541,7 +541,7 @@ if __name__ == "__main__":
         solver += "--2qbf " if qbf2 else "--synth "
         # CEGAR solves most fuzz-sized 2QBFs, mostly keep it off to reach synthesis
         if qbf2:
-            solver += "--2qbfcegar %d " % random.choice([0, 0, 0, 1, 10, 150])
+            solver += "--2qbfcegar %d " % random.choice([0, 0, 0, 1, 10, 50])
 
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)

@@ -1902,11 +1902,9 @@ public:
     // l_Undef elsewhere), or an empty vector if there is none.
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex(
             const std::vector<std::vector<CMSat::Lit>>& cls) const;
-    // Counterexample-guided expansion on the orig clauses. A refinement is a
-    // clause over the helpers: the fewer of them it has, the more X it cuts
-    // off. Runs until the refinements add up to `budget` times all the helpers,
-    // so it gives up early exactly when it is not converging. l_True: the 2QBF
-    // is true, l_False: it is false and `cex` is a falsifying X, l_Undef: gave up.
+    // Counterexample-guided expansion on the orig clauses. l_False: `cex` is
+    // an X with no Y, l_Undef: gave up. A refinement naming fraction f of the
+    // helpers costs f^2 of the budget: next to nothing while it converges.
     [[nodiscard]] CMSat::lbool cegar_2qbf(const uint64_t budget, std::vector<CMSat::lbool>& cex) const;
     // No Y extends this X to a model of the orig clauses
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;

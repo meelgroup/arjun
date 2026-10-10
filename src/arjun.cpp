@@ -874,7 +874,8 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>&
     }
 
     vector<Lit> assumps, some_false;
-    for (uint64_t lits = 0; lits < budget * univ_to_helper.size(); lits += some_false.size()) {
+    const uint64_t helpers = univ_to_helper.size();
+    for (uint64_t cost = 0; cost < budget * helpers * helpers; cost += some_false.size() * some_false.size()) {
         if (abs.solve() == l_False) return l_True;
         assumps.clear();
         for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, abs.get_model()[v] != l_True);
