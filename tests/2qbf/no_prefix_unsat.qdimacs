@@ -1,0 +1,6 @@
+c no prefix, UNSAT
+c RUN: %arjun --2qbf --cegar 0 %s > %t.log; test $? -eq 20
+c RUN: %arjun --2qbf --cegar 50 %s > %t.log; test $? -eq 20
+p cnf 1 2
+1 0
+-1 0

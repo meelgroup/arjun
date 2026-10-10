@@ -1,0 +1,10 @@
+c y = x1 xor x2
+c RUN: %arjun --2qbf --cegar 0 %s > %t.log; test $? -eq 10
+c RUN: %arjun --2qbf --cegar 50 %s > %t.log; test $? -eq 10
+p cnf 3 4
+a 1 2 0
+e 3 0
+1 2 -3 0
+-1 -2 -3 0
+1 -2 3 0
+-1 2 3 0

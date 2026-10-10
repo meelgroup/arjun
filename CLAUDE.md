@@ -77,8 +77,9 @@ an X that has no Y. All of it is in `do_synthesis()` in `main.cpp` and the
 Testing: `fuzz_synth_2qbf.py` runs `--2qbf` on half of its iterations. A true
 verdict is checked with `test-synth -u -q` (the final AIG must be a total
 Skolem function), a false one by checking the CNF is UNSAT under the `V`
-lines. `scripts/test_2qbf.sh` (ctest `test-2qbf`) checks verdicts on tiny
-files. `scripts/bench_2qbf.py` compares against `../cadet/cadet`; benchmarks
+lines. `tests/2qbf/*.qdimacs` are `lit` tests (ctest `test-2qbf`, or `lit .`
+in `build/tests/2qbf`): tiny files with their `RUN:` lines in comments.
+`scripts/bench_2qbf.py` compares against `../cadet/cadet`; benchmarks
 are in `~/media/2qbf/qbfeval16` (QBFEVAL'16 2QBF track).
 
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`

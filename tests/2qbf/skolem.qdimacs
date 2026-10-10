@@ -1,0 +1,14 @@
+c the functions written out work for every universal assignment, whether
+c CEGAR or synthesis made them
+c RUN: %arjun --2qbf --cegar 0 %s %t.aig > %t.log; test $? -eq 10
+c RUN: %test_synth -u -q %s %t.aig | grep -q "verified CORRECT"
+c RUN: %arjun --2qbf --cegar 50 %s %t.aig > %t.log; test $? -eq 10
+c RUN: %test_synth -u -q %s %t.aig | grep -q "verified CORRECT"
+p cnf 4 5
+a 1 2 0
+e 3 4 0
+1 2 -3 0
+-1 -2 -3 0
+1 -2 3 0
+-1 2 3 0
+3 4 0

@@ -583,6 +583,9 @@ else()
 endif()
 
 add_subdirectory(src)
+if(ENABLE_TESTING)
+    add_subdirectory(tests/2qbf)
+endif()
 
 # -----------------------------------------------------------------------------
 # Add uninstall target for makefiles
