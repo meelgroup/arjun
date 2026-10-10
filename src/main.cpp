@@ -549,9 +549,11 @@ void do_synthesis() {
     auto qbf2_cls = cnf.get_orig_clauses();
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-        if (qbf2 && cnf.get_2qbf_cls(qbf2_cls)) {
-            verb_print(1, "[2qbf] checking on the simplified CNF");
-            check_2qbf_univ_clause(cnf, qbf2_cls);
+        if (cnf.get_2qbf_cls(qbf2_cls)) {
+            verb_print(1, "[arjun] the simplified CNF stands in for the orig one");
+            if (qbf2) check_2qbf_univ_clause(cnf, qbf2_cls);
+            // BVE can make the refinements much shorter
+            if (!cnf.synth_done()) try_cegar(qbf2_cls);
         }
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
