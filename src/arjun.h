@@ -2112,7 +2112,7 @@ public:
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
-    void standalone_backbone(SimplifiedCNF& cnf);
+    void standalone_backbone(SimplifiedCNF& cnf, int64_t max_confl = 20000);
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,

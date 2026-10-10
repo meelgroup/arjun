@@ -240,9 +240,9 @@ DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
             sbva_max_new_vars);
 }
 
-DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
+DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf, int64_t max_confl) {
     Puura puura(arjdata->conf);
-    puura.backbone(cnf);
+    puura.backbone(cnf, max_confl);
 }
 
 DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,

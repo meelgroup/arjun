@@ -52,7 +52,7 @@ using std::unique_ptr;
 Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
 
-void Puura::backbone(SimplifiedCNF& cnf) {
+void Puura::backbone(SimplifiedCNF& cnf, int64_t max_confl) {
     double my_time = cpuTime();
     if (cnf.get_weighted()) {
         for(const auto& v: cnf.get_opt_sampl_vars()) {
@@ -66,7 +66,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     solver->simplify(nullptr, &str);
     solver->set_verbosity(conf.verb);
     bool backbone_done = cnf.get_backbone_done();
-    solver->backbone_simpl(20*1000ULL, backbone_done);
+    solver->backbone_simpl(max_confl, backbone_done);
     cnf.set_backbone_done(backbone_done);
 
     auto lits = solver->get_zero_assigned_lits();
