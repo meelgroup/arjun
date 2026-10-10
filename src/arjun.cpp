@@ -45,6 +45,7 @@
 #include "brute_force_synth.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
+#include "aig_to_cnf.h"
 #include "constants.h"
 
 using namespace ArjunInt;
@@ -790,6 +791,45 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
         return 0; // signal failure (don't know exact var)
     }
     return -1;
+}
+
+DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
+    assert(need_aig && synth_done());
+    MetaSolver s;
+    s.new_vars(defs.size());
+
+    // y <-> def(y) for every non-input var; inputs stay free
+    vector<uint32_t> ys;
+    vector<aig_lit> roots;
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        if (defs[v] == nullptr || orig_sampl_vars.count(v)) continue;
+        ys.push_back(v);
+        roots.push_back(defs[v]);
+    }
+    AIGToCNF<MetaSolver> enc(s);
+    const auto outs = enc.encode_batch(roots);
+    for (size_t i = 0; i < ys.size(); i++) {
+        const Lit y(ys[i], false);
+        s.add_clause({~y, outs[i]});
+        s.add_clause({y, ~outs[i]});
+    }
+
+    // at least one original clause is falsified
+    vector<Lit> some_false;
+    for (const auto& cl : orig_clauses) {
+        s.new_var();
+        const Lit f(s.nVars()-1, false);
+        for (const auto& l : cl) s.add_clause({~f, ~l});
+        some_false.push_back(f);
+    }
+    s.add_clause(some_false);
+
+    const auto ret = s.solve();
+    release_assert(ret != l_Undef);
+    if (ret == l_False) return {};
+    vector<lbool> cex(defs.size(), l_Undef);
+    for (const auto& v : orig_sampl_vars) cex[v] = s.get_model()[v];
+    return cex;
 }
 
 DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(

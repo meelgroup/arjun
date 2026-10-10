@@ -1897,6 +1897,11 @@ public:
     // def is wrong. Expensive; intended for debugging BVE/synthesis issues.
     [[nodiscard]] int check_synth_funs_sat() const;
 
+    // 2QBF verdict once synthesis is done: forall X exists Y. F holds iff
+    // F(X, defs(X)) is valid. Returns an X (over orig vars, l_Undef elsewhere)
+    // that no Y can extend to a model, or an empty vector if F is true.
+    [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex() const;
+
     void set_backbone_done(const bool bb_done) {
         backbone_done = bb_done;
     }

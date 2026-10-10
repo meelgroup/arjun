@@ -71,6 +71,7 @@ int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rnd(max_repairs=400),bve";
 
 int synthesis = false;
+int qbf2 = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
 int do_backward = true;
@@ -161,6 +162,7 @@ void add_arjun_options() {
 
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
+    myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false)");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
@@ -395,6 +397,21 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
+// Prints the 2QBF verdict and, when false, a universal assignment that no
+// existential assignment can extend to a model
+[[noreturn]] void qbf2_result(const ArjunNS::SimplifiedCNF& cnf, const bool is_true,
+        const vector<CMSat::lbool>& cex = {}) {
+    cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
+        << (cpuTime() - start_time) << endl;
+    cout << "s cnf " << is_true << " " << cnf.get_orig_num_vars() << " "
+        << cnf.get_orig_clauses().size() << endl;
+    for(uint32_t v = 0; v < cex.size(); v++) {
+        if (cex[v] == CMSat::l_Undef) continue;
+        cout << "V " << (cex[v] == CMSat::l_True ? "" : "-") << v+1 << " 0" << endl;
+    }
+    exit(is_true ? 10 : 20);
+}
+
 void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     CMSat::SATSolver solver;
     solver.set_verbosity(0);
@@ -404,6 +421,7 @@ void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& cl: cnf.get_red_clauses()) solver.add_red_clause(cl);
     CMSat::lbool ret = solver.solve();
     if (ret == CMSat::l_False) {
+        if (qbf2) qbf2_result(cnf, false);
         cout << "c o [arjun] Input CNF is UNSAT!" << endl;
         exit(EXIT_FAILURE);
     }
@@ -519,6 +537,11 @@ void do_synthesis() {
         cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
+    if (qbf2) {
+        cnf.clear_orig_sampl_defs();
+        const auto cex = cnf.get_2qbf_cex();
+        qbf2_result(cnf, cex.empty(), cex);
+    }
 }
 
 void do_backward_pass() {
@@ -581,7 +604,7 @@ int main(int argc, char** argv) {
     }
 
     if (simp_conf.appmc) {
-        if (synthesis) {
+        if (synthesis || qbf2) {
             cout << "ERROR: Cannot use synthesis and appmc simplification at the same time" << endl;
             exit(EXIT_FAILURE);
         }
@@ -674,7 +697,7 @@ int main(int argc, char** argv) {
     cout << "c o [arjun] Input file: " << input_file << endl;
     if (!output_file.empty())
         cout << "c o [arjun] Output file: " << output_file << endl;
-    if (synthesis) {
+    if (synthesis || qbf2) {
         do_synthesis();
     } else {
         do_backward_pass();
