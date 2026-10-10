@@ -237,6 +237,11 @@ if(ENABLE_TESTING)
         COMMAND test-aig-rewrite
         WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     )
+    add_test(
+        NAME test-2qbf
+        COMMAND ${PROJECT_SOURCE_DIR}/scripts/test_2qbf.sh
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
     # Verilog emitter must not produce blank lines.
     add_test(
         NAME test-verilog-no-blank-lines
