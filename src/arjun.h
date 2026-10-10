@@ -1902,6 +1902,11 @@ public:
     // l_Undef elsewhere), or an empty vector if there is none.
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex(
             const std::vector<std::vector<CMSat::Lit>>& cls) const;
+    // Counterexample-guided expansion on the orig clauses, until the
+    // refinements add up to max_lits literals: short refinements cut off many
+    // X at once, long ones mean this will not converge. l_True: the 2QBF is
+    // true, l_False: it is false and `cex` is a falsifying X, l_Undef: gave up.
+    [[nodiscard]] CMSat::lbool cegar_2qbf(const uint64_t max_lits, std::vector<CMSat::lbool>& cex) const;
     // No Y extends this X to a model of the orig clauses
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
     // The clauses over ORIG vars. Simplification keeps the number of solutions

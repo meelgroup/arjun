@@ -840,6 +840,55 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
     return cex;
 }
 
+// The abstraction is the AND of ~F(X, y) over the Y-models y seen so far: an X
+// that satisfies it is a candidate counterexample, and a model of F under
+// that X refines it.
+DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t max_lits, vector<lbool>& cex) const {
+    MetaSolver abs, f;
+    abs.new_vars(defs.size());
+    f.new_vars(defs.size());
+    for (const auto& cl : orig_clauses) f.add_clause(cl);
+
+    // helper[i]: every universal literal of clause i is false
+    map<vector<Lit>, Lit> univ_to_helper;
+    vector<Lit> helper;
+    for (const auto& cl : orig_clauses) {
+        vector<Lit> univ;
+        for (const auto& l : cl) if (orig_sampl_vars.count(l.var())) univ.push_back(l);
+        std::sort(univ.begin(), univ.end());
+        const auto [it, inserted] = univ_to_helper.try_emplace(univ, lit_Undef);
+        if (inserted) {
+            abs.new_var();
+            it->second = Lit(abs.nVars()-1, false);
+            for (const auto& l : univ) abs.add_clause({~it->second, ~l});
+        }
+        helper.push_back(it->second);
+    }
+
+    vector<Lit> assumps, some_false;
+    for (uint64_t lits = 0; lits < max_lits; lits += some_false.size()) {
+        if (abs.solve() == l_False) return l_True;
+        assumps.clear();
+        for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, abs.get_model()[v] != l_True);
+        if (f.solve(&assumps) == l_False) {
+            cex = abs.get_model();
+            return l_False;
+        }
+
+        // some clause that y does not satisfy has all its universals false
+        const auto& model = f.get_model();
+        some_false.clear();
+        for (size_t i = 0; i < orig_clauses.size(); i++) {
+            bool sat = false;
+            for (const auto& l : orig_clauses[i])
+                sat |= !orig_sampl_vars.count(l.var()) && model[l.var()] == boolToLBool(!l.sign());
+            if (!sat) some_false.push_back(helper[i]);
+        }
+        abs.add_clause(some_false);
+    }
+    return l_Undef;
+}
+
 DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {
     MetaSolver s;
     s.new_vars(defs.size());

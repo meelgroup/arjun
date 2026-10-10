@@ -72,6 +72,7 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 
 int synthesis = false;
 int qbf2 = false;
+uint64_t qbf2_cegar = 20000;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
 int do_backward = true;
@@ -163,6 +164,7 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false)");
+    myopt("--2qbfcegar", qbf2_cegar, "2QBF: before synthesis, try counterexample-guided expansion until its refinements add up to this many literals. 0 = off");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
@@ -516,6 +518,12 @@ void do_synthesis() {
     if (qbf2) {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
+        vector<CMSat::lbool> cex;
+        const auto ret = cnf.cegar_2qbf(qbf2_cegar, cex);
+        if (ret != CMSat::l_Undef) {
+            verb_print(1, "[2qbf] solved by CEGAR");
+            qbf2_result(cnf, ret == CMSat::l_True, cex);
+        }
     }
     if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
