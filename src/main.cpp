@@ -419,6 +419,10 @@ void set_config(ArjunNS::Arjun* arj) {
 // QDIMACS prefix must be forall-exists: at most one 'a' block, then at most
 // one 'e' block, binding every variable of the matrix
 void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
+    if (input_file == "-") {
+        cout << "ERROR: --2qbf reads the file twice, so it cannot read from stdin" << endl;
+        exit(EXIT_FAILURE);
+    }
     #ifndef USE_ZLIB
     FILE* in = fopen(input_file.c_str(), "rb");
     CMSat::StreamBuffer<FILE*, CMSat::FN> buf(in);
