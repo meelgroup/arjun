@@ -845,6 +845,8 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
 // that X refines it.
 DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t max_lits, vector<lbool>& cex) const {
     MetaSolver abs, f;
+    // not for f: the models its lucky phases find give far shorter refinements
+    abs.set_no_lucky();
     abs.new_vars(defs.size());
     f.new_vars(defs.size());
     for (const auto& cl : orig_clauses) f.add_clause(cl);
