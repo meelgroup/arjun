@@ -334,6 +334,8 @@ void add_arjun_options() {
     myopt("--backward", do_backward,"Run the backward pass to minimize the independent set");
     myopt("--debugminim", debug_minim,"Create this file that is the CNF after indep set minimization");
     myopt("--cmsmult", conf.cms_glob_mult,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
+    myopt("--cmsabsbudget", conf.cms_abs_budget, "CMS: absolute intree/distill budgets instead of search-relative ones");
+    myopt("--cmssweep", conf.cms_sweep, "CMS: SAT sweeping (occ-sweep)");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
@@ -362,6 +364,8 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
     arj->set_cms_glob_mult(conf.cms_glob_mult);
+    arj->set_cms_abs_budget(conf.cms_abs_budget);
+    arj->set_cms_sweep(conf.cms_sweep);
     if (do_gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);
