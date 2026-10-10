@@ -798,7 +798,7 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
     MetaSolver s;
     s.new_vars(defs.size());
 
-    // y <-> def(y) for every non-input var the clauses depend on; inputs stay free
+    // y <-> def(y) for every non-input var the clauses depend on
     vector<uint32_t> ys;
     vector<char> seen(defs.size(), 0);
     auto add = [&](const uint32_t v) {
@@ -822,7 +822,6 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
         s.add_clause({y, ~outs[i]});
     }
 
-    // at least one clause is falsified
     vector<Lit> some_false;
     for (const auto& cl : cls) {
         s.new_var();
@@ -840,23 +839,18 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
     return cex;
 }
 
-// The abstraction is the AND of ~F(X, y) over the Y-models y seen so far: an X
-// that satisfies it is a candidate counterexample, and a model of F under
-// that X refines it.
 DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>& cex) const {
     MetaSolver abs, f;
     abs.set_no_lucky();
-    // The fewer the true existentials, and the more alike the models of F,
-    // the shorter the refinements. Lucky phases would pick their own models.
+    // few true existentials, alike from round to round: short refinements
     f.set_no_lucky();
     f.set_decide_false();
     abs.new_vars(defs.size());
     f.new_vars(defs.size());
     for (const auto& cl : orig_clauses) f.add_clause(cl);
 
-    // For each clause with universals: its existential part, and a helper that
-    // can only be true if all its universal literals are false. The other
-    // clauses are satisfied by every model of F.
+    // per clause with universals: its existentials, and a helper that
+    // implies all of its universal literals are false
     map<vector<Lit>, Lit> univ_to_helper;
     vector<std::pair<vector<Lit>, Lit>> mixed;
     for (const auto& cl : orig_clauses) {
@@ -884,7 +878,6 @@ DLL_PUBLIC lbool SimplifiedCNF::cegar_2qbf(const uint64_t budget, vector<lbool>&
             return l_False;
         }
 
-        // some clause that y does not satisfy has all its universals false
         const auto& model = f.get_model();
         some_false.clear();
         for (const auto& [exist, helper] : mixed) {

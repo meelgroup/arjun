@@ -1897,21 +1897,18 @@ public:
     // def is wrong. Expensive; intended for debugging BVE/synthesis issues.
     [[nodiscard]] int check_synth_funs_sat() const;
 
-    // 2QBF, once synthesis is done: forall X exists Y. `cls` holds iff
-    // cls(X, defs(X)) is valid. Returns a falsifying X (over orig vars,
-    // l_Undef elsewhere), or an empty vector if there is none.
+    // An X with ~cls(X, defs(X)), or empty if forall X exists Y. cls holds
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex(
             const std::vector<std::vector<CMSat::Lit>>& cls) const;
     // Counterexample-guided expansion on the orig clauses. l_False: `cex` is
     // an X with no Y, l_Undef: gave up. A refinement naming fraction f of the
     // helpers costs f^2 of the budget: next to nothing while it converges.
     [[nodiscard]] CMSat::lbool cegar_2qbf(const uint64_t budget, std::vector<CMSat::lbool>& cex) const;
-    // No Y extends this X to a model of the orig clauses
+    // No Y extends X to a model of the orig clauses
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
-    // The clauses over ORIG vars. Simplification keeps the number of solutions
-    // projected on the universals, times the multiplier, so if all universals
-    // that left the CNF are free, then `cls` is true as a 2QBF iff the orig
-    // clauses are. Returns false if that cannot be established.
+    // The clauses over ORIG vars. False if they cannot stand in for the orig
+    // clauses as a 2QBF: simplification keeps the projected solution count
+    // times the multiplier, so every universal gone from the CNF must be free.
     [[nodiscard]] bool get_2qbf_cls(std::vector<std::vector<CMSat::Lit>>& cls) const;
 
     void set_backbone_done(const bool bb_done) {

@@ -73,15 +73,13 @@ public:
         cadical->set("factor", 0);
     }
 
-    // Lucky phases sweep the whole formula on every solve(), which dominates
-    // when solve() is called many times and each call is easy
+    // Lucky phases sweep the whole formula on every solve()
     void set_no_lucky() {
         if (solver_type != SolverType::cadical) return;
         cadical->set("lucky", 0);
         cadical->set("luckyassumptions", 0);
     }
 
-    // Always decide false: models stay small and alike from call to call
     void set_decide_false() {
         if (solver_type != SolverType::cadical) return;
         cadical->set("forcephase", 1);

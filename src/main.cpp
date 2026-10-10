@@ -400,15 +400,12 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
-// Prints the 2QBF verdict and, when false, a universal assignment that no
-// existential assignment can extend to a model
 [[noreturn]] void qbf2_result(const ArjunNS::SimplifiedCNF& cnf, const bool is_true,
         const vector<CMSat::lbool>& cex = {}) {
     cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
         << (cpuTime() - start_time) << endl;
     cout << "s cnf " << is_true << " " << cnf.get_orig_num_vars() << " "
         << cnf.get_orig_clauses().size() << endl;
-    // universals the counterexample leaves open can take any value
     if (!is_true) for(const auto& v: cnf.get_orig_sampl_vars()) {
         const bool val = v < cex.size() && cex[v] == CMSat::l_True;
         cout << "V " << (val ? "" : "-") << v+1 << " 0" << endl;
@@ -416,8 +413,6 @@ void set_config(ArjunNS::Arjun* arj) {
     exit(is_true ? 10 : 20);
 }
 
-// QDIMACS prefix must be forall-exists: at most one 'a' block, then at most
-// one 'e' block, binding every variable of the matrix
 void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
     if (input_file == "-") {
         cout << "ERROR: --2qbf reads the file twice, so it cannot read from stdin" << endl;
@@ -461,8 +456,6 @@ void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
-// Universal reduction: a clause with no existential literal is falsified by
-// the universals alone
 void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf,
         const vector<vector<CMSat::Lit>>& cls) {
     for(const auto& cl: cls) {
@@ -525,7 +518,6 @@ void do_synthesis() {
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
         vector<CMSat::lbool> cex;
         const auto ret = cnf.cegar_2qbf(qbf2_cegar, cex);
-        // true, but the Skolem functions are wanted: synthesis has to make them
         qbf2_cegar_true = ret == CMSat::l_True;
         const bool need_funs = !output_file.empty() || !conf.debug_synth.empty();
         if (ret == CMSat::l_False || (qbf2_cegar_true && !need_funs)) {
@@ -547,7 +539,6 @@ void do_synthesis() {
         }
     };
 
-    // 2QBF: the clauses that F(X, f(X)) will be checked on, over orig vars
     auto qbf2_cls = cnf.get_orig_clauses();
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
@@ -626,7 +617,6 @@ void do_synthesis() {
     }
     if (qbf2) {
         auto cex = cnf.get_2qbf_cex(qbf2_cls);
-        // the simplified CNF can add constraints the defs need not follow
         if (!cex.empty() && !cnf.is_2qbf_cex(cex)) {
             verb_print(1, "[2qbf] spurious counterexample, checking on the orig CNF");
             cex = cnf.get_2qbf_cex(cnf.get_orig_clauses());

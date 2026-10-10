@@ -414,8 +414,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     // Create verification solver
     ArjunInt::MetaSolver verify_solver;
     verify_solver.new_vars(orig_cnf.nVars());
-    // 2QBF: the AIGs must satisfy F for EVERY x, so F(x,y) is left out and
-    // the miter is ~F(x, y_hat) alone
+    // 2QBF: the AIGs must satisfy F for EVERY x, so no F(x,y) in the miter
     if (!qbf2) for (const auto& clause : orig_cnf.get_clauses()) {
         verb_print(2, "adding orig clause: " << clause);
         verify_solver.add_clause(clause);
