@@ -405,11 +405,67 @@ void set_config(ArjunNS::Arjun* arj) {
         << (cpuTime() - start_time) << endl;
     cout << "s cnf " << is_true << " " << cnf.get_orig_num_vars() << " "
         << cnf.get_orig_clauses().size() << endl;
-    for(uint32_t v = 0; v < cex.size(); v++) {
-        if (cex[v] == CMSat::l_Undef) continue;
-        cout << "V " << (cex[v] == CMSat::l_True ? "" : "-") << v+1 << " 0" << endl;
+    // universals the counterexample leaves open can take any value
+    if (!is_true) for(const auto& v: cnf.get_orig_sampl_vars()) {
+        const bool val = v < cex.size() && cex[v] == CMSat::l_True;
+        cout << "V " << (val ? "" : "-") << v+1 << " 0" << endl;
     }
     exit(is_true ? 10 : 20);
+}
+
+// QDIMACS prefix must be forall-exists: at most one 'a' block, then at most
+// one 'e' block, binding every variable of the matrix
+void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
+    #ifndef USE_ZLIB
+    FILE* in = fopen(input_file.c_str(), "rb");
+    CMSat::StreamBuffer<FILE*, CMSat::FN> buf(in);
+    #else
+    gzFile in = gzopen(input_file.c_str(), "rb");
+    CMSat::StreamBuffer<gzFile, CMSat::GZ> buf(in);
+    #endif
+    string prefix;
+    vector<char> bound(cnf.nVars(), 0);
+    for(;;) {
+        buf.skipWhitespace();
+        const char c = *buf;
+        if (c == 'c' || c == 'p' || c == '\n') { buf.skipLine(); continue; }
+        if (c != 'a' && c != 'e') break;
+        prefix += c;
+        ++buf;
+        for(int32_t v; buf.parseInt(v, 0) && v != 0;) if ((uint32_t)v <= cnf.nVars()) bound[v-1] = 1;
+        buf.skipLine();
+    }
+    #ifndef USE_ZLIB
+    fclose(in);
+    #else
+    gzclose(in);
+    #endif
+
+    if (prefix != "" && prefix != "a" && prefix != "e" && prefix != "ae") {
+        cout << "ERROR: --2qbf needs a forall-exists quantifier prefix, but the "
+            "blocks in the file are: " << prefix << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (prefix.empty()) return;
+    for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl) if (!bound[l.var()]) {
+        cout << "ERROR: variable " << l.var()+1 << " is free, i.e. existential "
+            "BEFORE the universals, so this is not a forall-exists 2QBF" << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
+// Universal reduction: a clause with no existential literal is falsified by
+// the universals alone
+void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf) {
+    for(const auto& cl: cnf.get_clauses()) {
+        vector<CMSat::lbool> cex(cnf.nVars(), CMSat::l_Undef);
+        bool all_univ = true;
+        for(const auto& l: cl) {
+            all_univ &= cnf.get_orig_sampl_vars().count(l.var());
+            cex[l.var()] = CMSat::boolToLBool(l.sign());
+        }
+        if (all_univ) qbf2_result(cnf, false, cex);
+    }
 }
 
 void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
@@ -439,7 +495,11 @@ void do_synthesis() {
         cout << "ERROR: synthesis with 'c p no-touch' is not supported" << endl;
         exit(EXIT_FAILURE);
     }
-    if (etof_conf.all_indep) {
+    if (qbf2) {
+        check_2qbf_prefix(cnf);
+        // neither 'a' nor 'c p show': no universals, a plain SAT problem
+        if (!cnf.get_sampl_vars_set()) cnf.set_sampl_vars(vector<uint32_t>(), true);
+    } else if (etof_conf.all_indep) {
         // No projection (or it covers all vars) => no defined vars to synth.
         cout << "ERROR: no defined vars to synthesize "
                 "(no projection set, or projection covers all vars)" << endl;
@@ -452,6 +512,10 @@ void do_synthesis() {
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     check_cnf_sat(cnf);
+    if (qbf2) {
+        if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
+        check_2qbf_univ_clause(cnf);
+    }
     if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
