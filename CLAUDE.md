@@ -74,7 +74,7 @@ an X that has no Y. All of it is in `do_synthesis()` in `main.cpp` and the
    keeps the projected solution count. A counterexample is confirmed on the
    orig clauses with `is_2qbf_cex()`.
 
-Testing: `fuzz_synth.py` runs `--2qbf` on half of its iterations. A true
+Testing: `fuzz_synth_2qbf.py` runs `--2qbf` on half of its iterations. A true
 verdict is checked with `test-synth -u -q` (the final AIG must be a total
 Skolem function), a false one by checking the CNF is UNSAT under the `V`
 lines. `scripts/test_2qbf.sh` (ctest `test-2qbf`) checks verdicts on tiny
@@ -103,7 +103,7 @@ output lines.
 From `build/`:
 
 ```
-./fuzz_synth.py --num 400
+./fuzz_synth_2qbf.py --num 400
 ./fuzz_aig_to_cnf --num 1000
 ./fuzz_aig_rewrite --num 1000
 ```
@@ -154,7 +154,7 @@ When `--debugsynth` is passed, intermediate AIGs are written next to the
 input CNF with suffixes `-simplified_cnf.aig`, `-autarky.aig`,
 `-minim_idep_synt.aig`, `-cegr.aig`, `-final.aig`. `test-synth` verifies
 each stage's AIG against the original CNF and is invoked automatically by
-`fuzz_synth.py`.
+`fuzz_synth_2qbf.py`.
 
 ## Debugging issues
 
@@ -162,7 +162,7 @@ When debugging a bug (assertion, wrong answer, crash, non-determinism), use
 the full toolbox — don't stop at the first technique that gives a hint.
 Expected workflow:
 
-1. **Fuzzing** — reproduce / narrow down with `fuzz_synth.py`,
+1. **Fuzzing** — reproduce / narrow down with `fuzz_synth_2qbf.py`,
    `fuzz_aig_to_cnf`, `fuzz_aig_rewrite` (see "After every build"). Fuzzers
    generate minimal failing inputs much faster than reasoning from a large
    user-supplied CNF.

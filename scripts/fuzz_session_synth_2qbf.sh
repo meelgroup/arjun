@@ -1,18 +1,18 @@
 #!/bin/bash
 #
-# Create a tmux session with multiple fuzzing windows running fuzz.py
+# Create a tmux session with multiple fuzzing windows running fuzz_synth_2qbf.py
 #
 # Usage:
-#   ./fuzz_session.sh [--num N] [fuzz.py options]
+#   ./fuzz_session_synth_2qbf.sh [--num N] [fuzz_synth_2qbf.py options]
 #
 # Options:
 #   --num N    Number of tmux windows to create (default: 24)
 #
 # Examples:
-#   ./fuzz_session.sh                           # 24 windows, default options
-#   ./fuzz_session.sh --num 8                   # 8 windows, default options
+#   ./fuzz_session_synth_2qbf.sh                           # 24 windows, default options
+#   ./fuzz_session_synth_2qbf.sh --num 8                   # 8 windows, default options
 #
-# All arguments (except --num) are forwarded to fuzz_synth.py in each window.
+# All arguments (except --num) are forwarded to fuzz_synth_2qbf.py in each window.
 
 SESSION="fuzzing synth"
 DIR="$(pwd)"
@@ -28,7 +28,7 @@ if [ "$1" = "--num" ]; then
   shift 2
 fi
 
-CMD="./fuzz_synth.py $@"
+CMD="./fuzz_synth_2qbf.py $@"
 
 # Attach if session already exists
 if tmux has-session -t "$SESSION" 2>/dev/null; then

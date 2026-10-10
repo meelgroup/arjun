@@ -217,7 +217,7 @@ def run_check(command, final, seed):
         print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
-        print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+        print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
         print(col("=" * 60, RED))
         exit(-1)
 
@@ -228,7 +228,7 @@ def run_check(command, final, seed):
             print("Command was: %s" % fmt_cmd(command))
             print("Full check output was:")
             print(consoleOutput)
-            print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+            print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
             print(col("=" * 60, RED))
             exit(-1)
         # Match "CORRECT" but not "INCORRECT" — test-synth prints both on
@@ -244,7 +244,7 @@ def run_check(command, final, seed):
         print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
-        print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+        print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
         print(col("=" * 60, RED))
         exit(-1)
 
@@ -612,7 +612,7 @@ if __name__ == "__main__":
         if err:
             print("Synthesis failed on file %s" % fname)
             print(col("=" * 60, RED))
-            print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+            print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
             print(col("=" * 60, RED))
             exit(-1)
         print(col("Synthesis succeeded", GREEN) + " on file %s, produced files: %s" % (fname, str(aigs)))
@@ -624,7 +624,7 @@ if __name__ == "__main__":
             if qbf2_true is None or (not qbf2_true and not check_qbf2_cex(fname, proj, cex)):
                 print(col("=" * 60, RED))
                 print(col("BUG: missing 2QBF verdict, or wrong counterexample", RED))
-                print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+                print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
                 print(col("=" * 60, RED))
                 exit(-1)
             qbf2_res[qbf2_true] += 1
