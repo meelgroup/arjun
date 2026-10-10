@@ -631,8 +631,9 @@ if __name__ == "__main__":
             qbf2_res[qbf2_true] += 1
             print(col("2QBF verdict: %s" % qbf2_true, GREEN) + " -- so far %d true, %d false"
                   % (qbf2_res[True], qbf2_res[False]))
-        if len(aigs) == 0 and not qbf2:
-            print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
+        # only a false 2QBF may stop before the final AIG
+        if not any("final" in aig for aig in aigs) and qbf2_true is not False:
+            print("ERROR: Synthesis produced no final AIG on file %s" % fname)
             exit(-1)
         check_core_files(prefix)
 
