@@ -328,6 +328,7 @@ void add_arjun_options() {
     myopt("--bveprodlim", simp_conf.bve_occ_prod_cutoff, "BVE: refuse a var whose pos*neg occurrence product is over this. This is the bound on resolution work");
     myopt("--bveclsmaxsz", simp_conf.bve_cls_max_size, "BVE: refuse a var that occurs in a clause longer than this. 0 = no limit");
     myopt("--bveschedtouched", simp_conf.bve_sched_only_touched, "BVE: only schedule vars whose clauses changed since BVE last looked. 0 = schedule every eligible var");
+    myopt("--bvetieminocc", simp_conf.bve_tie_min_occ, "BVE: among equal-size clauses, take first the one whose rarest var occurs the least. 0 = order them by clause ID");
     myopt("--ccnrbudget", simp_conf.backbone_ccnr_mems_limitM, "Mems budget, in millions, for each CCNR local search try that pre-filters backbone candidates. If no model is found, cadiback must test every variable");
     myopt("--puuradistill", simp_conf.puura_distill, "Distillation inside Puura's simplification strategy. 1 = as scheduled, 0 = drop every distill token, 2 = drop only the ones that run before the first occ-bve");
     myopt("--distillremlevel", simp_conf.distill_rem_level, "Clause removal during Puura's distillation. 0 = never, 1 = only on a real conflict, 2 = also when a literal is positively implied. Levels below 2 keep gate clauses that BVE needs to recover definitions");

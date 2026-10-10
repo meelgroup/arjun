@@ -644,6 +644,18 @@ private:
     aig_node_ptr const_true_node = nullptr;
 };
 
+// What a malloc(n) really takes from the heap. The cache budgets memory with
+// bytes_used(), and a count is 1-5 tiny allocations, so ignoring the allocator's
+// header and minimum block size undercounts them by 2x.
+inline uint64_t heap_bytes(const uint64_t n) {
+    if (n == 0) return 0;
+    return std::max<uint64_t>(32, (n + 8 + 15) & ~15ULL);
+}
+
+inline uint64_t heap_bytes(const mpz_class& v) {
+    return heap_bytes(v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t));
+}
+
 class FMpz final : public CMSat::Field {
 public:
     mpz_class val;
@@ -712,12 +724,8 @@ public:
         return check_end_of_weight(str, at, line_no);
     }
 
-    uint64_t helper(const mpz_class& v) const {
-      return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
-    }
-
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(FMpz) + helper(val);
+      return heap_bytes(sizeof(FMpz)) + heap_bytes(val);
     }
 };
 
@@ -823,13 +831,9 @@ public:
     void set_zero() final { val = 0; }
     void set_one() final { val = 1; }
 
-    [[nodiscard]] inline uint64_t helper(const mpz_class& v) const {
-      return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
-    }
-
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(FMpq) +
-          helper(val.get_num()) + helper(val.get_den());
+      return heap_bytes(sizeof(FMpq)) +
+          heap_bytes(val.get_num()) + heap_bytes(val.get_den());
     }
 
     bool parse_mpq(const std::string& str, uint32_t& at, const uint32_t line_no) {
@@ -927,14 +931,9 @@ inline unsigned int mpfr_memory_usage(const mpfr_t& x) {
     // Calculate the number of limbs required for the significand
     size_t num_limbs = (precision + limb_size - 1) / limb_size;
 
-    // Base size of mpfr_t structure
-    unsigned int base_size = sizeof(__mpfr_struct);
-
-    // Size of the mantissa (significand) data
-    unsigned int mantissa_size = num_limbs * sizeof(mp_limb_t);
-
-    // Total memory usage
-    return base_size + mantissa_size;
+    // The mpfr_t struct itself is a member of the Field object, only the
+    // significand is a separate allocation (with a one-limb header)
+    return heap_bytes((num_limbs + 1) * sizeof(mp_limb_t));
 }
 
 class FMpfr final : public CMSat::Field {
@@ -1048,7 +1047,7 @@ public:
 
 
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(FMpfr) + mpfr_memory_usage(val);
+      return heap_bytes(sizeof(FMpfr)) + mpfr_memory_usage(val);
     }
 };
 
@@ -1189,14 +1188,10 @@ public:
     void set_zero() final { real = 0; imag = 0; }
     void set_one() final { real = 1; imag = 0; }
 
-    uint64_t helper(const mpz_class& v) const {
-      return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
-    }
-
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(FComplex) +
-          helper(imag.get_num()) + helper(imag.get_den()) +
-          helper(real.get_num()) + helper(real.get_den());
+      return heap_bytes(sizeof(FComplex)) +
+          heap_bytes(imag.get_num()) + heap_bytes(imag.get_den()) +
+          heap_bytes(real.get_num()) + heap_bytes(real.get_den());
     }
 
     bool parse(const std::string& str, const uint32_t line_no) final {
@@ -1396,7 +1391,7 @@ public:
     }
 
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(MPFComplex) + mpfr_memory_usage(real) + mpfr_memory_usage(imag);
+      return heap_bytes(sizeof(MPFComplex)) + mpfr_memory_usage(real) + mpfr_memory_usage(imag);
     }
 
     bool parse(const std::string& str, const uint32_t line_no) final {
@@ -1466,6 +1461,7 @@ struct SimpConf {
     int64_t bve_occ_prod_cutoff = 10000;
     int64_t bve_cls_max_size = 0;
     int bve_sched_only_touched = 0;
+    int bve_tie_min_occ = 0;
     int64_t backbone_ccnr_mems_limitM = 300;
 };
 
@@ -2127,7 +2123,7 @@ public:
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
-    void standalone_backbone(SimplifiedCNF& cnf);
+    void standalone_backbone(SimplifiedCNF& cnf, int64_t max_confl = 20000);
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
