@@ -30,7 +30,7 @@ If cmake needs to be re-run, use `scripts/build_norm.sh` or
 From `build/`:
 
 ```
-./arjun --verb 2 --synth --synthbve 1 --extend 1 --backward 1 --samples 1 out/fuzzTest_596.cnf out/funs.aig
+./arjun --verb 2 --synth --synthpuura 1 --extend 1 --backward 1 --samples 1 out/fuzzTest_596.cnf out/funs.aig
 ```
 
 `--synth` needs the 2nd file: the Skolem functions, as `.aig` or `.v`. `--2qbf`

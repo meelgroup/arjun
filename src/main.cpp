@@ -66,7 +66,7 @@ ArjunNS::Arjun::InterpConf iconf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
-int do_synth_bve = true;
+int do_synth_puura = true;
 int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rnd(max_repairs=400),bve";
 
@@ -183,7 +183,7 @@ void add_arjun_options() {
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverticks", cover_ticks, "Give up on covering after this many million ticks of SAT solver work. 0 = no limit");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
-    myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
+    myopt("--synthpuura", do_synth_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict,"Minimize conflict size when repairing");
     myopt("--unatedef", do_unate_def,"Perform definition-aware unate analysis");
@@ -642,7 +642,7 @@ void do_synth_2qbf() {
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2 && !need_funs;
-    if (do_synth_bve) {
+    if (do_synth_puura) {
         const auto before = qbf2_cls;
         simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
         // BVE can make the refinements much shorter

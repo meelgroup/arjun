@@ -346,7 +346,7 @@ def qbf2_pre_verdict(fname, seed):
     pre_fname = fname + "-pre.qdimacs"
     witness = fname + "-pre.aig"
     cmd = "./arjun --2qbfpre --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
-    cmd += " --synthbve %d" % random.choice([0, 1, 1, 1])
+    cmd += " --synthpuura %d" % random.choice([0, 1, 1, 1])
     cmd += " --coverticks %s" % random.choice([0, 0.01, 20])
     cmd += " --prerepairs %d --preconfl %d" % (random.choice([0, 5, 400]), random.choice([0, 10, 10000]))
     cmd += " --prebce %d --2qbfpuurarounds %d" % (random.choice([0, 1, 1]), random.randint(1, 4))
@@ -588,7 +588,7 @@ if __name__ == "__main__":
         solver += "--ctxlightinproc %d " % random.choice([0, 1, 2])
 
         opts = [
-            " --synthbve"
+            " --synthpuura"
             , " --extend"
             , " --backward"
             , " --minimconfl"

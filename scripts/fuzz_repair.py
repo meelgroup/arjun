@@ -155,7 +155,7 @@ def run_arjun_checkrepair(fname, seed, timeout):
         "--seed", str(seed),
         # Disable all preprocessors so cegr starts immediately
         "--bve", "0",
-        "--synthbve", "0",
+        "--synthpuura", "0",
         "--autarky", "0",
         "--unatedef", "0",
         "--extend", "0",
