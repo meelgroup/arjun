@@ -99,29 +99,15 @@ struct Subst {
     }
 };
 
-}
-
-lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
-        const uint64_t max_ticks,
-        const bool stop_at_cex, const bool need_funs, const bool minim, vector<lbool>& cex,
-        const uint32_t verb) {
-    const double my_time = cpuTime();
-    const auto& orig_sampl_vars = cnf.get_orig_sampl_vars();
-    const auto& aig_mng = cnf.get_aig_mng();
+// The vars of cls that already have a function, in `defined`. state 1: a
+// function of the universals only, 2: not
+void classify(const SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, vector<char>& state,
+        vector<uint32_t>& defined, vector<uint32_t>& free_leaves) {
     const uint32_t num_defs = cnf.num_defs();
-    MetaSolver abs, f;
-    abs.set_no_lucky();
-    f.set_no_lucky();
-    f.set_decide(false);
-
-    // The vars that already have a function. One of the universals only is
-    // an outer var like them: abs picks it, tied to its function there. Any
-    // other one follows the existentials: `deep`, the clauses they are in,
-    // are rewritten for every model.
-    vector<char> is_univ(num_defs, 0), in_cls(num_defs, 0), state(num_defs, 0);
-    for (const auto& v : orig_sampl_vars) is_univ[v] = 1;
+    vector<char> is_univ(num_defs, 0), in_cls(num_defs, 0);
+    state.assign(num_defs, 0);
+    for (const auto& v : cnf.get_orig_sampl_vars()) is_univ[v] = 1;
     for (const auto& cl : cls) for (const auto& l : cl) in_cls[l.var()] = 1;
-    vector<uint32_t> defined, free_leaves;
     std::function<bool(uint32_t)> fun_of_univ = [&](const uint32_t v) {
         if (is_univ[v]) return true;
         if (state[v]) return state[v] == 1;
@@ -140,6 +126,30 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         return ret;
     };
     for (const auto& cl : cls) for (const auto& l : cl) fun_of_univ(l.var());
+}
+
+// new_defs: the functions found, for the caller to set. used_ticks: added to
+lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
+        const uint64_t max_ticks,
+        const bool stop_at_cex, const bool need_funs, const bool minim, vector<lbool>& cex,
+        vector<std::pair<uint32_t, aig_lit>>& new_defs, uint64_t& used_ticks,
+        const uint32_t verb) {
+    const double my_time = cpuTime();
+    const auto& orig_sampl_vars = cnf.get_orig_sampl_vars();
+    const auto& aig_mng = cnf.get_aig_mng();
+    const uint32_t num_defs = cnf.num_defs();
+    MetaSolver abs, f;
+    abs.set_no_lucky();
+    f.set_no_lucky();
+    f.set_decide(false);
+
+    // The vars that already have a function. One of the universals only is
+    // an outer var like them: abs picks it, tied to its function there. Any
+    // other one follows the existentials: `deep`, the clauses they are in,
+    // are rewritten for every model.
+    vector<char> state;
+    vector<uint32_t> defined, free_leaves;
+    classify(cnf, cls, state, defined, free_leaves);
     vector<uint32_t> outer(orig_sampl_vars.begin(), orig_sampl_vars.end());
     const uint32_t num_univ = outer.size();
     for (const auto& v : defined) if (state[v] == 1) outer.push_back(v);
@@ -286,6 +296,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
             << " funs: " << funs_time << ")" << std::endl;
     };
     auto finish = [&](const lbool ret) {
+        used_ticks += ticks();
         stats(ret == l_True ? "all X covered" : ret == l_False ? "X with no Y" : "gave up");
         return ret;
     };
@@ -339,10 +350,8 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
             for (uint32_t step = 1; step < ors.size(); step *= 2)
                 for (uint32_t j = 0; j + step < ors.size(); j += 2 * step) ors[j] = AIG::new_or(ors[j], ors[j + step]);
             const aig_lit fun = ors.empty() ? aig_mng.new_const(false) : ors[0];
-            cnf.set_def(ys[i], val ? fun : ~fun);
+            new_defs.emplace_back(ys[i], val ? fun : ~fun);
         }
-        for (uint32_t v = 0; v < num_defs; v++)
-            if (!orig_sampl_vars.count(v) && !cnf.defined(v)) cnf.set_def(v, aig_mng.new_const(false));
     };
     auto get_some_false = [&](const vector<lbool>& model) {
         some_false.clear();
@@ -478,4 +487,81 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         abs.add_clause(some_false);
     }
     return finish(l_Undef);
+}
+
+}
+
+lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
+        const uint64_t max_ticks,
+        const bool stop_at_cex, const bool need_funs, const bool minim, vector<lbool>& cex,
+        const uint32_t verb) {
+    const uint32_t num_defs = cnf.num_defs();
+    const uint32_t none = std::numeric_limits<uint32_t>::max();
+    vector<char> state;
+    vector<uint32_t> defined, free_leaves;
+    classify(cnf, cls, state, defined, free_leaves);
+    vector<char> is_outer(num_defs, 0);
+    for (const auto& v : cnf.get_orig_sampl_vars()) is_outer[v] = 1;
+    for (uint32_t v = 0; v < num_defs; v++) if (state[v] == 1) is_outer[v] = 1;
+
+    // Clauses that share no existential, directly or through a function, are
+    // covered apart: together they need the product of their models
+    vector<uint32_t> par(num_defs);
+    for (uint32_t v = 0; v < num_defs; v++) par[v] = v;
+    auto find = [&](uint32_t v) {
+        while (par[v] != v) v = par[v] = par[par[v]];
+        return v;
+    };
+    auto first_inner = [&](const vector<Lit>& cl) {
+        for (const auto& l : cl) if (!is_outer[l.var()]) return l.var();
+        return none;
+    };
+    for (const auto& cl : cls) {
+        const uint32_t first = first_inner(cl);
+        for (const auto& l : cl) if (!is_outer[l.var()]) par[find(l.var())] = find(first);
+    }
+    for (const auto& v : defined) if (state[v] == 2) {
+        set<uint32_t> deps;
+        AIG::get_dependent_vars(cnf.get_def(v), deps, v);
+        for (const auto& d : deps) if (!is_outer[d]) par[find(d)] = find(v);
+    }
+    vector<uint32_t> comp_of(num_defs, none);
+    vector<vector<vector<Lit>>> comps;
+    vector<vector<Lit>> outer_only;
+    for (const auto& cl : cls) {
+        const uint32_t first = first_inner(cl);
+        if (first == none) { outer_only.push_back(cl); continue; }
+        uint32_t& c = comp_of[find(first)];
+        if (c == none) {
+            c = comps.size();
+            comps.emplace_back();
+        }
+        comps[c].push_back(cl);
+    }
+    vector<std::pair<uint32_t, aig_lit>> new_defs;
+    uint64_t used_ticks = 0;
+    lbool ret = l_True;
+    if (comps.size() <= 1) {
+        ret = cover_one(cnf, cls, budget, max_ticks, stop_at_cex, need_funs, minim, cex, new_defs, used_ticks, verb);
+    } else {
+        std::stable_sort(comps.begin(), comps.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
+        comps.back().insert(comps.back().end(), outer_only.begin(), outer_only.end());
+        if (verb) std::cout << "c o [cover] components: " << comps.size() << " clauses of the largest: "
+            << comps.back().size() << " of " << cls.size() << std::endl;
+        for (uint32_t i = 0; i < comps.size() && ret == l_True; i++) {
+            if (max_ticks && used_ticks >= max_ticks) { ret = l_Undef; break; }
+            const bool last = i + 1 == comps.size();
+            ret = cover_one(cnf, comps[i], budget, max_ticks ? max_ticks - used_ticks : 0, stop_at_cex, need_funs,
+                    minim, cex, new_defs, used_ticks, last ? verb : (verb ? verb - 1 : 0));
+            if (verb && !last && ret != l_True) std::cout << "c o [cover] component " << i << " with "
+                << comps[i].size() << " clauses: " << (ret == l_False ? "X with no Y" : "gave up") << std::endl;
+        }
+    }
+    if (ret == l_True && need_funs) {
+        for (const auto& [v, fun] : new_defs) cnf.set_def(v, fun);
+        const auto& sampl = cnf.get_orig_sampl_vars();
+        for (uint32_t v = 0; v < num_defs; v++)
+            if (!sampl.count(v) && !cnf.defined(v)) cnf.set_def(v, cnf.get_aig_mng().new_const(false));
+    }
+    return ret;
 }
