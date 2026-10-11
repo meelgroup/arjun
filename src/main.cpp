@@ -509,6 +509,12 @@ bool has_univ(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>
     return false;
 }
 
+bool has_defined(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls) {
+    for(const auto& cl: cls) for(const auto& l: cl)
+        if (!cnf.get_orig_sampl_vars().count(l.var()) && cnf.defined(l.var())) return true;
+    return false;
+}
+
 void try_cover(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const bool need_funs) {
     vector<CMSat::lbool> cex;
     auto ret = arjun->standalone_cover(cnf, cls, cover_budget, (uint64_t)(cover_ticks * 1e6), qbf2,
@@ -694,6 +700,9 @@ void do_synth_2qbf() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "unate_def"));
     }
+
+    // covering follows the functions found since its last run
+    if (!cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs);
 
     // the rewriter takes minutes on the long ITE chains of covering, and grows them
     const bool rewrite = !qbf2pre && (!cover_done || cnf.num_def_nodes() < 10000);

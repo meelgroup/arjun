@@ -25,18 +25,81 @@
 
 #include "cover.h"
 #include "metasolver.h"
+#include "aig_to_cnf.h"
 #include "time_mem.h"
 #include <iomanip>
 #include <iostream>
 #include <algorithm>
 #include <limits>
+#include <cmath>
 #include <map>
+#include <set>
+#include <functional>
+#include <unordered_map>
 
 using namespace ArjunNS;
 using namespace ArjunInt;
 using namespace CMSat;
 using std::vector;
 using std::map;
+using std::set;
+
+namespace {
+
+// An AIG with its leaves replaced: a var with a `leaf` by that, any other
+// defined var by its def, rewritten the same way, the rest by their `val`.
+// What does not depend on a `val` is built once, the rest once per round.
+struct Subst {
+    struct Res { aig_lit a; bool fixed; };
+    struct NidHash { size_t operator()(const AIG* n) const { return std::hash<uint64_t>()(n->nid); } };
+    const SimplifiedCNF& cnf;
+    vector<aig_lit> leaf;
+    vector<lbool> val;
+    std::unordered_map<const AIG*, Res, NidHash> fixed_nodes, round_nodes;
+    vector<Res> var_res;
+    vector<uint64_t> var_round;
+    uint64_t round = 1, work = 0;
+
+    explicit Subst(const SimplifiedCNF& _cnf) : cnf(_cnf), leaf(_cnf.num_defs(), aig_lit(nullptr)),
+        val(_cnf.num_defs(), l_Undef), var_res(_cnf.num_defs()), var_round(_cnf.num_defs(), 0) {}
+
+    void new_round() { round_nodes.clear(); round++; }
+
+    Res of_var(const uint32_t v) {
+        if (leaf[v] != nullptr) return {leaf[v], true};
+        if (!cnf.defined(v)) {
+            assert(val[v] != l_Undef);
+            return {AIG::new_const(val[v] == l_True), false};
+        }
+        if (var_round[v] == round || var_round[v] == 1) return var_res[v];
+        const Res ret = of_aig(cnf.get_def(v));
+        var_res[v] = ret;
+        var_round[v] = ret.fixed ? 1 : round;
+        return ret;
+    }
+
+    Res of_aig(const aig_lit& a) {
+        const AIG* n = a.get();
+        Res ret;
+        if (n->type == AIGT::t_const) ret = {aig_lit(a.node, false), true};
+        else if (n->type == AIGT::t_lit) ret = of_var(n->var);
+        else {
+            const Res* found = nullptr;
+            if (auto it = fixed_nodes.find(n); it != fixed_nodes.end()) found = &it->second;
+            else if (auto it2 = round_nodes.find(n); it2 != round_nodes.end()) found = &it2->second;
+            if (found) ret = *found;
+            else {
+                work++;
+                const Res l = of_aig(n->l), r = of_aig(n->r);
+                ret = {AIG::new_and(l.a, r.a), l.fixed && r.fixed};
+                (ret.fixed ? fixed_nodes : round_nodes)[n] = ret;
+            }
+        }
+        return {a.neg ? ~ret.a : ret.a, ret.fixed};
+    }
+};
+
+}
 
 lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
         const uint64_t max_ticks,
@@ -50,13 +113,49 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     abs.set_no_lucky();
     f.set_no_lucky();
     f.set_decide(false);
-    // The solvers only get the vars they have clauses on: the universals,
-    // at the same index in both, then for f the existentials of cls
+
+    // The vars that already have a function. One of the universals only is
+    // an outer var like them: abs picks it, tied to its function there. Any
+    // other one follows the existentials: `deep`, the clauses they are in,
+    // are rewritten for every model.
+    vector<char> is_univ(num_defs, 0), in_cls(num_defs, 0), state(num_defs, 0);
+    for (const auto& v : orig_sampl_vars) is_univ[v] = 1;
+    for (const auto& cl : cls) for (const auto& l : cl) in_cls[l.var()] = 1;
+    vector<uint32_t> defined, free_leaves;
+    std::function<bool(uint32_t)> fun_of_univ = [&](const uint32_t v) {
+        if (is_univ[v]) return true;
+        if (state[v]) return state[v] == 1;
+        if (!cnf.defined(v)) {
+            // not in cls: nothing constrains it, false is its function
+            state[v] = in_cls[v] ? 2 : 1;
+            if (!in_cls[v]) free_leaves.push_back(v);
+            return state[v] == 1;
+        }
+        set<uint32_t> deps;
+        AIG::get_dependent_vars(cnf.get_def(v), deps, v);
+        bool ret = true;
+        for (const auto& d : deps) ret &= fun_of_univ(d);
+        state[v] = ret ? 1 : 2;
+        defined.push_back(v);
+        return ret;
+    };
+    for (const auto& cl : cls) for (const auto& l : cl) fun_of_univ(l.var());
+    vector<uint32_t> outer(orig_sampl_vars.begin(), orig_sampl_vars.end());
+    const uint32_t num_univ = outer.size();
+    for (const auto& v : defined) if (state[v] == 1) outer.push_back(v);
+    vector<char> is_outer(num_defs, 0);
+    for (const auto& v : outer) is_outer[v] = 1;
+
+    // The solvers only get the vars they have clauses on: the outer ones,
+    // at the same index in both, then for f the rest
     const uint32_t none = std::numeric_limits<uint32_t>::max();
     vector<uint32_t> to_f(num_defs, none), ys;
-    for (const auto& v : orig_sampl_vars) {
+    auto new_f_var = [&](const uint32_t v) {
         to_f[v] = f.nVars();
         f.new_var();
+    };
+    for (const auto& v : outer) {
+        new_f_var(v);
         abs.new_var();
     }
     auto in_f = [&](const Lit l) { return Lit(to_f[l.var()], l.sign()); };
@@ -64,24 +163,54 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         vector<Lit> cl2;
         for (const auto& l : cl) {
             if (to_f[l.var()] == none) {
-                to_f[l.var()] = f.nVars();
-                f.new_var();
+                new_f_var(l.var());
                 ys.push_back(l.var());
             }
             cl2.push_back(in_f(l));
         }
         f.add_clause(cl2);
     }
+    for (const auto& v : defined) if (to_f[v] == none) new_f_var(v);
+    for (const auto& v : free_leaves) {
+        new_f_var(v);
+        f.add_clause({Lit(to_f[v], true)});
+    }
 
-    // per clause with universals: its existentials, and a helper that
-    // implies all of its universal literals are false
+    // f keeps to the functions, so that its models are ones abs can rule out
+    Subst in_f_vars(cnf), in_abs_vars(cnf), in_orig_vars(cnf);
+    for (uint32_t v = 0; v < num_defs; v++) if (to_f[v] != none) in_f_vars.leaf[v] = AIG::new_lit(to_f[v]);
+    for (const auto& v : outer) {
+        in_abs_vars.leaf[v] = AIG::new_lit(to_f[v]);
+        in_orig_vars.leaf[v] = AIG::new_lit(v);
+    }
+    for (const auto& v : free_leaves) in_abs_vars.leaf[v] = in_orig_vars.leaf[v] = aig_mng.new_const(false);
+    vector<aig_lit> keep; // the encoders cache by node address
+    auto tie = [&](MetaSolver& s, AIGToCNF<MetaSolver>& enc, const uint32_t v) {
+        keep.push_back(in_f_vars.of_aig(cnf.get_def(v)).a);
+        const Lit out = enc.encode(keep.back());
+        const Lit me = Lit(to_f[v], false);
+        s.add_clause({~out, me});
+        s.add_clause({out, ~me});
+    };
+    AIGToCNF<MetaSolver> enc_f(f), enc_abs(abs);
+    for (const auto& v : defined) tie(f, enc_f, v);
+    for (uint32_t i = num_univ; i < outer.size(); i++) tie(abs, enc_abs, outer[i]);
+    const uint32_t helper_at = abs.nVars();
+
+    // per clause with outer vars: its existentials, and a helper that
+    // implies all of its outer literals are false
     map<vector<Lit>, Lit> univ_to_helper;
     vector<std::pair<vector<Lit>, Lit>> mixed;
-    vector<aig_lit> univ_true; // per helper: some universal literal of it is true
+    vector<aig_lit> univ_true; // per helper: some outer literal of it is true
+    vector<vector<Lit>> deep;
     for (const auto& cl : cls) {
+        if (std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return cnf.defined(l.var()) && !is_outer[l.var()]; })) {
+            deep.push_back(cl);
+            continue;
+        }
         vector<Lit> univ, exist;
         for (const auto& l : cl) {
-            if (orig_sampl_vars.count(l.var())) univ.push_back(l);
+            if (is_outer[l.var()]) univ.push_back(l);
             else exist.push_back(in_f(l));
         }
         if (univ.empty()) continue;
@@ -99,7 +228,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         mixed.emplace_back(exist, it->second);
     }
     const uint32_t num_helpers = univ_to_helper.size();
-    auto hidx = [&](const Lit h) { return h.var() - orig_sampl_vars.size(); };
+    auto hidx = [&](const Lit h) { return h.var() - helper_at; };
 
     // selector of a helper, in f: the existentials satisfy all of its clauses
     const uint32_t sel_at = f.nVars();
@@ -120,7 +249,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     // a model that satisfies many existential parts makes a short refinement
     vector<int> pos_occ(f.nVars(), 0);
     for (const auto& [exist, helper] : mixed) for (const auto& l : exist) pos_occ[l.var()] += l.sign() ? -1 : 1;
-    for (const auto& v : ys) f.set_phase(Lit(to_f[v], pos_occ[to_f[v]] <= 0));
+    for (const auto& v : ys) if (!cnf.defined(v)) f.set_phase(Lit(to_f[v], pos_occ[to_f[v]] <= 0));
 
     // per refinement, for the Skolem functions: its helpers, and the model's Y
     vector<vector<Lit>> ref_helpers;
@@ -130,22 +259,25 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     auto sq_frac = [](const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); };
     double cost = 0;
     uint64_t rounds = 0, ref_lits = 0, cubes = 0, cube_lits = 0, minim_calls = 0, minim_removed = 0;
-    double abs_time = 0, f_time = 0, refine_time = 0, funs_time = 0;
+    double abs_time = 0, f_time = 0, refine_time = 0, deep_time = 0, funs_time = 0;
     const double setup_time = cpuTime() - my_time;
-    auto ticks = [&] { return abs.get_sum_ticks() + f.get_sum_ticks(); };
+    auto ticks = [&] { return abs.get_sum_ticks() + f.get_sum_ticks() + in_abs_vars.work * 10; };
     auto stats = [&](const char* what) {
         if (!verb) return;
         const uint64_t refs = rounds - cubes;
         std::cout << "c o [cover] " << what << " rounds: " << rounds << " no-Y cubes: " << cubes
+            << " outer defs: " << outer.size() - num_univ << " deep cls: " << deep.size()
             << " helpers: " << num_helpers << std::fixed
             << " avg refinement: " << std::setprecision(1) << (refs ? (double)ref_lits / refs : 0)
             << " avg cube: " << (cubes ? (double)cube_lits / cubes : 0)
             << " minim calls: " << minim_calls << " removed: " << minim_removed
             << " cost: " << std::setprecision(2) << cost << " of " << budget
             << " ticks(M) abs: " << abs.get_sum_ticks() / 1e6 << " f: " << f.get_sum_ticks() / 1e6
+            << " deep: " << in_abs_vars.work * 10 / 1e6
             << " confl abs: " << abs.get_sum_conflicts() << " f: " << f.get_sum_conflicts()
             << " T: " << (cpuTime() - my_time) << " (setup: " << setup_time << " abs: " << abs_time
-            << " f: " << f_time << " refine: " << refine_time << " funs: " << funs_time << ")" << std::endl;
+            << " f: " << f_time << " refine: " << refine_time << " deep: " << deep_time
+            << " funs: " << funs_time << ")" << std::endl;
     };
     auto finish = [&](const lbool ret) {
         stats(ret == l_True ? "all X covered" : ret == l_False ? "X with no Y" : "gave up");
@@ -157,25 +289,50 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         sum += cpuTime() - start;
         return ret;
     };
+    // the X that satisfy the deep clauses, given the existentials in s.val
+    auto deep_true = [&](Subst& s) {
+        s.new_round();
+        aig_lit ret = aig_mng.new_const(true);
+        for (const auto& cl : deep) {
+            aig_lit cl_true = aig_mng.new_const(false);
+            for (const auto& l : cl) {
+                const auto a = s.of_var(l.var()).a;
+                cl_true = AIG::new_or(cl_true, l.sign() ? ~a : a);
+            }
+            ret = AIG::new_and(ret, cl_true);
+        }
+        return ret;
+    };
     // y takes its value from the first model that works for X. Built from
     // the rarer value of y, the other one is the default
     auto build_funs = [&] {
+        // `before`: an earlier model works. In blocks, a chain would be as deep as the rounds
+        const uint32_t num_refs = ref_helpers.size();
+        const uint32_t block = std::max<uint32_t>(1, std::sqrt(num_refs));
         vector<aig_lit> first;
-        aig_lit covered = aig_mng.new_const(false);
-        for (const auto& ref : ref_helpers) {
-            aig_lit works = aig_mng.new_const(true);
-            for (const auto& h : ref) works = AIG::new_and(works, univ_true[hidx(h)]);
-            first.push_back(AIG::new_and(works, ~covered));
-            covered = AIG::new_or(covered, works);
+        aig_lit before_block = aig_mng.new_const(false), in_block = aig_mng.new_const(false);
+        for (uint32_t r = 0; r < num_refs; r++) {
+            if (r % block == 0) {
+                before_block = AIG::new_or(before_block, in_block);
+                in_block = aig_mng.new_const(false);
+            }
+            for (uint32_t i = 0; i < ys.size(); i++) in_orig_vars.val[ys[i]] = boolToLBool(ref_ys[r * ys.size() + i]);
+            aig_lit works = deep.empty() ? aig_mng.new_const(true) : deep_true(in_orig_vars);
+            for (const auto& h : ref_helpers[r]) works = AIG::new_and(works, univ_true[hidx(h)]);
+            first.push_back(AIG::new_and(works, ~AIG::new_or(before_block, in_block)));
+            in_block = AIG::new_or(in_block, works);
         }
+        vector<aig_lit> ors;
         for (uint32_t i = 0; i < ys.size(); i++) {
             if (cnf.defined(ys[i])) continue;
             uint32_t num_true = 0;
-            for (uint32_t r = 0; r < ref_helpers.size(); r++) num_true += ref_ys[r * ys.size() + i];
-            const bool val = num_true * 2 <= ref_helpers.size();
-            aig_lit fun = aig_mng.new_const(false);
-            for (uint32_t r = 0; r < ref_helpers.size(); r++)
-                if (ref_ys[r * ys.size() + i] == val) fun = AIG::new_or(fun, first[r]);
+            for (uint32_t r = 0; r < num_refs; r++) num_true += ref_ys[r * ys.size() + i];
+            const bool val = num_true * 2 <= num_refs;
+            ors.clear();
+            for (uint32_t r = 0; r < num_refs; r++) if (ref_ys[r * ys.size() + i] == val) ors.push_back(first[r]);
+            for (uint32_t step = 1; step < ors.size(); step *= 2)
+                for (uint32_t j = 0; j + step < ors.size(); j += 2 * step) ors[j] = AIG::new_or(ors[j], ors[j + step]);
+            const aig_lit fun = ors.empty() ? aig_mng.new_const(false) : ors[0];
             cnf.set_def(ys[i], val ? fun : ~fun);
         }
         for (uint32_t v = 0; v < num_defs; v++)
@@ -245,7 +402,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
             // no X in this cube has a Y, so any function will do there
             auto cube = f.get_conflict();
             cube_lits += cube.size();
-            cost += sq_frac(cube.size(), orig_sampl_vars.size());
+            cost += sq_frac(cube.size(), num_univ);
             abs.add_clause(cube);
             cubes++;
             continue;
@@ -261,15 +418,22 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
             assert(some_false.size() <= before);
             minim_removed += before - some_false.size();
         }
-        abs.add_clause(some_false);
         cost += sq_frac(some_false.size(), num_helpers);
         ref_lits += some_false.size();
-
         if (need_funs) {
             ref_helpers.push_back(some_false);
             for (const auto& v : ys) ref_ys.push_back(model[to_f[v]] == l_True);
         }
         refine_time += cpuTime() - refine_start;
+        if (!deep.empty()) {
+            const double deep_start = cpuTime();
+            for (const auto& v : ys) in_abs_vars.val[v] = model[to_f[v]];
+            keep.push_back(deep_true(in_abs_vars));
+            if (keep.back()->type != AIGT::t_const) some_false.push_back(~enc_abs.encode(keep.back()));
+            else assert(!keep.back().neg);
+            deep_time += cpuTime() - deep_start;
+        }
+        abs.add_clause(some_false);
     }
     return finish(l_Undef);
 }
