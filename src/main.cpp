@@ -727,7 +727,7 @@ void do_synth_2qbf() {
     auto final_cnf = cnf;
     final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
     if (!output_file.empty() && !qbf2pre) {
-        if (output_file.ends_with(".aig")) final_cnf.write_aig_defs_to_file(output_file);
+        if (!output_file.ends_with(".v")) final_cnf.write_aig_defs_to_file(output_file);
         else final_cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to '" << output_file << "'" << endl;
     }
@@ -918,12 +918,12 @@ int main(int argc, char** argv) {
         }
     }
     if (synthesis && !qbf2 && output_file.empty()) {
-        cout << "ERROR: --synth needs an output file for the functions, ending in .aig or .v" << endl;
+        cout << "ERROR: --synth needs an output file for the functions, ending in .aig or .v, or /dev/null" << endl;
         exit(EXIT_FAILURE);
     }
-    if ((synthesis || qbf2) && !qbf2pre && !output_file.empty()
+    if ((synthesis || qbf2) && !qbf2pre && !output_file.empty() && output_file != "/dev/null"
             && !output_file.ends_with(".aig") && !output_file.ends_with(".v")) {
-        cout << "ERROR: the output file for the functions must end in .aig or .v" << endl;
+        cout << "ERROR: the output file for the functions must end in .aig or .v, or be /dev/null" << endl;
         exit(EXIT_FAILURE);
     }
     if (qbf2pre && !program.is_used("--coverticks")) cover_ticks = 20;
