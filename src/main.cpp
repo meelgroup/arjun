@@ -513,7 +513,7 @@ void try_cover(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cl
             need_funs, cex);
     if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
     if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
-    // the functions are in place, and get written out by do_synthesis()
+    // the functions are in place, and get written out by do_synth_2qbf()
     cover_done = ret == CMSat::l_True;
     if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
 }
@@ -560,7 +560,7 @@ void puura_round(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls, c
 }
 
 // Puura rounds with blocked clause elimination in between. cls: the 2QBF over the orig vars
-void simplify_for_synth(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls,
+void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls,
         const bool need_funs) {
     const bool bce = qbf2 && !need_funs && pre_bce;
     for (int round = 0; !cnf.synth_done(); round++) {
@@ -587,7 +587,7 @@ void simplify_for_synth(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>&
     }
 }
 
-void do_synthesis() {
+void do_synth_2qbf() {
     if (etof_conf.all_indep) {
         cout << "ERROR: synthesis with --allindep makes no sense" << endl;
         exit(EXIT_FAILURE);
@@ -634,7 +634,7 @@ void do_synthesis() {
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2 && !need_funs;
-    if (do_synth_bve) simplify_for_synth(cnf, qbf2_cls, need_funs);
+    if (do_synth_bve) simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
 
     auto write_witness = [&] {
         if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
@@ -912,7 +912,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
     if (synthesis || qbf2) {
-        do_synthesis();
+        do_synth_2qbf();
     } else {
         do_backward_pass();
     }

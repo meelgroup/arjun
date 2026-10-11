@@ -57,7 +57,7 @@ short. Pick them from existing cluster results instead of guessing:
 
 `arjun --2qbf file.qdimacs` decides forall X exists Y. F, with X the `a`
 block (or `c p show`). Exit code 10 = true, 20 = false plus `V` lines giving
-an X that has no Y. All of it is in `do_synthesis()` in `main.cpp`,
+an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
 `cover.{h,cpp}` and the `*2qbf*` methods of `SimplifiedCNF`:
 
 1. `cover()` — budgeted model covering on the orig CNF (`--cover`, 0 =
@@ -93,7 +93,7 @@ are in `~/media/2qbf/qbfeval16` (QBFEVAL'16 2QBF track).
 of `../bloqqer`, with its conventions: the variable numbers are kept, a
 solved instance is written as `p cnf N 0` (true) or with the empty clause
 (false), and the exit code is then 10 or 20; otherwise it is 0. It is the
-`--2qbf` pipeline that stops early, in `do_synthesis()`:
+`--2qbf` pipeline that stops early, in `do_synth_2qbf()`:
 
 1. `cover()` on the orig clauses, at most `--coverticks` million CaDiCaL
    ticks (20 here, no limit under `--2qbf`).
