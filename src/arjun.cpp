@@ -28,6 +28,8 @@
 #include <iomanip>
 #include <sstream>
 #include <unordered_set>
+#include <unordered_map>
+#include <charconv>
 #include <sbva/sbva.h>
 
 #include "arjun.h"
@@ -1491,20 +1493,26 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     }
 
     // Collect all unique AIG nodes in topological (post) order: children before parents
-    map<const AIG*, uint32_t> node_to_id;
-    vector<AIG*> topo_order;
-    uint32_t next_id = 0;
+    std::unordered_map<uint64_t, uint32_t> nid_to_id;
+    vector<const AIG*> topo_order;
+    vector<uint32_t> lid, rid;
 
     function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
-        if (!aig || node_to_id.count(aig.get())) return;
+        if (!aig || nid_to_id.count(aig->nid)) return;
+        uint32_t l = 0, r = 0;
         if (aig->type == AIGT::t_and) {
             collect(aig->l);
             collect(aig->r);
+            l = nid_to_id.find(aig->l->nid)->second;
+            r = nid_to_id.find(aig->r->nid)->second;
         }
-        node_to_id[aig.get()] = next_id++;
+        nid_to_id[aig->nid] = topo_order.size();
         topo_order.push_back(aig.get());
+        lid.push_back(l);
+        rid.push_back(r);
     };
     for (const auto& aig : defs) collect(aig);
+    const uint32_t num_nodes = topo_order.size();
 
     // Collect output variables (defs[v] != nullptr)
     vector<uint32_t> outputs;
@@ -1516,89 +1524,86 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
 
     // Fanout = uses by other AND nodes + output roots. Fanout-1 AND nodes are
     // inlined into their sole user rather than emitted as a named wire.
-    map<const AIG*, uint32_t> fanout;
-    for (const auto* node : topo_order) {
-        if (node->type != AIGT::t_and) continue;
-        if (node->l) fanout[node->l.get()]++;
-        // Only count r separately when it's a distinct pointer; NOT/idem
-        // nodes have l == r and would otherwise inflate fanout to 2.
-        if (node->r && node->r.get() != node->l.get()) fanout[node->r.get()]++;
+    vector<uint32_t> fanout(num_nodes, 0);
+    for (uint32_t id = 0; id < num_nodes; id++) {
+        if (topo_order[id]->type != AIGT::t_and) continue;
+        fanout[lid[id]]++;
+        // NOT/idem nodes have the same child twice: count it once
+        if (rid[id] != lid[id]) fanout[rid[id]]++;
     }
-    for (const auto& v : outputs) fanout[defs[v].get()]++;
+    for (const auto& v : outputs) fanout[nid_to_id.find(defs[v]->nid)->second]++;
 
-    // Inlined RHS (no outer parens); set of those that are a bare `a & b`
-    // compound and need parenthesizing when further composed.
-    map<const AIG*, string> inline_expr;
-    set<const AIG*> inline_compound;
-    // Render a signed edge (aig_lit): node gives the base expr, edge sign prepends
-    // '~' or flips the const. Leaves are unsigned, so their sign lives on the edge.
-    auto edge_expr_raw = [&](const aig_lit& e) -> string {
-        if (e->type == AIGT::t_const) return e.neg ? "1'b0" : "1'b1";
-        if (e->type == AIGT::t_lit)
-            return string(e.neg ? "~" : "") + "x" + std::to_string(e->var + 1);
-        auto it = inline_expr.find(e.get());
-        string base = (it != inline_expr.end()) ? it->second : "_n" + std::to_string(node_to_id[e.get()]);
-        if (!e.neg) return base;
-        // Wrap before negating if it was a compound inlined expression.
-        if (inline_compound.count(e.get())) base = "(" + base + ")";
-        return "~" + base;
+    // compound: the inlined node renders as a bare `a & b`, to be
+    // parenthesized when composed further
+    vector<char> inlined(num_nodes, 0), compound(num_nodes, 0);
+    for (uint32_t id = 0; id < num_nodes; id++) {
+        const AIG* node = topo_order[id];
+        if (node->type != AIGT::t_and) continue;
+        inlined[id] = fanout[id] == 1;
+        if (node->l == node->r) compound[id] = !node->l.neg && inlined[lid[id]] && compound[lid[id]];
+        else compound[id] = 1;
+    }
+
+    string buf;
+    char num[16];
+    auto put_num = [&](uint32_t n) {
+        buf.append(num, std::to_chars(num, num + sizeof(num), n).ptr);
     };
-    // Same as edge_expr_raw but wraps an inlined compound `a & b` in parens so
-    // it can safely be composed further.
-    auto edge_expr_paren = [&](const aig_lit& e) -> string {
-        string s = edge_expr_raw(e);
-        // An edge-complement produces `~X` which is already tight; only wrap
-        // when we inlined a bare `a & b`.
-        if (!e.neg && inline_compound.count(e.get())) return "(" + s + ")";
-        return s;
+    function<void(uint32_t)> put_rhs;
+    // Leaves are unsigned, so their sign lives on the edge
+    auto put_edge = [&](const aig_lit& e, uint32_t id, bool paren) {
+        if (e->type == AIGT::t_const) { buf += e.neg ? "1'b0" : "1'b1"; return; }
+        if (e.neg) buf += '~';
+        if (e->type == AIGT::t_lit) { buf += 'x'; put_num(e->var + 1); return; }
+        if (!inlined[id]) { buf += "_n"; put_num(id); return; }
+        const bool wrap = compound[id] && (e.neg || paren);
+        if (wrap) buf += '(';
+        put_rhs(id);
+        if (wrap) buf += ')';
     };
+    put_rhs = [&](uint32_t id) {
+        const AIG* node = topo_order[id];
+        // Idempotent case AND(x, x): render as the child directly.
+        if (node->l == node->r) { put_edge(node->l, lid[id], false); return; }
+        put_edge(node->l, lid[id], true);
+        buf += " & ";
+        put_edge(node->r, rid[id], true);
+    };
+    auto flush = [&] { fout.write(buf.data(), buf.size()); buf.clear(); };
 
     // Module header
-    fout << "module aig_defs(\n";
+    buf += "module aig_defs(\n";
     bool first = true;
     for (const auto& v : orig_sampl_vars) {
-        if (!first) fout << ",\n";
-        fout << "    input wire x" << (v + 1);
+        if (!first) buf += ",\n";
+        buf += "    input wire x"; put_num(v + 1);
         first = false;
     }
     for (const auto& v : outputs) {
-        if (!first) fout << ",\n";
-        fout << "    output wire x" << (v + 1);
+        if (!first) buf += ",\n";
+        buf += "    output wire x"; put_num(v + 1);
         first = false;
     }
-    fout << "\n);\n";
+    buf += "\n);\n";
 
-    // Build a node's RHS in unparenthesized form, and note whether it is a
-    // bare `a & b` (callers must parenthesize it if composing further).
-    auto build_rhs = [&](const AIG* node, bool& is_compound) -> string {
-        is_compound = false;
-        // Idempotent case AND(x, x): render as the child directly.
-        if (node->l == node->r) return edge_expr_raw(node->l);
-        const string l_str = edge_expr_paren(node->l);
-        const string r_str = edge_expr_paren(node->r);
-        is_compound = true;
-        return l_str + " & " + r_str;
-    };
-
-    for (const auto* node : topo_order) {
-        if (node->type != AIGT::t_and) continue;
-        bool is_compound = false;
-        string rhs = build_rhs(node, is_compound);
-        if (fanout[node] == 1) {
-            inline_expr[node] = rhs;
-            if (is_compound) inline_compound.insert(node);
-            continue;
-        }
-        const uint32_t id = node_to_id[node];
-        fout << "    wire _n" << id << ";\n";
-        fout << "    assign _n" << id << " = " << rhs << ";\n";
+    for (uint32_t id = 0; id < num_nodes; id++) {
+        if (topo_order[id]->type != AIGT::t_and || inlined[id]) continue;
+        buf += "    wire _n"; put_num(id); buf += ";\n";
+        buf += "    assign _n"; put_num(id); buf += " = ";
+        put_rhs(id);
+        buf += ";\n";
+        if (buf.size() > (1U << 20)) flush();
     }
 
     // Output assignments
-    for (const auto& v : outputs)
-        fout << "    assign x" << (v + 1) << " = " << edge_expr_raw(defs[v]) << ";\n";
+    for (const auto& v : outputs) {
+        buf += "    assign x"; put_num(v + 1); buf += " = ";
+        put_edge(defs[v], nid_to_id.find(defs[v]->nid)->second, false);
+        buf += ";\n";
+    }
 
-    fout << "endmodule\n";
+    buf += "endmodule\n";
+    flush();
     fout.close();
     cout << "c o Wrote Verilog AIG: " << fname << endl;
 }
