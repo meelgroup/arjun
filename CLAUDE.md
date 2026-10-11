@@ -63,16 +63,29 @@ block (or `c p show`). Exit code 10 = true, 20 = false plus `V` lines giving
 an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
 `cover.{h,cpp}` and the `*2qbf*` methods of `SimplifiedCNF`:
 
-1. `cover()` — budgeted model covering on the orig CNF (`--cover`, 0 =
-   off): a model of F settles every X that satisfies the universal parts of
-   the clauses its Y leaves unsatisfied; repeat until all X are covered. Wins when its refinements are short (sortnetsort
-   family), gives up quickly otherwise. The models of F it refines with
-   are the decide-false ones, except that an existential that satisfies
-   more clauses when true is decided true: that is what keeps them short
-   (the counterexample heuristic of the AReQS paper). When it
-   finishes, its models give the Skolem functions. `--synth` runs it too,
-   skipping the X that have no Y instead of stopping at the first one. It
-   runs twice: on the orig clauses, and again on the simplified CNF.
+1. `cover()` — budgeted model covering (`--cover`, 0 = off, and
+   `--coverticks`, million ticks of SAT work per run, 500 by default): a
+   model of F settles every X that satisfies the universal parts of the
+   clauses its Y leaves unsatisfied; repeat until all X are covered. Wins
+   when its refinements are short (sortnetsort, the `query*` files), gives
+   up otherwise. What keeps them short:
+   - the models of F it refines with are the decide-false ones, except that
+     an existential that satisfies more clauses when true is decided true
+     (the counterexample heuristic of the AReQS paper);
+   - `--coverminim` (on): further SAT calls for a model of the same X whose
+     existentials satisfy more clauses, on selectors, dropping the cores;
+   - `--synth` only: after the first X with no Y, abs gets the clauses, so
+     it only picks an X that has a Y. Their cubes were most of the rounds;
+   - the defs `cnf` already has are followed: a model is the values of the
+     vars with no def, see `cover.h`.
+   When it finishes, its models give the Skolem functions. `--synth` skips
+   the X that have no Y instead of stopping at the first one. It runs on
+   the orig clauses, there only while the refinements are short
+   (`--coverorig`: that is where an X with no Y is found, so `--2qbf`
+   puts no tick limit on this run), then on the
+   simplified CNF, and again after extend/backward/unate if they defined
+   something: that last run takes a handful of rounds when it works. NEVER build AIGs per round in it: the functions are made once,
+   at the end, from the stored models.
    `--verb 1` prints a `[cover]` stats line (rounds, refinement size,
    ticks and time per solver) at the end and every 1000 rounds.
 2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
@@ -99,7 +112,7 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
 `--2qbf` pipeline that stops early, in `do_synth_2qbf()`:
 
 1. `cover()` on the orig clauses, at most `--coverticks` million CaDiCaL
-   ticks (20 here, no limit under `--2qbf`).
+   ticks (20 here, 500 otherwise).
 2. Puura, exactly as for counting and synthesis: NEVER trim or budget it
    for this mode. `get_2qbf_cls()` gives its clauses over the orig vars.
 3. `bce_2qbf()` removes the clauses blocked on an existential literal
@@ -111,7 +124,7 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
    2nd run as the 1st, the 3rd and 4th with BVE that may grow the CNF
    (bloqqer's variable elimination). A further run is dropped unless it
    ends up with fewer literals. `cover()` runs once more after all of
-   this, if the clauses changed.
+   this.
 4. The `bve` cegr strategy for `--prerepairs` repairs. If that finishes,
    `get_2qbf_cex()` gets `--preconfl` conflicts to give the verdict.
 5. Whatever gave up: `write_qdimacs()` writes the clauses of step 3.

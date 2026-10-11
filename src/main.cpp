@@ -80,8 +80,9 @@ int pre_bce = 1;
 int qbf2_puura_rounds = 1;
 int debug_verilog = 0;
 int64_t pre_confl = 10000;
-double cover_budget = 50;
-double cover_ticks = 0;
+double cover_budget = 100000;
+double cover_ticks = 500;
+double cover_orig_budget = 50;
 int cover_minim = 1;
 bool cover_done = false;
 int use_brute_force_synth = 1;
@@ -182,8 +183,9 @@ void add_arjun_options() {
     myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
+    myopt("--coverorig", cover_orig_budget, "Budget of the covering run on the original clauses, before simplification. As for --cover, and no more than it");
     myopt("--coverminim", cover_minim, "Covering shortens each refinement with further SAT calls: a model of the same input whose existentials satisfy more clauses");
-    myopt("--coverticks", cover_ticks, "Give up on covering after this many million ticks of SAT solver work. 0 = no limit");
+    myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthpuura", do_synth_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
@@ -495,14 +497,6 @@ size_t num_lits(const vector<vector<CMSat::Lit>>& cls) {
     return ret;
 }
 
-bool same_cls(vector<vector<CMSat::Lit>> a, vector<vector<CMSat::Lit>> b) {
-    for(auto* cls: {&a, &b}) {
-        for(auto& cl: *cls) std::sort(cl.begin(), cl.end());
-        std::sort(cls->begin(), cls->end());
-    }
-    return a == b;
-}
-
 bool has_univ(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls) {
     for(const auto& cl: cls) for(const auto& l: cl)
         if (cnf.get_orig_sampl_vars().count(l.var())) return true;
@@ -515,9 +509,10 @@ bool has_defined(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::L
     return false;
 }
 
-void try_cover(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const bool need_funs) {
+void try_cover(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const bool need_funs,
+        const double budget, const double ticks) {
     vector<CMSat::lbool> cex;
-    auto ret = arjun->standalone_cover(cnf, cls, cover_budget, (uint64_t)(cover_ticks * 1e6), qbf2,
+    auto ret = arjun->standalone_cover(cnf, cls, budget, (uint64_t)(ticks * 1e6), qbf2,
             need_funs, cover_minim, cex);
     if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
     if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
@@ -644,16 +639,17 @@ void do_synth_2qbf() {
         exit(EXIT_FAILURE);
     }
     if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
-    try_cover(cnf, cnf.get_orig_clauses(), need_funs);
+    // Before Puura only while the refinements are short: an X with no Y is
+    // then found here, and otherwise there are far fewer rounds after it.
+    // No tick limit for --2qbf: finding that X can take long (sortnetsort10)
+    const bool only_verdict = qbf2 && !qbf2pre && !program.is_used("--coverticks");
+    try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_budget, cover_orig_budget),
+            only_verdict ? 0 : cover_ticks);
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2 && !need_funs;
-    if (do_synth_puura && !cnf.synth_done()) {
-        const auto before = qbf2_cls;
-        simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
-        // BVE can make the refinements much shorter
-        if (!cnf.synth_done() && !same_cls(qbf2_cls, before)) try_cover(cnf, qbf2_cls, need_funs);
-    }
+    if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
+    if (!cnf.synth_done()) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_ticks);
 
     auto write_2qbfpre = [&] {
         if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
@@ -702,7 +698,7 @@ void do_synth_2qbf() {
     }
 
     // covering follows the functions found since its last run
-    if (!cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs);
+    if (!cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_ticks);
 
     // the rewriter takes minutes on the long ITE chains of covering, and grows them
     const bool rewrite = !qbf2pre && (!cover_done || cnf.num_def_nodes() < 10000);
