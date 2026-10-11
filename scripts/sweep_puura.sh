@@ -8,7 +8,9 @@ BENCH_DIR=$(cd "$(dirname "$0")/../build/benchmarks-qdimacs" && pwd)
 export BIN TO EXTRA="$*"
 run_one() {
     b=$(basename "$1")
-    log=$(timeout "$TO" "$BIN" --verb 1 --synth $EXTRA "$1" 2>&1 | tr -d '\033')
+    funs=$(mktemp --suffix=.aig)
+    log=$(timeout "$TO" "$BIN" --verb 1 --synth $EXTRA "$1" "$funs" 2>&1 | tr -d '\033')
+    rm -f "$funs"
     td=$(echo "$log" | grep -oE '\[puura\] Done.*still to-define: [0-9]+' | grep -oE '[0-9]+$' | head -1)
     t=$(echo "$log"  | grep -oE 'All done\. T: [0-9.]+' | grep -oE '[0-9.]+$' | head -1)
     echo "$b,${td:-NA},${t:-TO}"

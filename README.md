@@ -134,8 +134,8 @@ Arjun supports several top-level modes, selected via command-line flags:
   like `output.cnf` as an output, and Arjun will produce a simplified CNF
 - **Synthesis (`--synth`)** — compute a skolem function for each
   non-input variable in terms of the projection-set variables via CEGR-style
-counterexample-guided repair. Output file will be a Verilog file with the
-skolem functions:
+counterexample-guided repair. The output file is required: the skolem
+functions, as Verilog (`.v`) or as an AIG (`.aig`):
 
   ```shell
   ./arjun --synth input.cnf output.v

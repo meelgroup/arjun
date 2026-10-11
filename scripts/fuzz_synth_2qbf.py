@@ -267,10 +267,11 @@ def note_tree_depth(line):
     tree_depths["split" if int(match.group(1)) > 0 else "leaf"] += 1
 
 
-def run_synth(solver, fname):
+def run_synth(solver, fname, out_fname):
     curr_time = time.time()
     toexec = solver.split()
     toexec.append(fname)
+    toexec.append(out_fname)
     out, err, returncode = run(toexec)
     if err is None:
         if options.verbose:
@@ -642,7 +643,8 @@ if __name__ == "__main__":
 
         solver += " --cstrategy " + gen_mstrategy()
 
-        err, aigs, out = run_synth(solver, fname)
+        out_fname = prefix + "-final-out" + random.choice([".aig", ".v"])
+        err, aigs, out = run_synth(solver, fname, out_fname)
         if err is None:
             print("Synthesis timed out on file %s" % fname)
             cleanup(fname, prefix)

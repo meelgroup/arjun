@@ -631,8 +631,12 @@ void do_synth_2qbf() {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
     }
-    const bool need_funs = !qbf2 || (!qbf2pre && !output_file.empty()) || !conf.debug_synth.empty()
-        || !pre_witness.empty();
+    const bool need_funs = !qbf2 || (!qbf2pre && !output_file.empty()) || !pre_witness.empty();
+    if (!need_funs && !conf.debug_synth.empty()) {
+        cout << "ERROR: --debugsynth needs the functions to be kept: give "
+            << (qbf2pre ? "--prewitness" : "an output file for them") << endl;
+        exit(EXIT_FAILURE);
+    }
     try_cover(cnf, cnf.get_orig_clauses(), need_funs);
     if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
@@ -717,12 +721,8 @@ void do_synth_2qbf() {
     if (rewrite) cnf.rewrite_aigs(conf.verb, true);
     if (!output_file.empty() && !qbf2pre) {
         if (output_file.ends_with(".aig")) cnf.write_aig_defs_to_file(output_file);
-        else if (output_file.ends_with(".v")) cnf.write_aig_def_to_verilog(output_file);
-        else {
-            cout << "ERROR: output file must end with .aig or .v" << endl;
-            exit(EXIT_FAILURE);
-        }
-        cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
+        else cnf.write_aig_def_to_verilog(output_file);
+        cout << "c o [arjun] dumped synthesized functions to '" << output_file << "'" << endl;
     }
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
@@ -911,6 +911,15 @@ int main(int argc, char** argv) {
             cout << "ERROR: --2qbfpre needs an output file" << endl;
             exit(EXIT_FAILURE);
         }
+    }
+    if (synthesis && !qbf2 && output_file.empty()) {
+        cout << "ERROR: --synth needs an output file for the functions, ending in .aig or .v" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if ((synthesis || qbf2) && !qbf2pre && !output_file.empty()
+            && !output_file.ends_with(".aig") && !output_file.ends_with(".v")) {
+        cout << "ERROR: the output file for the functions must end in .aig or .v" << endl;
+        exit(EXIT_FAILURE);
     }
     if (qbf2pre && !program.is_used("--coverticks")) cover_ticks = 20;
     if (qbf2_puura_rounds < 1 || qbf2_puura_rounds > 4) {

@@ -162,6 +162,7 @@ def run_arjun_checkrepair(fname, seed, timeout):
         "--backward", "0",
         "--samples", "0",
         fname,
+        fname + "-out.aig",
     ]
 
     try:

@@ -22,7 +22,7 @@ cmake -DENABLE_TESTING=OFF -DEXTRA_SYNTH=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DEvalMaxSAT_DIR=$S/EvalMaxSAT/build ../ > cmake.log 2>&1 || { echo "SKIP arj-cmake"; exit 125; }
 make -j$(nproc) arjun-bin > make.log 2>&1 || { echo "SKIP arj-build"; exit 125; }
 
-OUT=$(timeout 120 ./arjun --verb 1 --synth "$BENCH" 2>&1 | grep -oP 'still to-define: \K[0-9]+' | tail -1)
+OUT=$(timeout 120 ./arjun --verb 1 --synth "$BENCH" bisect-out.aig 2>&1 | grep -oP 'still to-define: \K[0-9]+' | tail -1)
 [ -z "$OUT" ] && { echo "TIMEOUT/none -> BAD"; exit 1; }
 echo "still-to-define: $OUT"
 [ "$OUT" -eq 0 ] && exit 0 || exit 1
