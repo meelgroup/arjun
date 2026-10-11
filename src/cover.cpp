@@ -25,6 +25,9 @@
 
 #include "cover.h"
 #include "metasolver.h"
+#include "time_mem.h"
+#include <iomanip>
+#include <iostream>
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -36,15 +39,16 @@ using std::vector;
 using std::map;
 
 lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
-        const bool stop_at_cex, vector<lbool>& cex) {
+        const uint64_t max_ticks,
+        const bool stop_at_cex, vector<lbool>& cex, const uint32_t verb) {
+    const double my_time = cpuTime();
     const auto& orig_sampl_vars = cnf.get_orig_sampl_vars();
     const auto& aig_mng = cnf.get_aig_mng();
     const uint32_t num_defs = cnf.num_defs();
     MetaSolver abs, f;
     abs.set_no_lucky();
-    // few true existentials, alike from round to round: short refinements
     f.set_no_lucky();
-    f.set_decide_false();
+    f.set_decide(false);
     // The solvers only get the vars they have clauses on: the universals,
     // at the same index in both, then for f the existentials of cls
     const uint32_t none = std::numeric_limits<uint32_t>::max();
@@ -101,27 +105,56 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     vector<Lit> assumps, some_false;
     auto sq_frac = [](const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); };
     double cost = 0;
-    while (cost < budget) {
-        if (abs.solve() == l_False) {
+    uint64_t rounds = 0, ref_lits = 0, cubes = 0;
+    double abs_time = 0, f_time = 0, refine_time = 0;
+    const double setup_time = cpuTime() - my_time;
+    auto ticks = [&] { return abs.get_sum_ticks() + f.get_sum_ticks(); };
+    auto stats = [&](const char* what) {
+        if (!verb) return;
+        const uint64_t refs = rounds - cubes;
+        std::cout << "c o [cover] " << what << " rounds: " << rounds << " no-Y cubes: " << cubes
+            << " helpers: " << univ_to_helper.size() << std::fixed
+            << " avg refinement: " << std::setprecision(1) << (refs ? (double)ref_lits / refs : 0)
+            << " cost: " << std::setprecision(2) << cost << " of " << budget
+            << " ticks(M) abs: " << abs.get_sum_ticks() / 1e6 << " f: " << f.get_sum_ticks() / 1e6
+            << " confl abs: " << abs.get_sum_conflicts() << " f: " << f.get_sum_conflicts()
+            << " T: " << (cpuTime() - my_time) << " (setup: " << setup_time << " abs: " << abs_time
+            << " f: " << f_time << " refine: " << refine_time << ")" << std::endl;
+    };
+    auto finish = [&](const lbool ret) {
+        stats(ret == l_True ? "all X covered" : ret == l_False ? "X with no Y" : "gave up");
+        return ret;
+    };
+    auto timed = [](double& sum, auto&& fun) {
+        const double start = cpuTime();
+        const auto ret = fun();
+        sum += cpuTime() - start;
+        return ret;
+    };
+    for (; cost < budget && (max_ticks == 0 || ticks() < max_ticks); rounds++) {
+        if (rounds && rounds % 1000 == 0) stats("progress");
+        if (timed(abs_time, [&] { return abs.solve(); }) == l_False) {
             for (uint32_t v = 0; v < num_defs; v++)
                 if (!orig_sampl_vars.count(v) && !cnf.defined(v)) cnf.set_def(v, funs[v]);
-            return l_True;
+            return finish(l_True);
         }
         assumps.clear();
         for (const auto& v : orig_sampl_vars) assumps.emplace_back(to_f[v], abs.get_model()[to_f[v]] != l_True);
-        if (f.solve(&assumps) == l_False) {
+        if (timed(f_time, [&] { return f.solve(&assumps); }) == l_False) {
             if (stop_at_cex) {
                 cex.assign(num_defs, l_Undef);
                 for (const auto& v : orig_sampl_vars) cex[v] = abs.get_model()[to_f[v]];
-                return l_False;
+                return finish(l_False);
             }
             // no X in this cube has a Y, so any function will do there
             auto cube = f.get_conflict();
             cost += sq_frac(cube.size(), orig_sampl_vars.size());
             abs.add_clause(cube);
+            cubes++;
             continue;
         }
 
+        const double refine_start = cpuTime();
         const auto& model = f.get_model();
         some_false.clear();
         for (const auto& [exist, helper] : mixed) {
@@ -133,12 +166,14 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         some_false.erase(std::unique(some_false.begin(), some_false.end()), some_false.end());
         abs.add_clause(some_false);
         cost += sq_frac(some_false.size(), univ_to_helper.size());
+        ref_lits += some_false.size();
 
         aig_lit works = aig_mng.new_const(true);
         for (const auto& h : some_false) works = AIG::new_and(works, univ_true[h.var() - orig_sampl_vars.size()]);
         const aig_lit first = AIG::new_and(works, ~covered);
         covered = AIG::new_or(covered, works);
         for (const auto& v : ys) if (model[to_f[v]] == l_True) funs[v] = AIG::new_or(funs[v], first);
+        refine_time += cpuTime() - refine_start;
     }
-    return l_Undef;
+    return finish(l_Undef);
 }

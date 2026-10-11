@@ -2148,7 +2148,7 @@ public:
     void standalone_autarky(SimplifiedCNF& cnf);
     // Model covering, see cover.h
     CMSat::lbool standalone_cover(SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
-            const double budget, const bool stop_at_cex, std::vector<CMSat::lbool>& cex);
+            const double budget, const uint64_t max_ticks, const bool stop_at_cex, std::vector<CMSat::lbool>& cex);
 
     //Set config
     void set_verb(uint32_t verb);

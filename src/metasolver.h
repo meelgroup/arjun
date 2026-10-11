@@ -80,10 +80,10 @@ public:
         cadical->set("luckyassumptions", 0);
     }
 
-    void set_decide_false() {
+    void set_decide(const bool phase) {
         if (solver_type != SolverType::cadical) return;
         cadical->set("forcephase", 1);
-        cadical->set("phase", 0);
+        cadical->set("phase", phase);
     }
 
     // Variable management
@@ -146,6 +146,12 @@ public:
     uint64_t get_sum_conflicts() const {
         if (solver_type == SolverType::cms) return cms->get_sum_conflicts();
         return static_cast<uint64_t>(cadical->conflicts());
+    }
+
+    // Work done by all solve() calls: the same on every machine
+    uint64_t get_sum_ticks() const {
+        if (solver_type == SolverType::cms) return cms->get_sum_propagations();
+        return static_cast<uint64_t>(cadical->get_statistic_value("ticks"));
     }
 
     void simplify(std::vector<CMSat::Lit>* assumps) {

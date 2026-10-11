@@ -35,8 +35,10 @@ namespace ArjunInt {
 // vars with no def yet got their Skolem functions, l_Undef: gave up. An X
 // with no Y is returned in `cex` with l_False if stop_at_cex, else its
 // cube is skipped. A refinement naming fraction f of the helpers costs
-// f^2 of the budget: next to nothing while it converges.
+// f^2 of the budget: next to nothing while it converges. max_ticks limits
+// the SAT solvers' work, 0 = no limit.
 CMSat::lbool cover(ArjunNS::SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
-        const double budget, const bool stop_at_cex, std::vector<CMSat::lbool>& cex);
+        const double budget, const uint64_t max_ticks, const bool stop_at_cex, std::vector<CMSat::lbool>& cex,
+        const uint32_t verb);
 
 }
