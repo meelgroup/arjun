@@ -615,8 +615,10 @@ void do_synth_2qbf() {
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     check_synth_2qbf_input(cnf);
-    // neither 'a' nor 'c p show': no universals, a plain SAT problem
-    if (qbf2 && !cnf.get_sampl_vars_set()) cnf.set_sampl_vars(vector<uint32_t>(), true);
+    if (qbf2 && !cnf.get_sampl_vars_set()) {
+      // neither 'a' nor 'c p show': no universals, a plain SAT problem
+      cnf.set_sampl_vars(vector<uint32_t>(), true);
+    }
     cnf.clean_idiotic_mccomp_weights();
     cnf.check_cnf_sampl_sanity();
     cnf.check_cnf_vars();
