@@ -131,7 +131,7 @@ void classify(const SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, vector<c
 // new_defs: the functions found, for the caller to set. used_ticks: added to
 lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
         const uint64_t max_ticks,
-        const bool stop_at_cex, const bool need_funs, const bool minim, vector<lbool>& cex,
+        const bool stop_at_cex, const bool need_funs, const uint32_t minim, vector<lbool>& cex,
         vector<std::pair<uint32_t, aig_lit>>& new_defs, uint64_t& used_ticks,
         const uint32_t verb) {
     const double my_time = cpuTime();
@@ -244,11 +244,48 @@ lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double
     }
     const uint32_t num_helpers = univ_to_helper.size();
     auto hidx = [&](const Lit h) { return h.var() - helper_at; };
+    const bool sat_minim = minim & 1, flip_minim = minim & 2, subs_minim = minim & 4;
+
+    // subs[b]: the helpers whose outer literals are a subset of b's. With one
+    // of them in a refinement, b says nothing more
+    vector<vector<uint32_t>> subs(num_helpers);
+    if (subs_minim) {
+        vector<const vector<Lit>*> univ_of(num_helpers);
+        for (const auto& [univ, h] : univ_to_helper) univ_of[hidx(h)] = &univ;
+        map<Lit, vector<uint32_t>> occ;
+        for (uint32_t i = 0; i < num_helpers; i++) for (const auto& l : *univ_of[i]) occ[l].push_back(i);
+        int64_t work = 20LL*1000*1000;
+        for (uint32_t a = 0; a < num_helpers && work > 0; a++) {
+            const vector<uint32_t>* rarest = nullptr;
+            for (const auto& l : *univ_of[a]) if (!rarest || occ[l].size() < rarest->size()) rarest = &occ[l];
+            if (!rarest) continue;
+            for (const auto& b : *rarest) {
+                if (univ_of[b]->size() <= univ_of[a]->size()) continue;
+                work -= univ_of[b]->size();
+                if (std::includes(univ_of[b]->begin(), univ_of[b]->end(), univ_of[a]->begin(), univ_of[a]->end()))
+                    subs[b].push_back(a);
+            }
+        }
+    }
+    vector<char> present(num_helpers, 0);
+    uint64_t subsumed = 0, flips = 0;
+    vector<Lit> kept;
+    auto drop_subsumed = [&](vector<Lit>& hs) {
+        for (const auto& h : hs) present[hidx(h)] = 1;
+        kept.clear();
+        for (const auto& h : hs) {
+            const auto& sub = subs[hidx(h)];
+            if (std::none_of(sub.begin(), sub.end(), [&](const uint32_t a) { return present[a]; })) kept.push_back(h);
+        }
+        for (const auto& h : hs) present[hidx(h)] = 0;
+        subsumed += hs.size() - kept.size();
+        std::swap(hs, kept);
+    };
 
     // selector of a helper, in f: the existentials satisfy all of its clauses
     const uint32_t sel_at = f.nVars();
     auto sel = [&](const uint32_t i) { return Lit(sel_at + i, false); };
-    if (minim) {
+    if (sat_minim) {
         for (uint32_t i = 0; i < num_helpers; i++) f.new_var();
         for (const auto& [exist, helper] : mixed) {
             auto cl = exist;
@@ -287,6 +324,7 @@ lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double
             << " avg refinement: " << std::setprecision(1) << (refs ? (double)ref_lits / refs : 0)
             << " avg cube: " << (cubes ? (double)cube_lits / cubes : 0)
             << " minim calls: " << minim_calls << " removed: " << minim_removed
+            << " flips: " << flips << " subsumed: " << subsumed
             << " cost: " << std::setprecision(2) << cost << " of " << budget
             << " ticks(M) abs: " << abs.get_sum_ticks() / 1e6 << " f: " << f.get_sum_ticks() / 1e6
             << " deep: " << in_abs_vars.work * 10 / 1e6
@@ -362,6 +400,64 @@ lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double
         }
         std::sort(some_false.begin(), some_false.end());
         some_false.erase(std::unique(some_false.begin(), some_false.end()), some_false.end());
+    };
+    // An existential is flipped if no clause needs its value, at this X, and
+    // the other one satisfies more existential parts. No SAT call
+    vector<vector<Lit>> flip_cls;
+    vector<char> flip_mixed, can_flip(f.nVars(), 0);
+    if (flip_minim) for (const auto& v : ys) if (!cnf.defined(v)) can_flip[to_f[v]] = 1;
+    for (const auto& cl : deep) for (const auto& l : cl) can_flip[to_f[l.var()]] = 0;
+    for (const auto& v : defined) {
+        set<uint32_t> deps;
+        AIG::get_dependent_vars(cnf.get_def(v), deps, v);
+        for (const auto& d : deps) if (to_f[d] != none) can_flip[to_f[d]] = 0;
+    }
+    vector<vector<uint32_t>> flip_occ(f.nVars() * 2);
+    for (const auto& cl : cls) {
+        bool has_flip = false, has_outer = false;
+        for (const auto& l : cl) {
+            has_flip |= can_flip[to_f[l.var()]];
+            has_outer |= is_outer[l.var()];
+        }
+        if (!has_flip) continue;
+        flip_cls.emplace_back();
+        for (const auto& l : cl) {
+            flip_cls.back().push_back(in_f(l));
+            if (can_flip[to_f[l.var()]]) flip_occ[in_f(l).toInt()].push_back(flip_cls.size() - 1);
+        }
+        flip_mixed.push_back(has_outer);
+    }
+    vector<uint32_t> flip_vars;
+    for (uint32_t v = 0; v < can_flip.size(); v++) if (can_flip[v]) flip_vars.push_back(v);
+    vector<uint32_t> num_true(flip_cls.size()), num_true_ex(flip_cls.size());
+    auto flip = [&](vector<lbool>& model) {
+        for (uint32_t c = 0; c < flip_cls.size(); c++) {
+            num_true[c] = num_true_ex[c] = 0;
+            for (const auto& l : flip_cls[c]) if (model[l.var()] == boolToLBool(!l.sign())) {
+                num_true[c]++;
+                num_true_ex[c] += l.var() >= outer.size();
+            }
+        }
+        const uint64_t before = flips;
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (const auto& v : flip_vars) {
+                const Lit t = Lit(v, model[v] != l_True);
+                const auto& loses = flip_occ[t.toInt()];
+                const auto& gains = flip_occ[(~t).toInt()];
+                if (std::any_of(loses.begin(), loses.end(), [&](const uint32_t c) { return num_true[c] < 2; })) continue;
+                int gain = 0;
+                for (const auto& c : gains) gain += flip_mixed[c] && num_true_ex[c] == 0;
+                for (const auto& c : loses) gain -= flip_mixed[c] && num_true_ex[c] == 1;
+                if (gain <= 0) continue;
+                model[v] = t.sign() ? l_True : l_False;
+                for (const auto& c : loses) { num_true[c]--; num_true_ex[c]--; }
+                for (const auto& c : gains) { num_true[c]++; num_true_ex[c]++; }
+                flips++;
+                changed = true;
+            }
+        }
+        return flips != before;
     };
     // A model for the X of assumps whose existentials satisfy what those of
     // `model` do, and as many more helpers' clauses as the cores allow
@@ -462,7 +558,8 @@ lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double
         const double refine_start = cpuTime();
         auto model = f.get_model();
         get_some_false(model);
-        if (minim && some_false.size() > 1) {
+        if (flip_minim && some_false.size() > 1 && flip(model)) get_some_false(model);
+        if (sat_minim && some_false.size() > 1) {
             const size_t before = some_false.size();
             model = minimize(model);
             get_some_false(model);
@@ -470,6 +567,7 @@ lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double
             minim_removed += before - some_false.size();
         }
         cost += sq_frac(some_false.size(), num_helpers);
+        if (subs_minim) drop_subsumed(some_false);
         ref_lits += some_false.size();
         if (need_funs) {
             ref_helpers.push_back(some_false);
@@ -493,7 +591,7 @@ lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double
 
 lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
         const uint64_t max_ticks,
-        const bool stop_at_cex, const bool need_funs, const bool minim, vector<lbool>& cex,
+        const bool stop_at_cex, const bool need_funs, const uint32_t minim, vector<lbool>& cex,
         const uint32_t verb) {
     const uint32_t num_defs = cnf.num_defs();
     const uint32_t none = std::numeric_limits<uint32_t>::max();

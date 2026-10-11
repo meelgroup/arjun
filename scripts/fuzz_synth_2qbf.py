@@ -348,7 +348,7 @@ def qbf2_pre_verdict(fname, seed):
     cmd = "./arjun --2qbfpre --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
     cmd += " --synthpuura %d" % random.choice([0, 1, 1, 1])
     cmd += " --coverticks %s" % random.choice([0, 0.01, 20])
-    cmd += " --coverminim %d" % random.randint(0, 1)
+    cmd += " --coverminim %d" % random.randint(0, 7)
     cmd += " --prerepairs %d --preconfl %d" % (random.choice([0, 5, 400]), random.choice([0, 10, 10000]))
     cmd += " --prebce %d --2qbfpuurarounds %d" % (random.choice([0, 1, 1]), random.randint(1, 4))
     cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
@@ -581,7 +581,7 @@ if __name__ == "__main__":
         solver += "--debugverilog %d " % random.randint(0, 1)
         # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
         solver += "--cover %s " % random.choice([0, 0, 0, 0.1, 1, 50])
-        solver += "--coverminim %d " % random.randint(0, 1)
+        solver += "--coverminim %d " % random.randint(0, 7)
         solver += "--coverorig %s " % random.choice([0, 50])
 
         solver += "--bruteforcesynth %d " % random.randint(0, 1)

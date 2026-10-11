@@ -38,15 +38,16 @@ namespace ArjunInt {
 // refinement naming fraction f of the helpers costs
 // f^2 of the budget: next to nothing while it converges. max_ticks limits
 // the SAT solvers' work, 0 = no limit. Without need_funs, l_True comes
-// with no Skolem functions: only the verdict. minim: a refinement is
-// shortened by asking for a model, of the same X, whose existentials satisfy
-// more of the clauses.
+// with no Skolem functions: only the verdict. minim, a sum, is how a
+// refinement is shortened. 1: by asking for a model, of the same X, whose
+// existentials satisfy more of the clauses. 2: by flipping the existentials
+// no clause needs. 4: by dropping what another part of it implies.
 //
 // The defs that cnf already has are kept, and used: a model is then the
 // values of the vars with no def, and it settles the X for which the
 // clauses hold with the defined vars following their defs.
 CMSat::lbool cover(ArjunNS::SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
-        const double budget, const uint64_t max_ticks, const bool stop_at_cex, const bool need_funs, const bool minim,
+        const double budget, const uint64_t max_ticks, const bool stop_at_cex, const bool need_funs, const uint32_t minim,
         std::vector<CMSat::lbool>& cex,
         const uint32_t verb);
 

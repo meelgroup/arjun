@@ -139,7 +139,7 @@ DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF&
 
 DLL_PUBLIC lbool Arjun::standalone_cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls,
         const double budget, const uint64_t max_ticks, const bool stop_at_cex,
-        const bool need_funs, const bool minim, vector<lbool>& cex) {
+        const bool need_funs, const uint32_t minim, vector<lbool>& cex) {
     return cover(cnf, cls, budget, max_ticks, stop_at_cex, need_funs, minim, cex, arjdata->conf.verb);
 }
 

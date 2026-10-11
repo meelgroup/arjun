@@ -184,7 +184,7 @@ void add_arjun_options() {
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverorig", cover_orig_budget, "Budget of the covering run on the original clauses, before simplification. As for --cover, and no more than it");
-    myopt("--coverminim", cover_minim, "Covering shortens each refinement with further SAT calls: a model of the same input whose existentials satisfy more clauses");
+    myopt("--coverminim", cover_minim, "How covering shortens a refinement, a sum: 1 = SAT calls for a model of the same input whose existentials satisfy more clauses, 2 = flipping existentials no clause needs, 4 = dropping what another part of it implies");
     myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthpuura", do_synth_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");

@@ -2,7 +2,7 @@
 
 State at efe45e02. Ideas from reading the solvers in `qbf_solvers/` (not in
 git: AReQS 2QBF beta, RAReQS 1.1, QESTO, CQESTO, QFUN, CAQE, QuAbS, CADET,
-DepQBF, Qute, miniQU, Pedant, bloqqer 037, QRATPre+). Items 2-7 are from
+DepQBF, Qute, miniQU, Pedant, bloqqer 037, QRATPre+). The items to try are from
 reading code, unmeasured.
 
 ## Where cover fails now
@@ -21,36 +21,17 @@ weaker.
 
 ## To try, in order
 
-1. **Clauses with no undefined existential get a helper that is in every
-   refinement.** `mixed` gets them with an empty `exist`. Late run on
-   `sdlx-fixpoint-8`: 807 outer defs, 7678 helpers, avg refinement 7637.
-   Such a clause false = that X has no Y: a cex for `--2qbf`, a constraint
-   on abs for `--synth`. CADET skips them: `cadet/src/casesplits.c:98-131`.
-2. **One cover run per existential-connected component.** Union-find over
-   the undefined vars through the clauses. Model counts then add instead of
-   multiply. CAQE `caqe/src/matrix/hierarchical.rs:344`, CADET
-   `cadet/src/partitions.c:25-110`. Check first how often Puura leaves more
-   than one component.
-3. **Shorter refinements with no SAT call.**
-   - helper B is redundant in a refinement that has helper A with
-     univ(A) a subset of univ(B). CAQE `caqe/src/solve/caqe.rs:1694-1750`
-     (off by default there, says it does not cut iterations), RAReQS `-u`.
-     Lowers the `sq_frac` cost too: recheck `--coverorig 50`.
-   - flip an undefined y when every clause its true literal is in has another
-     true existential literal and the flip satisfies more clauses. CAQE
-     `entry_minimization`, `caqe.rs:1391-1427`; DepQBF
-     `sdcl_friendly_dec_heuristic`, `depqbf/qdpll.c:10958`.
-4. **Helpers decided true in abs.** QESTO `qesto/QestoGroups.nw:767`, and
+1. **Helpers decided true in abs.** QESTO `qesto/QestoGroups.nw:767`, and
    `-b` bumps them before each solve. abs then picks an X that falsifies many
    universal parts. May give more no-Y cubes in `--synth` before abs has the
    clauses.
-5. **Cover only the X where candidate functions g fail.** abs gets
+2. **Cover only the X where candidate functions g fail.** abs gets
    ~F(X, g(X)), encoded once; the functions end with g instead of the
    default. CADET only ever runs its CEGAR like this
    (`cadet/src/cadet2.c:427-447`, at most 50 rounds, while the avg cube is
    <= 17). The other way round: on giving up, cover throws its models away;
    they are right on all covered X and could seed cegr (`set_guess`).
-6. **Models that are not constants.**
+3. **Models that are not constants.**
    - QFUN: every 64 rounds an ID3 tree per y over X from the (X, Y) samples,
      refine with F(X, f(X)): `qfun/src/rareqs.cpp:98-146`,
      `qfun/src/dec_tree.cpp`. Sound for any f. One F-sized AIG per learning
@@ -60,7 +41,7 @@ weaker.
      unsatisfied groups whose existential part is just ~v, T = the groups
      only y=v satisfies; refine with (rest or p), (~p or U), (~p or T). No
      AIG per round, k such y make one model stand for 2^k.
-7. **Fewer helpers by preprocessing.**
+4. **Fewer helpers by preprocessing.**
    - hidden/covered blocked clauses: bloqqer `hidden_tautology()`
      `bloqqer.c:3270`; QRATPre+ `qratpreplus/qbce_qrat_plus.c:142`.
    - QBCE with functions, by reconstruction in reverse removal order,
@@ -72,7 +53,24 @@ weaker.
    - universal expansion of a few X: bloqqer `try_expand()`
      `bloqqer.c:4903`.
 
+## Done
+
+- Clauses of outer vars only get no helper (1c3b013): of 83 `--synth`
+  files, 90 s, 38 done, 25 by covering (36 and 22). The late run's avg
+  refinement on `sdlx-fixpoint-8` went 7637 -> 22. The late run's ticks are
+  now abs ticks, slower in wall time: a failing one takes 30 s, not 15.
+- One run per existential-connected component (9e4dd2b). After Puura it is
+  nearly always one component; the `*Service` files have 30+ of 45 clauses
+  each, but only before Puura. Only `stmt17_70_90` gained.
+  On giving up, the functions of the components that were covered are
+  dropped: they could be kept.
+
 ## Tried, no gain
+- `--coverminim 2`, the flip pass: 7.3M flips on the 83 files, the SAT
+  minimization then removes that much less, same rounds, same files done.
+- `--coverminim 4`, dropping implied helpers: refinements a third shorter
+  on the 83 files, same rounds. `stmt19_83_142` under `--2qbf`: 2 s -> 15 s,
+  the X with no Y is found later. Both are left as options, off.
 
 - Minimizing the no-Y cubes by literal deletion: the cores are near-minimal.
 - Selector phase preference in f.
