@@ -103,9 +103,9 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     for (const auto& [exist, helper] : mixed) for (const auto& l : exist) pos_occ[l.var()] += l.sign() ? -1 : 1;
     for (const auto& v : ys) f.set_phase(Lit(to_f[v], pos_occ[to_f[v]] <= 0));
 
-    // Skolem functions: y takes its value from the first model that works for X
-    vector<aig_lit> funs(num_defs, aig_mng.new_const(false));
-    aig_lit covered = aig_mng.new_const(false);
+    // per refinement, for the Skolem functions: its helpers, and the model's Y
+    vector<vector<Lit>> ref_helpers;
+    vector<bool> ref_ys;
 
     vector<Lit> assumps, some_false;
     auto sq_frac = [](const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); };
@@ -136,11 +136,34 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         sum += cpuTime() - start;
         return ret;
     };
+    // y takes its value from the first model that works for X. Built from
+    // the rarer value of y, the other one is the default
+    auto build_funs = [&] {
+        vector<aig_lit> first;
+        aig_lit covered = aig_mng.new_const(false);
+        for (const auto& ref : ref_helpers) {
+            aig_lit works = aig_mng.new_const(true);
+            for (const auto& h : ref) works = AIG::new_and(works, univ_true[h.var() - orig_sampl_vars.size()]);
+            first.push_back(AIG::new_and(works, ~covered));
+            covered = AIG::new_or(covered, works);
+        }
+        for (uint32_t i = 0; i < ys.size(); i++) {
+            if (cnf.defined(ys[i])) continue;
+            uint32_t num_true = 0;
+            for (uint32_t r = 0; r < ref_helpers.size(); r++) num_true += ref_ys[r * ys.size() + i];
+            const bool val = num_true * 2 <= ref_helpers.size();
+            aig_lit fun = aig_mng.new_const(false);
+            for (uint32_t r = 0; r < ref_helpers.size(); r++)
+                if (ref_ys[r * ys.size() + i] == val) fun = AIG::new_or(fun, first[r]);
+            cnf.set_def(ys[i], val ? fun : ~fun);
+        }
+        for (uint32_t v = 0; v < num_defs; v++)
+            if (!orig_sampl_vars.count(v) && !cnf.defined(v)) cnf.set_def(v, aig_mng.new_const(false));
+    };
     for (; cost < budget && (max_ticks == 0 || ticks() < max_ticks); rounds++) {
         if (rounds && rounds % 1000 == 0) stats("progress");
         if (timed(abs_time, [&] { return abs.solve(); }) == l_False) {
-            if (need_funs) for (uint32_t v = 0; v < num_defs; v++)
-                if (!orig_sampl_vars.count(v) && !cnf.defined(v)) cnf.set_def(v, funs[v]);
+            if (need_funs) timed(funs_time, [&] { build_funs(); return 0; });
             return finish(l_True);
         }
         assumps.clear();
@@ -173,15 +196,11 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         cost += sq_frac(some_false.size(), univ_to_helper.size());
         ref_lits += some_false.size();
 
+        if (need_funs) {
+            ref_helpers.push_back(some_false);
+            for (const auto& v : ys) ref_ys.push_back(model[to_f[v]] == l_True);
+        }
         refine_time += cpuTime() - refine_start;
-        if (!need_funs) continue;
-        const double funs_start = cpuTime();
-        aig_lit works = aig_mng.new_const(true);
-        for (const auto& h : some_false) works = AIG::new_and(works, univ_true[h.var() - orig_sampl_vars.size()]);
-        const aig_lit first = AIG::new_and(works, ~covered);
-        covered = AIG::new_or(covered, works);
-        for (const auto& v : ys) if (model[to_f[v]] == l_True) funs[v] = AIG::new_or(funs[v], first);
-        funs_time += cpuTime() - funs_start;
     }
     return finish(l_Undef);
 }
