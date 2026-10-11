@@ -202,7 +202,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     map<vector<Lit>, Lit> univ_to_helper;
     vector<std::pair<vector<Lit>, Lit>> mixed;
     vector<aig_lit> univ_true; // per helper: some outer literal of it is true
-    vector<vector<Lit>> deep;
+    vector<vector<Lit>> deep, outer_only;
     for (const auto& cl : cls) {
         if (std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return cnf.defined(l.var()) && !is_outer[l.var()]; })) {
             deep.push_back(cl);
@@ -214,6 +214,11 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
             else exist.push_back(in_f(l));
         }
         if (univ.empty()) continue;
+        if (exist.empty()) {
+            for (auto& l : univ) l = in_f(l);
+            outer_only.push_back(univ);
+            continue;
+        }
         std::sort(univ.begin(), univ.end());
         const auto [it, inserted] = univ_to_helper.try_emplace(univ, lit_Undef);
         if (inserted) {
@@ -267,6 +272,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         const uint64_t refs = rounds - cubes;
         std::cout << "c o [cover] " << what << " rounds: " << rounds << " no-Y cubes: " << cubes
             << " outer defs: " << outer.size() - num_univ << " deep cls: " << deep.size()
+            << " outer cls: " << outer_only.size()
             << " helpers: " << num_helpers << std::fixed
             << " avg refinement: " << std::setprecision(1) << (refs ? (double)ref_lits / refs : 0)
             << " avg cube: " << (cubes ? (double)cube_lits / cubes : 0)
@@ -385,6 +391,26 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         assumps.resize(num_x);
         return model;
     };
+    // A clause of outer vars only: an X that falsifies it has no Y. As a
+    // helper it would be in every refinement
+    if (stop_at_cex && !outer_only.empty()) {
+        abs.new_var();
+        vector<Lit> some = {Lit(abs.nVars()-1, true)};
+        for (const auto& cl : outer_only) {
+            abs.new_var();
+            some.emplace_back(abs.nVars()-1, false);
+            for (const auto& l : cl) abs.add_clause({~some.back(), ~l});
+        }
+        abs.add_clause(some);
+        assumps = {~some[0]};
+        if (timed(abs_time, [&] { return abs.solve(&assumps); }) == l_True) {
+            cex.assign(num_defs, l_Undef);
+            for (const auto& v : orig_sampl_vars) cex[v] = abs.get_model()[to_f[v]];
+            return finish(l_False);
+        }
+        abs.add_clause({some[0]});
+    }
+    for (const auto& cl : outer_only) abs.add_clause(cl);
     for (; cost < budget && (max_ticks == 0 || ticks() < max_ticks); rounds++) {
         if (rounds && rounds % 1000 == 0) stats("progress");
         if (timed(abs_time, [&] { return abs.solve(); }) == l_False) {
