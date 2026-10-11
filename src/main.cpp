@@ -587,14 +587,7 @@ void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::L
     }
 }
 
-void do_synth_2qbf() {
-    if (etof_conf.all_indep) {
-        cout << "ERROR: synthesis with --allindep makes no sense" << endl;
-        exit(EXIT_FAILURE);
-    }
-    ArjunNS::SimplifiedCNF cnf(fg);
-    cnf.set_need_aig();
-    read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
+void check_synth_2qbf_input(const ArjunNS::SimplifiedCNF& cnf) {
     if (cnf.get_num_no_touch()) {
         cout << "ERROR: synthesis with 'c p no-touch' is not supported" << endl;
         exit(EXIT_FAILURE);
@@ -605,14 +598,25 @@ void do_synth_2qbf() {
             cout << "ERROR: --2qbf does not take weights or a multiplier" << endl;
             exit(EXIT_FAILURE);
         }
-        // neither 'a' nor 'c p show': no universals, a plain SAT problem
-        if (!cnf.get_sampl_vars_set()) cnf.set_sampl_vars(vector<uint32_t>(), true);
     } else if (etof_conf.all_indep) {
         // No projection (or it covers all vars) => no defined vars to synth.
         cout << "ERROR: no defined vars to synthesize "
                 "(no projection set, or projection covers all vars)" << endl;
         exit(EXIT_FAILURE);
     }
+}
+
+void do_synth_2qbf() {
+    if (etof_conf.all_indep) {
+        cout << "ERROR: synthesis with --allindep makes no sense" << endl;
+        exit(EXIT_FAILURE);
+    }
+    ArjunNS::SimplifiedCNF cnf(fg);
+    cnf.set_need_aig();
+    read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
+    check_synth_2qbf_input(cnf);
+    // neither 'a' nor 'c p show': no universals, a plain SAT problem
+    if (qbf2 && !cnf.get_sampl_vars_set()) cnf.set_sampl_vars(vector<uint32_t>(), true);
     cnf.clean_idiotic_mccomp_weights();
     cnf.check_cnf_sampl_sanity();
     cnf.check_cnf_vars();
