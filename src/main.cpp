@@ -647,11 +647,8 @@ void do_synth_2qbf() {
         if (!cnf.synth_done() && !same_cls(qbf2_cls, before)) try_cover(cnf, qbf2_cls, need_funs);
     }
 
-    auto write_witness = [&] {
-        if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
-    };
     auto write_2qbfpre = [&] {
-        write_witness();
+        if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
         if (bce && pre_bce) {
             const auto removed = cnf.bce_2qbf(qbf2_cls);
             verb_print(1, "[2qbf-bce] at the end, removed: " << removed << " left: " << qbf2_cls.size());
@@ -736,7 +733,7 @@ void do_synth_2qbf() {
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
     if (qbf2 && cover_done) {
-        write_witness();
+        if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
         qbf2_result(cnf, true);
     }
     if (qbf2) {
@@ -748,7 +745,7 @@ void do_synth_2qbf() {
             cex = cnf.get_2qbf_cex(cnf.get_orig_clauses());
         }
         SLOW_DEBUG_DO(assert(cex.empty() == cnf.get_2qbf_cex(cnf.get_orig_clauses()).empty()));
-        if (cex.empty()) write_witness();
+        if (cex.empty() && !pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
         qbf2_result(cnf, cex.empty(), cex);
     }
 }
