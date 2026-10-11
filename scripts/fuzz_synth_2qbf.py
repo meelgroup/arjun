@@ -442,6 +442,26 @@ def is_unsat(fname) :
     print("ERROR: Could not determine if file %s is SAT or UNSAT" % fname)
     exit(-1)
 
+# fname becomes itself and other side by side, on disjoint vars: covering
+# then has clauses that share no existential
+def join_cnfs(fname, other):
+    def read(f):
+        num_vars, cls = 0, []
+        for line in open(f):
+            line = line.strip()
+            if line.startswith("p cnf"):
+                num_vars = int(line.split()[2])
+            elif line and line[0] not in "cp":
+                cls.append([int(x) for x in line.split()[:-1]])
+        return num_vars, cls
+    n1, cls1 = read(fname)
+    n2, cls2 = read(other)
+    cls1 += [[l + n1 if l > 0 else l - n1 for l in cl] for cl in cls2]
+    with open(fname, "w") as f:
+        f.write("p cnf %d %d\n" % (n1 + n2, len(cls1)))
+        for cl in cls1:
+            f.write(" ".join(map(str, cl)) + " 0\n")
+
 def gen_fuzz(seed) :
     fname = unique_file("fuzzTest")
     print(col("Seed: ", MAGENTA) + str(seed) + col("  checking fname: ", MAGENTA) + fname)
@@ -453,6 +473,15 @@ def gen_fuzz(seed) :
         exit(-1)
     else:
         print("Generated fuzz file %s with call: %s" % (fname, call))
+    if random.randint(0, 2) == 0:
+        other = fname + "-other"
+        call = gen_fuzz_call_brummayer("./cnf-fuzz-brummayer.py", other)
+        print("Calling: ", call)
+        if subprocess.call(call, shell=True) != 0:
+            print("Failed fuzzer file generator call: ", call)
+            exit(-1)
+        join_cnfs(fname, other)
+        os.unlink(other)
     return fname
 
 def cleanup(fname, prefix):
@@ -580,7 +609,8 @@ if __name__ == "__main__":
         solver += "--2qbf " if qbf2 else "--synth "
         solver += "--debugverilog %d " % random.randint(0, 1)
         # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
-        solver += "--cover %s " % random.choice([0, 0, 0, 0.1, 1, 50])
+        solver += "--cover %s " % random.choice([0, 0, 0.1, 1, 50, 100000])
+        solver += "--coverticks %s " % random.choice([0, 0.01, 5, 500])
         solver += "--coverminim %d " % random.randint(0, 7)
         solver += "--coverstages %d --coverlateticks %s " % (random.randint(0, 3), random.choice([0, 0.01, 100]))
 
