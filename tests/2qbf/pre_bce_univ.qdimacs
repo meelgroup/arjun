@@ -1,0 +1,9 @@
+c a universal literal cannot block: 1 is pure, but both clauses stay
+c RUN: %arjun --2qbfpre --cover 0 --synthbve 0 --prerepairs 0 %s %t.out > %t.log; test $? -eq 0
+c RUN: grep -v "^c" %t.out | tr "\n" " " | grep -q "^p cnf 2 2 a 1 0 e 2 0 1 2 0 1 -2 0 $"
+c RUN: %arjun --2qbf %t.out > %t.log2; test $? -eq 20
+p cnf 2 2
+a 1 0
+e 2 0
+1 2 0
+1 -2 0

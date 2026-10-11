@@ -1828,6 +1828,10 @@ public:
                          std::vector<std::vector<CMSat::Lit>>&& red);
 
     void write_simpcnf(const std::string& fname, bool red = true) const;
+    // Removes the clauses that are blocked on an existential literal: every
+    // resolvent on it is a tautology. Keeps the 2QBF's truth and its X with
+    // no Y, but not its Skolem functions. Returns the number removed
+    uint32_t bce_2qbf(std::vector<std::vector<CMSat::Lit>>& cls) const;
     // cls is over the orig vars: forall the orig sampl vars, exists the rest
     void write_qdimacs(const std::string& fname,
             const std::vector<std::vector<CMSat::Lit>>& cls) const;

@@ -347,9 +347,13 @@ def qbf2_pre_verdict(fname, seed):
     cmd += " --synthbve %d" % random.choice([0, 1, 1, 1])
     cmd += " --coverticks %s" % random.choice([0, 0.01, 20])
     cmd += " --prerepairs %d --preconfl %d" % (random.choice([0, 5, 400]), random.choice([0, 10, 10000]))
+    cmd += " --prebce %d" % random.choice([0, 1, 3])
     cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
     print(col("Running 2QBF preprocessing: ", CYAN) + cmd)
-    _, _, pre_code = run(cmd.split() + ["--prewitness", witness, fname, pre_fname])
+    # the witness is only good for an output with its blocked clauses still in
+    if random.choice([True, False]):
+        cmd += " --prewitness " + witness
+    _, _, pre_code = run(cmd.split() + [fname, pre_fname])
     # the functions it has: partial if unsolved, total Skolem functions if true
     if os.path.exists(witness):
         if pre_code == 0:

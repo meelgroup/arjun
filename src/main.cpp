@@ -73,8 +73,10 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 int synthesis = false;
 int qbf2 = false;
 int qbf2pre = false;
+size_t qbf2_num_cls = 0;
 int pre_repairs = 400;
 string pre_witness;
+int pre_bce = 3;
 int64_t pre_confl = 10000;
 double cover_budget = 50;
 double cover_ticks = 0;
@@ -172,6 +174,7 @@ void add_arjun_options() {
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
     myflag("--2qbfpre", qbf2pre, "Preprocess the 2QBF instead of solving it: the output file gets an equivalent forall-exists QDIMACS over the same variables. If it gets solved on the way, the output is 'p cnf N 0' (true) or has an empty clause (false), and the exit code is 10 or 20, like bloqqer");
     myopt("--prewitness", pre_witness, "--2qbfpre: write the functions found so far to this .aig file. They define the existentials that are gone from the output file, over the variables that are left in it, so with Skolem functions for those they are Skolem functions for the input");
+    myopt("--prebce", pre_bce, "--2qbfpre: remove the clauses blocked on an existential literal, as bloqqer does, and simplify again, at most this many times. 0 = off. The Skolem functions of the output are then not ones of the input, so --prewitness turns it off too");
     myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
@@ -415,8 +418,7 @@ void set_config(ArjunNS::Arjun* arj) {
         const vector<CMSat::lbool>& cex = {}) {
     cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
         << (cpuTime() - start_time) << endl;
-    cout << "s cnf " << is_true << " " << cnf.get_orig_num_vars() << " "
-        << cnf.get_orig_clauses().size() << endl;
+    cout << "s cnf " << is_true << " " << cnf.get_orig_num_vars() << " " << qbf2_num_cls << endl;
     if (!is_true) for(const auto& v: cnf.get_orig_sampl_vars()) {
         const bool val = v < cex.size() && cex[v] == CMSat::l_True;
         cout << "V " << (val ? "" : "-") << v+1 << " 0" << endl;
@@ -451,6 +453,19 @@ void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf,
         }
         if (all_univ && cnf.is_2qbf_cex(cex)) qbf2_result(cnf, false, cex);
     }
+}
+
+// The 2QBF of cls as the problem to solve, in the place of cnf's
+ArjunNS::SimplifiedCNF cnf_of_2qbf_cls(const ArjunNS::SimplifiedCNF& cnf,
+        const vector<vector<CMSat::Lit>>& cls) {
+    ArjunNS::SimplifiedCNF ret(fg);
+    ret.set_need_aig();
+    ret.new_vars(cnf.get_orig_num_vars());
+    for(const auto& cl: cls) ret.add_clause(cl);
+    ret.set_sampl_vars(vector<uint32_t>(cnf.get_orig_sampl_vars().begin(), cnf.get_orig_sampl_vars().end()));
+    ret.set_orig_clauses(ret.get_clauses());
+    ret.set_orig_sampl_vars(ret.get_sampl_vars());
+    return ret;
 }
 
 void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
@@ -499,6 +514,7 @@ void do_synthesis() {
     cnf.check_cnf_vars();
     cnf.set_orig_clauses(cnf.get_clauses());
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
+    qbf2_num_cls = cnf.get_clauses().size();
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     check_cnf_sat(cnf);
     if (qbf2) {
@@ -533,7 +549,8 @@ void do_synthesis() {
     };
 
     auto qbf2_cls = cnf.get_orig_clauses();
-    if (do_synth_bve && !cnf.synth_done()) {
+    const bool bce = qbf2pre && pre_witness.empty();
+    for (int round = 0; do_synth_bve && !cnf.synth_done(); round++) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         if (cnf.get_2qbf_cls(qbf2_cls)) {
             verb_print(1, "[arjun] the simplified CNF stands in for the orig one");
@@ -556,6 +573,14 @@ void do_synthesis() {
         } else verb_print(1, "[arjun] the simplified CNF cannot stand in for the orig one");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
+
+        // without the blocked clauses there is more to simplify
+        if (!bce || cnf.synth_done() || round >= pre_bce) break;
+        const auto removed = cnf.bce_2qbf(qbf2_cls);
+        verb_print(1, "[2qbf-bce] round: " << round << " removed: " << removed << " left: " << qbf2_cls.size());
+        if (qbf2_cls.empty()) qbf2_result(cnf, true);
+        if (removed == 0) break;
+        cnf = cnf_of_2qbf_cls(cnf, qbf2_cls);
     }
 
     auto write_witness = [&] {
@@ -563,6 +588,11 @@ void do_synthesis() {
     };
     auto write_2qbfpre = [&] {
         write_witness();
+        if (bce && pre_bce) {
+            const auto removed = cnf.bce_2qbf(qbf2_cls);
+            verb_print(1, "[2qbf-bce] at the end, removed: " << removed << " left: " << qbf2_cls.size());
+            if (qbf2_cls.empty()) qbf2_result(cnf, true);
+        }
         cnf.write_qdimacs(output_file, qbf2_cls);
         cout << "c o [arjun] dumped preprocessed 2QBF to '" << output_file << "'" << endl;
     };
