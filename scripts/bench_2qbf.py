@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Runs `arjun --2qbf` and cadet on QDIMACS files and compares the verdicts.
-# Run from build/:  ../scripts/bench_2qbf.py -t 20 ~/media/2qbf/qbfeval16/*.qdimacs
+# Run from build/:  ../scripts/bench_2qbf.py -t 20 ~/media/qbf/2qbf/qbfeval16/*.qdimacs
 
 import argparse
 import subprocess

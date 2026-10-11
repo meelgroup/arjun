@@ -85,7 +85,7 @@ Skolem function), a false one by checking the CNF is UNSAT under the `V`
 lines. `tests/2qbf/*.qdimacs` are `lit` tests (ctest `test-2qbf`, or `lit .`
 in `build/tests/2qbf`): tiny files with their `RUN:` lines in comments.
 `scripts/bench_2qbf.py` compares against `../cadet/cadet`; benchmarks
-are in `~/media/2qbf/qbfeval16` (QBFEVAL'16 2QBF track).
+are in `~/media/qbf/2qbf/qbfeval16` (QBFEVAL'16 2QBF track).
 
 ## 2QBF preprocessing (`--2qbfpre`)
 
@@ -130,8 +130,11 @@ output with `--2qbf` and compares the verdicts. `scripts/bench_2qbfpre.py`
 compares no preprocessing, bloqqer and arjun, each followed by
 `../cadet/cadet` and `../rareqs-1.1/rareqs` (built with
 `CFLAGS=-fpermissive`, minisat's `libr` first). More benchmarks:
-`~/media/2qbf/2010-comp`, `~/media/abdst-paper/robots2d`, and
-`~/media/qbflib/<family>/` (one directory per QBFLIB family, `.qdimacs.gz`).
+`~/media/qbf/2qbf/2010-comp`, `~/media/qbf/abdst-paper/robots2d`,
+`~/media/qbf/qbflib/<family>/` (one directory per QBFLIB family),
+`~/media/qbf/qbfeval17/2QBF` and `~/media/qbf/qbfeval20/PCNF` (mixed
+prefixes there: `~/media/qbf/qbflib/qbf_prefix.py` prints `KEEP ae` for the
+forall-exists ones). All of these but the first are `.qdimacs.gz`.
 
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
 

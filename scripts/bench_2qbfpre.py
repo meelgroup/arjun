@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Compares 2QBF preprocessors: each one runs on every file, then every solver
 # runs on its output. Time is preprocessing + solving. Run from build/:
-#   ../scripts/bench_2qbfpre.py -t 20 ~/media/2qbf/qbfeval16/*.qdimacs
+#   ../scripts/bench_2qbfpre.py -t 20 ~/media/qbf/2qbf/qbfeval16/*.qdimacs
 
 import argparse
 import gzip
