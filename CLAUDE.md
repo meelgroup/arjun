@@ -158,6 +158,9 @@ All must pass before reporting a change as complete.
 - `cegr.{h,cpp}`, `cegr_learn.{h,cpp}` — counterexample-guided
   synthesis / repair loop. Hot path for large benchmarks.
 - `cover.{h,cpp}` — model covering (see "2QBF").
+- `verilog.{h,cpp}` — `write_verilog()` / `read_verilog()` of AIG defs as
+  one module of single-bit nets (port `xN` is var N-1). Behind
+  `SimplifiedCNF::write_aig_def_to_verilog()` / `read_aig_defs_from_verilog()`.
 - `aig_rewrite.{h,cpp}` — structural hashing, CSE, absorption, ITE
   flattening. Runs before cegr and between repair rounds.
 - `interpolant.{h,cpp}` — definition extraction by Craig interpolation
@@ -191,6 +194,11 @@ input CNF with suffixes `-simplified_cnf.aig`, `-autarky.aig`,
 `-minim_idep_synt.aig`, `-cegr.aig`, `-final.aig`. `test-synth` verifies
 each stage's AIG against the original CNF and is invoked automatically by
 `fuzz_synth_2qbf.py`.
+
+`--debugverilog 1` writes the final one as `-final.v` instead. `test-synth`
+reads a `.v` like an `.aig`, but it has the functions only, so it must be a
+finished synthesis. `fuzz_synth_2qbf.py` does this on half of its iterations;
+`tests/verilog/*.v` are `lit` tests of the reader (ctest `test-verilog`).
 
 ## Debugging issues
 

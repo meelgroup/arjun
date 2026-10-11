@@ -585,6 +585,7 @@ endif()
 add_subdirectory(src)
 if(ENABLE_TESTING)
     add_subdirectory(tests/2qbf)
+    add_subdirectory(tests/verilog)
 endif()
 
 # -----------------------------------------------------------------------------

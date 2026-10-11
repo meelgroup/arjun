@@ -75,6 +75,7 @@ int qbf2 = false;
 int qbf2pre = false;
 int pre_repairs = 400;
 string pre_witness;
+int debug_verilog = 0;
 int64_t pre_confl = 10000;
 double cover_budget = 50;
 double cover_ticks = 0;
@@ -251,6 +252,7 @@ void add_arjun_options() {
     // synth -- debug
     myopt("--cegrcnf", mconf.write_cegr_cnf, "Write Cegr CNF to this file");
     myopt("--debugsynth", conf.debug_synth,"Debug synthesis, prefix with this fname");
+    myopt("--debugverilog", debug_verilog, "With --debugsynth: write the final functions as Verilog (-final.v) instead of -final.aig");
     myopt("--interprebuildevery", iconf.interp_rebuild_every,
           "Rebuild the doubled-CNF interpolation solver every N interpolants "
           "(bounds tracer maps; smaller = exercise the rebuild path more).");
@@ -630,9 +632,11 @@ void do_synthesis() {
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
         final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
-        final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
+        const string final_fname = conf.debug_synth + (debug_verilog ? "-final.v" : "-final.aig");
+        if (debug_verilog) final_cnf.write_aig_def_to_verilog(final_fname);
+        else final_cnf.write_aig_defs_to_file(final_fname);
         cout << "c o [arjun] you can check correctness by running: " << endl;
-        cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
+        cout << "./test-synth -u -v 1 " << input_file << " " << final_fname << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
     if (qbf2 && cover_done) {
