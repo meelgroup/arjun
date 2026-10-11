@@ -1,0 +1,7 @@
+c rejected: nowhere to write to
+c RUN: %arjun --2qbfpre %s > %t.log; test $? -eq 1
+c RUN: grep -q "ERROR: --2qbfpre needs an output file" %t.log
+p cnf 2 1
+a 1 0
+e 2 0
+1 2 0

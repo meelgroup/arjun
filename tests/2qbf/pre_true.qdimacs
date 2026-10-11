@@ -1,0 +1,8 @@
+c preprocessing solves it: true is a file with no clause, like bloqqer's
+c RUN: %arjun --2qbfpre %s %t.out > %t.log; test $? -eq 10
+c RUN: grep -v "^c" %t.out | tr "\n" " " | grep -q "^p cnf 3 0 $"
+p cnf 3 2
+a 1 2 0
+e 3 0
+1 2 3 0
+-1 -3 0

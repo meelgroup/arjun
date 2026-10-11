@@ -338,6 +338,23 @@ def check_qbf2_cex(fname, proj, cex):
     os.unlink(cex_fname)
     return ok
 
+# --2qbfpre must keep the verdict: its output file is solved with --2qbf,
+# and has to agree with its exit code if that claims a verdict
+def qbf2_pre_verdict(fname):
+    pre_fname = fname + "-pre.qdimacs"
+    cmd = "./arjun --2qbfpre --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
+    cmd += " --synthbve %d" % random.choice([0, 1, 1, 1])
+    cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
+    print(col("Running 2QBF preprocessing: ", CYAN) + cmd)
+    _, _, pre_code = run(cmd.split() + [fname, pre_fname])
+    _, _, code = run(["./arjun", "--2qbf", "--verb", "0", pre_fname])
+    os.unlink(pre_fname)
+    if pre_code not in (0, 10, 20) or code not in (10, 20) or pre_code not in (0, code):
+        print("ERROR: --2qbfpre exited with %s, --2qbf on its output with %s" % (pre_code, code))
+        return None
+    return code == 10
+
+
 def check_core_files(prefix):
     # arjun writes core files as "<debug-synth-prefix>-core-N.cnf"; the
     # prefix is unique per fuzzer run, so globbing on it keeps concurrent
@@ -624,6 +641,12 @@ if __name__ == "__main__":
             if qbf2_true is None or (not qbf2_true and not check_qbf2_cex(fname, proj, cex)):
                 print(col("=" * 60, RED))
                 print(col("BUG: missing 2QBF verdict, or wrong counterexample", RED))
+                print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
+                print(col("=" * 60, RED))
+                exit(-1)
+            if qbf2_pre_verdict(fname) != qbf2_true:
+                print(col("=" * 60, RED))
+                print(col("BUG: --2qbfpre changed the 2QBF verdict, it is %s" % qbf2_true, RED))
                 print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
                 print(col("=" * 60, RED))
                 exit(-1)
