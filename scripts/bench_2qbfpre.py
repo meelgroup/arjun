@@ -52,6 +52,12 @@ def bench(orig_fname):
         else:
             with open(out, "w") as f:
                 ret, t = run(cmd.split() + [fname], args.pretout, f)
+        if ret == 0 and name == "arjun+bloqqer":
+            out2 = out + "-bloqqer"
+            with open(out2, "w") as f:
+                ret, t2 = run(args.bloqqer.split() + [out], args.pretout, f)
+            os.replace(out2, out)
+            t += t2
         if ret not in (0, 10, 20):
             res.append(("-" if ret is None else "ERR(%d)" % ret, t, None, []))
             continue
@@ -79,12 +85,15 @@ if __name__ == "__main__":
     parser.add_argument("--arjun", default="./arjun --2qbfpre --verb 0 %i %o",
                         help="%%i and %%o are the input and output file; '' to skip")
     parser.add_argument("--bloqqer", default="../../bloqqer/bloqqer", help="'' to skip")
+    parser.add_argument("--chain", action="store_true", help="also bloqqer on arjun's output")
     parser.add_argument("--cadet", default="../../cadet/cadet", help="'' to skip")
     parser.add_argument("--rareqs", default="../../rareqs-1.1/rareqs", help="'' to skip")
     args = parser.parse_args()
 
     pres = [("none", None)]
     pres += [(n, c) for n, c in (("bloqqer", args.bloqqer), ("arjun", args.arjun)) if c]
+    if args.chain and args.arjun and args.bloqqer:
+        pres.append(("arjun+bloqqer", args.arjun))
     solvers = [(n, c) for n, c in (("cadet", args.cadet), ("rareqs", args.rareqs)) if c]
     tmpdir = tempfile.mkdtemp(prefix="bench_2qbfpre_")
 
