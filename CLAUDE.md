@@ -64,10 +64,14 @@ an X that has no Y. All of it is in `do_synthesis()` in `main.cpp`,
    off): a model of F settles every X that satisfies the universal parts of
    the clauses its Y leaves unsatisfied; repeat until all X are covered. Wins when its refinements are short (sortnetsort
    family), gives up quickly otherwise. The models of F it refines with
-   are the decide-false ones: that is what keeps them short. When it
+   are the decide-false ones, except that an existential that satisfies
+   more clauses when true is decided true: that is what keeps them short
+   (the counterexample heuristic of the AReQS paper). When it
    finishes, its models give the Skolem functions. `--synth` runs it too,
    skipping the X that have no Y instead of stopping at the first one. It
    runs twice: on the orig clauses, and again on the simplified CNF.
+   `--verb 1` prints a `[cover]` stats line (rounds, refinement size,
+   ticks and time per solver) at the end and every 1000 rounds.
 2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
    X that have a Y, so:
 3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)). It runs on the
@@ -82,6 +86,35 @@ lines. `tests/2qbf/*.qdimacs` are `lit` tests (ctest `test-2qbf`, or `lit .`
 in `build/tests/2qbf`): tiny files with their `RUN:` lines in comments.
 `scripts/bench_2qbf.py` compares against `../cadet/cadet`; benchmarks
 are in `~/media/2qbf/qbfeval16` (QBFEVAL'16 2QBF track).
+
+## 2QBF preprocessing (`--2qbfpre`)
+
+`arjun --2qbfpre in.qdimacs out.qdimacs` is a 2QBF preprocessor in the place
+of `../bloqqer`, with its conventions: the variable numbers are kept, a
+solved instance is written as `p cnf N 0` (true) or with the empty clause
+(false), and the exit code is then 10 or 20; otherwise it is 0. It is the
+`--2qbf` pipeline that stops early, in `do_synthesis()`:
+
+1. `cover()` on the orig clauses, at most `--coverticks` million CaDiCaL
+   ticks (20 here, no limit under `--2qbf`).
+2. Puura, exactly as for counting and synthesis: NEVER trim or budget it
+   for this mode. `get_2qbf_cls()` gives its clauses over the orig vars.
+3. `cover()` again if Puura changed a clause, then the `bve` cegr strategy
+   for `--prerepairs` repairs. If that finishes, `get_2qbf_cex()` gets
+   `--preconfl` conflicts to give the verdict.
+4. Whatever gave up: `write_qdimacs()` writes the clauses of step 2.
+
+`--prewitness f.aig` writes the functions it has at that point: the
+existentials gone from the output, over the variables left in it (check
+with `test-synth in.qdimacs f.aig`; `-u -q` if it was solved true).
+
+`fuzz_synth_2qbf.py` runs `--2qbfpre` on every 2QBF iteration, solves the
+output with `--2qbf` and compares the verdicts. `scripts/bench_2qbfpre.py`
+compares no preprocessing, bloqqer and arjun, each followed by
+`../cadet/cadet` and `../rareqs-1.1/rareqs` (built with
+`CFLAGS=-fpermissive`, minisat's `libr` first). More benchmarks:
+`~/media/2qbf/2010-comp`, `~/media/abdst-paper/robots2d`, and
+`~/media/qbflib/<family>/` (one directory per QBFLIB family, `.qdimacs.gz`).
 
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
 
