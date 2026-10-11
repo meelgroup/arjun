@@ -82,6 +82,7 @@ int debug_verilog = 0;
 int64_t pre_confl = 10000;
 double cover_budget = 50;
 double cover_ticks = 0;
+int cover_minim = 1;
 bool cover_done = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
@@ -181,6 +182,7 @@ void add_arjun_options() {
     myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
+    myopt("--coverminim", cover_minim, "Covering shortens each refinement with further SAT calls: a model of the same input whose existentials satisfy more clauses");
     myopt("--coverticks", cover_ticks, "Give up on covering after this many million ticks of SAT solver work. 0 = no limit");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthpuura", do_synth_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
@@ -510,7 +512,7 @@ bool has_univ(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>
 void try_cover(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const bool need_funs) {
     vector<CMSat::lbool> cex;
     auto ret = arjun->standalone_cover(cnf, cls, cover_budget, (uint64_t)(cover_ticks * 1e6), qbf2,
-            need_funs, cex);
+            need_funs, cover_minim, cex);
     if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
     if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
     // the functions are in place, and get written out by do_synth_2qbf()

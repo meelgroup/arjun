@@ -40,7 +40,8 @@ using std::map;
 
 lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
         const uint64_t max_ticks,
-        const bool stop_at_cex, const bool need_funs, vector<lbool>& cex, const uint32_t verb) {
+        const bool stop_at_cex, const bool need_funs, const bool minim, vector<lbool>& cex,
+        const uint32_t verb) {
     const double my_time = cpuTime();
     const auto& orig_sampl_vars = cnf.get_orig_sampl_vars();
     const auto& aig_mng = cnf.get_aig_mng();
@@ -97,6 +98,24 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         }
         mixed.emplace_back(exist, it->second);
     }
+    const uint32_t num_helpers = univ_to_helper.size();
+    auto hidx = [&](const Lit h) { return h.var() - orig_sampl_vars.size(); };
+
+    // selector of a helper, in f: the existentials satisfy all of its clauses
+    const uint32_t sel_at = f.nVars();
+    auto sel = [&](const uint32_t i) { return Lit(sel_at + i, false); };
+    if (minim) {
+        for (uint32_t i = 0; i < num_helpers; i++) f.new_var();
+        for (const auto& [exist, helper] : mixed) {
+            auto cl = exist;
+            cl.push_back(~sel(hidx(helper)));
+            f.add_clause(cl);
+        }
+    }
+    // a helper that a core kept out of the model sits out 1, 3, 7.. of its next tries
+    const uint32_t max_wait = 7;
+    vector<uint32_t> wait(num_helpers, 0), skip(num_helpers, 0);
+    vector<char> is_false(num_helpers), in_core(num_helpers);
 
     // a model that satisfies many existential parts makes a short refinement
     vector<int> pos_occ(f.nVars(), 0);
@@ -110,7 +129,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     vector<Lit> assumps, some_false;
     auto sq_frac = [](const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); };
     double cost = 0;
-    uint64_t rounds = 0, ref_lits = 0, cubes = 0;
+    uint64_t rounds = 0, ref_lits = 0, cubes = 0, cube_lits = 0, minim_calls = 0, minim_removed = 0;
     double abs_time = 0, f_time = 0, refine_time = 0, funs_time = 0;
     const double setup_time = cpuTime() - my_time;
     auto ticks = [&] { return abs.get_sum_ticks() + f.get_sum_ticks(); };
@@ -118,8 +137,10 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         if (!verb) return;
         const uint64_t refs = rounds - cubes;
         std::cout << "c o [cover] " << what << " rounds: " << rounds << " no-Y cubes: " << cubes
-            << " helpers: " << univ_to_helper.size() << std::fixed
+            << " helpers: " << num_helpers << std::fixed
             << " avg refinement: " << std::setprecision(1) << (refs ? (double)ref_lits / refs : 0)
+            << " avg cube: " << (cubes ? (double)cube_lits / cubes : 0)
+            << " minim calls: " << minim_calls << " removed: " << minim_removed
             << " cost: " << std::setprecision(2) << cost << " of " << budget
             << " ticks(M) abs: " << abs.get_sum_ticks() / 1e6 << " f: " << f.get_sum_ticks() / 1e6
             << " confl abs: " << abs.get_sum_conflicts() << " f: " << f.get_sum_conflicts()
@@ -143,7 +164,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         aig_lit covered = aig_mng.new_const(false);
         for (const auto& ref : ref_helpers) {
             aig_lit works = aig_mng.new_const(true);
-            for (const auto& h : ref) works = AIG::new_and(works, univ_true[h.var() - orig_sampl_vars.size()]);
+            for (const auto& h : ref) works = AIG::new_and(works, univ_true[hidx(h)]);
             first.push_back(AIG::new_and(works, ~covered));
             covered = AIG::new_or(covered, works);
         }
@@ -159,6 +180,53 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         }
         for (uint32_t v = 0; v < num_defs; v++)
             if (!orig_sampl_vars.count(v) && !cnf.defined(v)) cnf.set_def(v, aig_mng.new_const(false));
+    };
+    auto get_some_false = [&](const vector<lbool>& model) {
+        some_false.clear();
+        for (const auto& [exist, helper] : mixed) {
+            const bool sat = std::any_of(exist.begin(), exist.end(),
+                    [&](const Lit l) { return model[l.var()] == boolToLBool(!l.sign()); });
+            if (!sat) some_false.push_back(helper);
+        }
+        std::sort(some_false.begin(), some_false.end());
+        some_false.erase(std::unique(some_false.begin(), some_false.end()), some_false.end());
+    };
+    // A model for the X of assumps whose existentials satisfy what those of
+    // `model` do, and as many more helpers' clauses as the cores allow
+    auto minimize = [&](vector<lbool> model) {
+        const size_t num_x = assumps.size();
+        std::fill(is_false.begin(), is_false.end(), 0);
+        for (const auto& h : some_false) is_false[hidx(h)] = 1;
+        for (uint32_t i = 0; i < num_helpers; i++) if (!is_false[i]) assumps.push_back(sel(i));
+        const size_t base = assumps.size();
+        vector<uint32_t> cand, cand2;
+        for (const auto& h : some_false) {
+            if (skip[hidx(h)]) skip[hidx(h)]--;
+            else cand.push_back(hidx(h));
+        }
+        while (!cand.empty()) {
+            assumps.resize(base);
+            for (const auto& i : cand) assumps.push_back(sel(i));
+            minim_calls++;
+            if (f.solve(&assumps) == l_True) {
+                model = f.get_model();
+                for (const auto& i : cand) wait[i] = 0;
+                break;
+            }
+            const auto core = f.get_conflict();
+            for (const auto& l : core) if (l.var() >= sel_at) in_core[l.var() - sel_at] = 1;
+            cand2.clear();
+            for (const auto& i : cand) {
+                if (!in_core[i]) { cand2.push_back(i); continue; }
+                wait[i] = std::min(wait[i] * 2 + 1, max_wait);
+                skip[i] = wait[i];
+            }
+            for (const auto& l : core) if (l.var() >= sel_at) in_core[l.var() - sel_at] = 0;
+            assert(cand2.size() < cand.size());
+            std::swap(cand, cand2);
+        }
+        assumps.resize(num_x);
+        return model;
     };
     for (; cost < budget && (max_ticks == 0 || ticks() < max_ticks); rounds++) {
         if (rounds && rounds % 1000 == 0) stats("progress");
@@ -176,6 +244,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
             }
             // no X in this cube has a Y, so any function will do there
             auto cube = f.get_conflict();
+            cube_lits += cube.size();
             cost += sq_frac(cube.size(), orig_sampl_vars.size());
             abs.add_clause(cube);
             cubes++;
@@ -183,17 +252,17 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         }
 
         const double refine_start = cpuTime();
-        const auto& model = f.get_model();
-        some_false.clear();
-        for (const auto& [exist, helper] : mixed) {
-            const bool sat = std::any_of(exist.begin(), exist.end(),
-                    [&](const Lit l) { return model[l.var()] == boolToLBool(!l.sign()); });
-            if (!sat) some_false.push_back(helper);
+        auto model = f.get_model();
+        get_some_false(model);
+        if (minim && some_false.size() > 1) {
+            const size_t before = some_false.size();
+            model = minimize(model);
+            get_some_false(model);
+            assert(some_false.size() <= before);
+            minim_removed += before - some_false.size();
         }
-        std::sort(some_false.begin(), some_false.end());
-        some_false.erase(std::unique(some_false.begin(), some_false.end()), some_false.end());
         abs.add_clause(some_false);
-        cost += sq_frac(some_false.size(), univ_to_helper.size());
+        cost += sq_frac(some_false.size(), num_helpers);
         ref_lits += some_false.size();
 
         if (need_funs) {
