@@ -42,6 +42,7 @@
 #include "extend.h"
 #include "time_mem.h"
 #include "constants.h"
+#include "verilog.h"
 #include "autarky.h"
 #include "unate_def.h"
 #include "cegr.h"
@@ -1492,118 +1493,29 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         cerr << "ERROR: Cannot open file for writing: " << fname << endl;
         exit(EXIT_FAILURE);
     }
-
-    // Collect all unique AIG nodes in topological (post) order: children before parents
-    map<const AIG*, uint32_t> node_to_id;
-    vector<AIG*> topo_order;
-    uint32_t next_id = 0;
-
-    function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
-        if (!aig || node_to_id.count(aig.get())) return;
-        if (aig->type == AIGT::t_and) {
-            collect(aig->l);
-            collect(aig->r);
-        }
-        node_to_id[aig.get()] = next_id++;
-        topo_order.push_back(aig.get());
-    };
-    for (const auto& aig : defs) collect(aig);
-
-    // Collect output variables (defs[v] != nullptr)
-    vector<uint32_t> outputs;
-    for (uint32_t v = 0; v < defs.size(); v++) {
-        if (defs[v] == nullptr) continue;
-        if (orig_sampl_vars.count(v)) continue;
-        outputs.push_back(v);
-    }
-
-    // Fanout = uses by other AND nodes + output roots. Fanout-1 AND nodes are
-    // inlined into their sole user rather than emitted as a named wire.
-    map<const AIG*, uint32_t> fanout;
-    for (const auto* node : topo_order) {
-        if (node->type != AIGT::t_and) continue;
-        if (node->l) fanout[node->l.get()]++;
-        // Only count r separately when it's a distinct pointer; NOT/idem
-        // nodes have l == r and would otherwise inflate fanout to 2.
-        if (node->r && node->r.get() != node->l.get()) fanout[node->r.get()]++;
-    }
-    for (const auto& v : outputs) fanout[defs[v].get()]++;
-
-    // Inlined RHS (no outer parens); set of those that are a bare `a & b`
-    // compound and need parenthesizing when further composed.
-    map<const AIG*, string> inline_expr;
-    set<const AIG*> inline_compound;
-    // Render a signed edge (aig_lit): node gives the base expr, edge sign prepends
-    // '~' or flips the const. Leaves are unsigned, so their sign lives on the edge.
-    auto edge_expr_raw = [&](const aig_lit& e) -> string {
-        if (e->type == AIGT::t_const) return e.neg ? "1'b0" : "1'b1";
-        if (e->type == AIGT::t_lit)
-            return string(e.neg ? "~" : "") + "x" + std::to_string(e->var + 1);
-        auto it = inline_expr.find(e.get());
-        string base = (it != inline_expr.end()) ? it->second : "_n" + std::to_string(node_to_id[e.get()]);
-        if (!e.neg) return base;
-        // Wrap before negating if it was a compound inlined expression.
-        if (inline_compound.count(e.get())) base = "(" + base + ")";
-        return "~" + base;
-    };
-    // Same as edge_expr_raw but wraps an inlined compound `a & b` in parens so
-    // it can safely be composed further.
-    auto edge_expr_paren = [&](const aig_lit& e) -> string {
-        string s = edge_expr_raw(e);
-        // An edge-complement produces `~X` which is already tight; only wrap
-        // when we inlined a bare `a & b`.
-        if (!e.neg && inline_compound.count(e.get())) return "(" + s + ")";
-        return s;
-    };
-
-    // Module header
-    fout << "module aig_defs(\n";
-    bool first = true;
-    for (const auto& v : orig_sampl_vars) {
-        if (!first) fout << ",\n";
-        fout << "    input wire x" << (v + 1);
-        first = false;
-    }
-    for (const auto& v : outputs) {
-        if (!first) fout << ",\n";
-        fout << "    output wire x" << (v + 1);
-        first = false;
-    }
-    fout << "\n);\n";
-
-    // Build a node's RHS in unparenthesized form, and note whether it is a
-    // bare `a & b` (callers must parenthesize it if composing further).
-    auto build_rhs = [&](const AIG* node, bool& is_compound) -> string {
-        is_compound = false;
-        // Idempotent case AND(x, x): render as the child directly.
-        if (node->l == node->r) return edge_expr_raw(node->l);
-        const string l_str = edge_expr_paren(node->l);
-        const string r_str = edge_expr_paren(node->r);
-        is_compound = true;
-        return l_str + " & " + r_str;
-    };
-
-    for (const auto* node : topo_order) {
-        if (node->type != AIGT::t_and) continue;
-        bool is_compound = false;
-        string rhs = build_rhs(node, is_compound);
-        if (fanout[node] == 1) {
-            inline_expr[node] = rhs;
-            if (is_compound) inline_compound.insert(node);
-            continue;
-        }
-        const uint32_t id = node_to_id[node];
-        fout << "    wire _n" << id << ";\n";
-        fout << "    assign _n" << id << " = " << rhs << ";\n";
-    }
-
-    // Output assignments
-    for (const auto& v : outputs)
-        fout << "    assign x" << (v + 1) << " = " << edge_expr_raw(defs[v]) << ";\n";
-
-    fout << "endmodule\n";
+    write_verilog(fout, defs, orig_sampl_vars);
     fout.close();
     cout << "c o Wrote Verilog AIG: " << fname << endl;
+}
+
+// Only the functions and their inputs are in the file: there is no CNF
+DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_verilog(const string& fname) {
+    ifstream in(fname);
+    if (!in) {
+        cerr << "ERROR: Cannot open file for reading: " << fname << endl;
+        exit(EXIT_FAILURE);
+    }
+    *this = SimplifiedCNF(fg);
+    string err;
+    if (!read_verilog(in, defs, orig_sampl_vars, err)) {
+        cerr << "ERROR: " << fname << ": " << err << endl;
+        exit(EXIT_FAILURE);
+    }
+    need_aig = true;
+    orig_sampl_vars_set = true;
+    sampl_vars_set = true;
+    opt_sampl_vars_set = true;
+    cout << "c o Read Verilog AIG: " << fname << endl;
 }
 
 // Read AIG defs from file (opens file for you)

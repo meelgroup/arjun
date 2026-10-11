@@ -300,8 +300,9 @@ def run_synth(solver, fname):
             if ("assert" in line) or ("Assertion" in line):
                 print("Error line from solver %s: %s" % (solver, line))
                 return True, [], out
-        if line.startswith("c o Wrote AIG defs:"):
-            aigs.append(line[len("c o Wrote AIG defs:"):].strip())
+        for wrote in ("c o Wrote AIG defs:", "c o Wrote Verilog AIG:"):
+            if line.startswith(wrote):
+                aigs.append(line[len(wrote):].strip())
 
     return False, aigs, out
 
@@ -455,7 +456,7 @@ def gen_fuzz(seed) :
 def cleanup(fname, prefix):
     os.unlink(fname)
     directory = "."
-    for file_path in glob.glob(os.path.join(directory, f"{prefix}*.aig")):
+    for file_path in glob.glob(os.path.join(directory, f"{prefix}*.aig")) + glob.glob(f"{prefix}*.v"):
         if os.path.isfile(file_path):
             os.remove(file_path)
             print(f"Deleted: {os.path.basename(file_path)}")
@@ -575,6 +576,7 @@ if __name__ == "__main__":
         print(col("Using prefix ", YELLOW) + prefix + col(" for synthesis output files", YELLOW))
         solver = "./arjun --verb 2 --debugsynth %s " % prefix
         solver += "--2qbf " if qbf2 else "--synth "
+        solver += "--debugverilog %d " % random.randint(0, 1)
         # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
         solver += "--cover %s " % random.choice([0, 0, 0, 0.1, 1, 50])
 

@@ -1880,8 +1880,9 @@ public:
     // human-readable writing
     void write_aig_defs_to_file_txt(const std::string& fname) const;
 
-    // Verilog writing
+    // Verilog: only the functions over the orig sampl vars, no CNF
     void write_aig_def_to_verilog(const std::string& fname) const;
+    void read_aig_defs_from_verilog(const std::string& fname);
 
     [[nodiscard]] std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 

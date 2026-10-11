@@ -523,7 +523,7 @@ int main(int argc, char** argv) {
         .help("With -u: AIGs must be a Skolem function of the true 2QBF forall X exists Y. F");
 
     // Add positional argument for input file
-    program.add_argument("files").remaining().help("input AIG file");
+    program.add_argument("files").remaining().help("CNF file, then the AIG file (.aig, or .v for Verilog)");
 
     try {
         program.parse_args(argc, argv);
@@ -545,7 +545,7 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         if (files.size() != 2) {
-            cout << "ERROR: You MUST pass in an AIG and a CNF file" << endl;
+            cout << "ERROR: You MUST pass in a CNF and an AIG (.aig or .v) file" << endl;
             return EXIT_FAILURE;
         }
     } catch (std::logic_error& e) {
@@ -579,7 +579,8 @@ int main(int argc, char** argv) {
     // Read the AIG file
     SimplifiedCNF cnf(fg);
     if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
-    cnf.read_aig_defs_from_file(aig_fname);
+    if (aig_fname.ends_with(".v")) cnf.read_aig_defs_from_verilog(aig_fname);
+    else cnf.read_aig_defs_from_file(aig_fname);
     [[maybe_unused]] auto check = cnf.defs_invariant();
 
     if (verb) {

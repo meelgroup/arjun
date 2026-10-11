@@ -48,6 +48,7 @@ set(libfiles
     autarky.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
     cover.cpp
+    verilog.cpp
     cegr.cpp
     brute_force_synth.cpp
     aig_rewrite.cpp
