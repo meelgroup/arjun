@@ -347,7 +347,7 @@ def qbf2_pre_verdict(fname, seed):
     cmd += " --synthbve %d" % random.choice([0, 1, 1, 1])
     cmd += " --coverticks %s" % random.choice([0, 0.01, 20])
     cmd += " --prerepairs %d --preconfl %d" % (random.choice([0, 5, 400]), random.choice([0, 10, 10000]))
-    cmd += " --prebce %d" % random.choice([0, 1, 3])
+    cmd += " --prebce %d --2qbfpuurarounds %d" % (random.choice([0, 1, 1]), random.randint(1, 4))
     cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
     print(col("Running 2QBF preprocessing: ", CYAN) + cmd)
     # the witness is only good for an output with its blocked clauses still in

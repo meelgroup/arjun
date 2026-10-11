@@ -76,7 +76,8 @@ int qbf2pre = false;
 size_t qbf2_num_cls = 0;
 int pre_repairs = 400;
 string pre_witness;
-int pre_bce = 3;
+int pre_bce = 1;
+int qbf2_puura_rounds = 1;
 int64_t pre_confl = 10000;
 double cover_budget = 50;
 double cover_ticks = 0;
@@ -174,7 +175,8 @@ void add_arjun_options() {
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
     myflag("--2qbfpre", qbf2pre, "Preprocess the 2QBF instead of solving it: the output file gets an equivalent forall-exists QDIMACS over the same variables. If it gets solved on the way, the output is 'p cnf N 0' (true) or has an empty clause (false), and the exit code is 10 or 20, like bloqqer");
     myopt("--prewitness", pre_witness, "--2qbfpre: write the functions found so far to this .aig file. They define the existentials that are gone from the output file, over the variables that are left in it, so with Skolem functions for those they are Skolem functions for the input");
-    myopt("--prebce", pre_bce, "--2qbfpre: remove the clauses blocked on an existential literal, as bloqqer does, and simplify again, at most this many times: from the 2nd time on with BVE that may grow the CNF, kept only if what comes out is smaller. 0 = off. The Skolem functions of the output are then not ones of the input, so --prewitness turns it off too");
+    myopt("--prebce", pre_bce, "2QBF with no functions asked for: remove the clauses blocked on an existential literal after Puura, as bloqqer does. The Skolem functions of what is left are not ones of the input, so --prewitness turns it off too");
+    myopt("--2qbfpuurarounds", qbf2_puura_rounds, "2QBF with --prebce: how many times Puura runs, 1 to 4. Each further run is on the clauses left by the one before, less the blocked ones, and is kept only if it ends with fewer literals. The 2nd is like the 1st, the 3rd lets BVE grow the CNF (--iter1grow 16 --iter2grow 100), the 4th more so (100, 1000, and no resolvent size limit)");
     myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
@@ -591,7 +593,6 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
 
-        // without the blocked clauses there is more to simplify
         if (!bce || pre_bce == 0 || cnf.synth_done()) break;
         const auto removed = cnf.bce_2qbf(qbf2_cls);
         if (qbf2_cls.empty()) qbf2_result(cnf, true);
@@ -604,7 +605,7 @@ void do_synthesis() {
             qbf2_cls = prev_cls;
         }
         if (round == 0 && removed == 0) round++;
-        if (round >= pre_bce) break;
+        if (round >= qbf2_puura_rounds - 1) break;
     }
 
     auto write_witness = [&] {
@@ -876,6 +877,10 @@ int main(int argc, char** argv) {
         }
     }
     if (qbf2pre && !program.is_used("--coverticks")) cover_ticks = 20;
+    if (qbf2_puura_rounds < 1 || qbf2_puura_rounds > 4) {
+        cout << "ERROR: --2qbfpuurarounds must be between 1 and 4" << endl;
+        exit(EXIT_FAILURE);
+    }
     if (synthesis || qbf2) {
         do_synthesis();
     } else {

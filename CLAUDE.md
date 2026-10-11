@@ -101,12 +101,14 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
    for this mode. `get_2qbf_cls()` gives its clauses over the orig vars,
    and `cover()` runs on them if Puura changed a clause.
 3. `bce_2qbf()` removes the clauses blocked on an existential literal
-   (bloqqer's QBCE). That keeps the truth and the X with no Y, but not the
-   solution count, so it cannot be a Puura step: what is left becomes a new
-   problem (`cnf_of_2qbf_cls()`) and step 2 runs on it again, `--prebce`
-   times (3). `--2qbf` does this step too when no functions are asked for. The 2nd and 3rd of those let BVE grow the CNF (bloqqer's
-   variable elimination), and are dropped unless they end up with fewer
-   literals.
+   (bloqqer's QBCE; `--prebce 0` turns it off). That keeps the truth and
+   the X with no Y, but not the solution count, so it cannot be a Puura
+   step. `--2qbf` does this too when no functions are asked for.
+   Puura runs ONCE by default. `--2qbfpuurarounds N` (up to 4) runs it
+   again on what step 3 left, as a new problem (`cnf_of_2qbf_cls()`): the
+   2nd run as the 1st, the 3rd and 4th with BVE that may grow the CNF
+   (bloqqer's variable elimination). A further run is dropped unless it
+   ends up with fewer literals.
 4. The `bve` cegr strategy for `--prerepairs` repairs. If that finishes,
    `get_2qbf_cex()` gets `--preconfl` conflicts to give the verdict.
 5. Whatever gave up: `write_qdimacs()` writes the clauses of step 3.
@@ -114,7 +116,9 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
 What to lift from bloqqer next is found by running it on arjun's output
 with one technique off at a time (`--no-bce`, `--no-ve`, `--no-exp`, ...)
 and seeing which one the downstream solver cannot do without. Both parts
-of step 3 came from that.
+of step 3 came from that. With `--2qbfpuurarounds 4`, 6 more of a 64-file
+sample were solved by preprocessing alone, for 2-3x the preprocessing time
+on the files it did not help.
 
 `--prewitness f.aig` writes the functions it has at that point: the
 existentials gone from the output, over the variables left in it (check
