@@ -98,6 +98,11 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         mixed.emplace_back(exist, it->second);
     }
 
+    // a model that satisfies many existential parts makes a short refinement
+    vector<int> pos_occ(f.nVars(), 0);
+    for (const auto& [exist, helper] : mixed) for (const auto& l : exist) pos_occ[l.var()] += l.sign() ? -1 : 1;
+    for (const auto& v : ys) f.set_phase(Lit(to_f[v], pos_occ[to_f[v]] <= 0));
+
     // Skolem functions: y takes its value from the first model that works for X
     vector<aig_lit> funs(num_defs, aig_mng.new_const(false));
     aig_lit covered = aig_mng.new_const(false);

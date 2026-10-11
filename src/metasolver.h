@@ -86,6 +86,10 @@ public:
         cadical->set("phase", phase);
     }
 
+    void set_phase(const CMSat::Lit l) {
+        if (solver_type == SolverType::cadical) cadical->phase(lit_to_cadical(l));
+    }
+
     // Variable management
     void new_var() {
         if (solver_type == SolverType::cms) cms->new_var();
