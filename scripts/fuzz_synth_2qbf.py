@@ -362,6 +362,11 @@ def qbf2_pre_verdict(fname, seed):
             run_check(("./test-synth -u -q -v -s %d %s %s" % (seed, fname, witness)).split(), True, seed)
         os.unlink(witness)
     _, _, code = run(["./arjun", "--2qbf", "--verb", "0", pre_fname])
+    # with no functions asked for, --2qbf removes blocked clauses too
+    _, _, direct_code = run(["./arjun", "--2qbf", "--verb", "0", fname])
+    if direct_code != code:
+        print("ERROR: --2qbf exited with %s, on the --2qbfpre output with %s" % (direct_code, code))
+        return None
     os.unlink(pre_fname)
     if pre_code not in (0, 10, 20) or code not in (10, 20) or pre_code not in (0, code):
         print("ERROR: --2qbfpre exited with %s, --2qbf on its output with %s" % (pre_code, code))

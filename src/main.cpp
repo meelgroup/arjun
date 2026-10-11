@@ -549,7 +549,7 @@ void do_synthesis() {
     };
 
     auto qbf2_cls = cnf.get_orig_clauses();
-    const bool bce = qbf2pre && pre_witness.empty();
+    const bool bce = qbf2 && !need_funs;
     auto num_lits = [](const vector<vector<CMSat::Lit>>& cls) {
         size_t ret = 0;
         for(const auto& cl: cls) ret += cl.size();
@@ -564,8 +564,11 @@ void do_synthesis() {
             round_conf.bve_grow_iter2_large = -1;
         }
         if (round >= 3) round_conf.bve_too_large_resolvent = round_conf.bve_too_large_resolvent2 = -1;
-        const auto before = qbf2_cls;
-        cnf = arjun->standalone_get_simplified_cnf(cnf, round_conf);
+        ArjunNS::SimplifiedCNF prev_cnf(fg);
+        if (round > 0) prev_cnf = cnf;
+        const auto prev_cls = qbf2_cls;
+        cnf = arjun->standalone_get_simplified_cnf(
+                round == 0 ? cnf : cnf_of_2qbf_cls(cnf, qbf2_cls), round_conf);
         if (cnf.get_2qbf_cls(qbf2_cls)) {
             verb_print(1, "[arjun] the simplified CNF stands in for the orig one");
             if (qbf2) check_2qbf_univ_clause(cnf, qbf2_cls);
@@ -592,12 +595,14 @@ void do_synthesis() {
         if (!bce || pre_bce == 0 || cnf.synth_done()) break;
         const auto removed = cnf.bce_2qbf(qbf2_cls);
         if (qbf2_cls.empty()) qbf2_result(cnf, true);
-        const bool smaller = round == 0 || num_lits(qbf2_cls) < num_lits(before);
+        const bool smaller = round == 0 || num_lits(qbf2_cls) < num_lits(prev_cls);
         verb_print(1, "[2qbf-pre] round: " << round << " blocked cls removed: " << removed
                 << " cls: " << qbf2_cls.size() << " lits: " << num_lits(qbf2_cls)
                 << (smaller ? "" : " -- not smaller, dropped") << " T: " << (cpuTime() - start_time));
-        if (!smaller) qbf2_cls = before;
-        cnf = cnf_of_2qbf_cls(cnf, qbf2_cls);
+        if (!smaller) {
+            cnf = prev_cnf;
+            qbf2_cls = prev_cls;
+        }
         if (round == 0 && removed == 0) round++;
         if (round >= pre_bce) break;
     }

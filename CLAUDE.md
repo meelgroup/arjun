@@ -104,7 +104,7 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
    (bloqqer's QBCE). That keeps the truth and the X with no Y, but not the
    solution count, so it cannot be a Puura step: what is left becomes a new
    problem (`cnf_of_2qbf_cls()`) and step 2 runs on it again, `--prebce`
-   times (3). The 2nd and 3rd of those let BVE grow the CNF (bloqqer's
+   times (3). `--2qbf` does this step too when no functions are asked for. The 2nd and 3rd of those let BVE grow the CNF (bloqqer's
    variable elimination), and are dropped unless they end up with fewer
    literals.
 4. The `bve` cegr strategy for `--prerepairs` repairs. If that finishes,
