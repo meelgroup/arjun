@@ -631,7 +631,7 @@ void do_synth_2qbf() {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
     }
-    const bool need_funs = !qbf2 || (!qbf2pre && !output_file.empty()) || !pre_witness.empty();
+    const bool need_funs = !qbf2 || !pre_witness.empty() || (!qbf2pre && !output_file.empty()) ;
     if (!need_funs && !conf.debug_synth.empty()) {
         cout << "ERROR: --debugsynth needs the functions to be kept: give "
             << (qbf2pre ? "--prewitness" : "an output file for them") << endl;
