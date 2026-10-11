@@ -74,6 +74,7 @@ int synthesis = false;
 int qbf2 = false;
 int qbf2pre = false;
 int pre_repairs = 400;
+string pre_witness;
 int64_t pre_confl = 10000;
 double cover_budget = 50;
 double cover_ticks = 0;
@@ -170,6 +171,7 @@ void add_arjun_options() {
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
     myflag("--2qbfpre", qbf2pre, "Preprocess the 2QBF instead of solving it: the output file gets an equivalent forall-exists QDIMACS over the same variables. If it gets solved on the way, the output is 'p cnf N 0' (true) or has an empty clause (false), and the exit code is 10 or 20, like bloqqer");
+    myopt("--prewitness", pre_witness, "--2qbfpre: write the functions found so far to this .aig file. They define the existentials that are gone from the output file, over the variables that are left in it, so with Skolem functions for those they are Skolem functions for the input");
     myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
@@ -510,7 +512,8 @@ void do_synthesis() {
         if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
         // the functions are in place, and get written out below
         cover_done = ret == CMSat::l_True;
-        const bool need_funs = !qbf2 || (!qbf2pre && !output_file.empty()) || !conf.debug_synth.empty();
+        const bool need_funs = !qbf2 || (!qbf2pre && !output_file.empty()) || !conf.debug_synth.empty()
+            || !pre_witness.empty();
         if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
     };
     try_cover(cnf.get_orig_clauses());
@@ -541,7 +544,11 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
     }
 
+    auto write_witness = [&] {
+        if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
+    };
     auto write_2qbfpre = [&] {
+        write_witness();
         cnf.write_qdimacs(output_file, qbf2_cls);
         cout << "c o [arjun] dumped preprocessed 2QBF to '" << output_file << "'" << endl;
     };
@@ -622,7 +629,10 @@ void do_synthesis() {
         cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
-    if (qbf2 && cover_done) qbf2_result(cnf, true);
+    if (qbf2 && cover_done) {
+        write_witness();
+        qbf2_result(cnf, true);
+    }
     if (qbf2) {
         bool gave_up = false;
         auto cex = cnf.get_2qbf_cex(qbf2_cls, qbf2pre ? pre_confl : -1, &gave_up);
@@ -632,6 +642,7 @@ void do_synthesis() {
             cex = cnf.get_2qbf_cex(cnf.get_orig_clauses());
         }
         SLOW_DEBUG_DO(assert(cex.empty() == cnf.get_2qbf_cex(cnf.get_orig_clauses()).empty()));
+        if (cex.empty()) write_witness();
         qbf2_result(cnf, cex.empty(), cex);
     }
 }

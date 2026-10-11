@@ -114,7 +114,7 @@ if __name__ == "__main__":
                 line += "MISMATCH "
             print(line + os.path.basename(fname))
             sys.stdout.flush()
-    os.rmdir(tmpdir)
+    shutil.rmtree(tmpdir)
 
     for pre, _ in pres:
         print("%-8s solved alone: %4d  pre T: %8.1f" % (pre, by_pre[pre], pre_time[pre]))

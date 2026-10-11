@@ -1,0 +1,9 @@
+c the functions --2qbfpre has when it stops: here they are total Skolem functions
+c RUN: %arjun --2qbfpre --prewitness %t.aig %s %t.out > %t.log; test $? -eq 10
+c RUN: %test_synth -u -q %s %t.aig | grep -q "verified CORRECT"
+p cnf 5 3
+a 2 4 0
+e 3 5 0
+2 -3 5 0
+-2 3 0
+4 -5 0
