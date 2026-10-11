@@ -561,7 +561,7 @@ void puura_round(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls, c
 void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls,
         const bool need_funs) {
     const bool bce = qbf2 && !need_funs && pre_bce;
-    for (int round = 0; !cnf.synth_done(); round++) {
+    for (int round = 0;; round++) {
         ArjunNS::SimplifiedCNF prev_cnf(fg);
         if (round > 0) prev_cnf = cnf;
         const auto prev_cls = cls;
@@ -635,14 +635,12 @@ void do_synth_2qbf() {
             << (qbf2pre ? "--prewitness" : "an output file for them") << endl;
         exit(EXIT_FAILURE);
     }
+    if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
     try_cover(cnf, cnf.get_orig_clauses(), need_funs);
-    if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
-    if (conf.verb)
-        cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2 && !need_funs;
-    if (do_synth_puura) {
+    if (do_synth_puura && !cnf.synth_done()) {
         const auto before = qbf2_cls;
         simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
         // BVE can make the refinements much shorter
