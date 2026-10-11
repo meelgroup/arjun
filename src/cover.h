@@ -29,12 +29,14 @@
 
 namespace ArjunInt {
 
-// Counterexample-guided expansion on `cls`, over ORIG vars. l_True: the
+// Covers the X space with models of `cls`, over ORIG vars: a model settles
+// every X that satisfies the universal parts of the clauses its Y leaves
+// unsatisfied. This is the CEGAR of the 2QBF literature. l_True: the
 // vars with no def yet got their Skolem functions, l_Undef: gave up. An X
 // with no Y is returned in `cex` with l_False if stop_at_cex, else its
 // cube is skipped. A refinement naming fraction f of the helpers costs
 // f^2 of the budget: next to nothing while it converges.
-CMSat::lbool cegar(ArjunNS::SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
+CMSat::lbool cover(ArjunNS::SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
         const double budget, const bool stop_at_cex, std::vector<CMSat::lbool>& cex);
 
 }

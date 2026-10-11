@@ -23,7 +23,7 @@
  */
 
 
-#include "cegar.h"
+#include "cover.h"
 #include "metasolver.h"
 #include <algorithm>
 #include <limits>
@@ -35,7 +35,7 @@ using namespace CMSat;
 using std::vector;
 using std::map;
 
-lbool ArjunInt::cegar(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
+lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
         const bool stop_at_cex, vector<lbool>& cex) {
     const auto& orig_sampl_vars = cnf.get_orig_sampl_vars();
     const auto& aig_mng = cnf.get_aig_mng();

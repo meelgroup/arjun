@@ -72,8 +72,8 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 
 int synthesis = false;
 int qbf2 = false;
-double cegar_budget = 50;
-bool cegar_done = false;
+double cover_budget = 50;
+bool cover_done = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
 int do_backward = true;
@@ -165,7 +165,7 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
-    myopt("--cegar", cegar_budget, "Before synthesis, try counterexample-guided expansion. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
+    myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
@@ -494,17 +494,17 @@ void do_synthesis() {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
     }
-    auto try_cegar = [&](const vector<vector<CMSat::Lit>>& cls) {
+    auto try_cover = [&](const vector<vector<CMSat::Lit>>& cls) {
         vector<CMSat::lbool> cex;
-        auto ret = arjun->standalone_cegar(cnf, cls, cegar_budget, qbf2, cex);
+        auto ret = arjun->standalone_cover(cnf, cls, cover_budget, qbf2, cex);
         if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
-        if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by CEGAR");
+        if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
         // the functions are in place, and get written out below
-        cegar_done = ret == CMSat::l_True;
+        cover_done = ret == CMSat::l_True;
         const bool need_funs = !qbf2 || !output_file.empty() || !conf.debug_synth.empty();
-        if (ret == CMSat::l_False || (cegar_done && !need_funs)) qbf2_result(cnf, cegar_done, cex);
+        if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
     };
-    try_cegar(cnf.get_orig_clauses());
+    try_cover(cnf.get_orig_clauses());
     if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
@@ -526,7 +526,7 @@ void do_synthesis() {
             verb_print(1, "[arjun] the simplified CNF stands in for the orig one");
             if (qbf2) check_2qbf_univ_clause(cnf, qbf2_cls);
             // BVE can make the refinements much shorter
-            if (!cnf.synth_done()) try_cegar(qbf2_cls);
+            if (!cnf.synth_done()) try_cover(qbf2_cls);
         }
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
@@ -558,8 +558,8 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("unate_def"));
     }
 
-    // the rewriter takes minutes on CEGAR's long ITE chains, and grows them
-    const bool rewrite = !cegar_done || cnf.num_def_nodes() < 10000;
+    // the rewriter takes minutes on the long ITE chains of covering, and grows them
+    const bool rewrite = !cover_done || cnf.num_def_nodes() < 10000;
     if (rewrite) cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force: enumerate consistent X assignments, build per-y
@@ -599,7 +599,7 @@ void do_synthesis() {
         cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
-    if (qbf2 && cegar_done) qbf2_result(cnf, true);
+    if (qbf2 && cover_done) qbf2_result(cnf, true);
     if (qbf2) {
         auto cex = cnf.get_2qbf_cex(qbf2_cls);
         if (!cex.empty() && !cnf.is_2qbf_cex(cex)) {

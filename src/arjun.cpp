@@ -33,7 +33,7 @@
 #include "arjun.h"
 #include "config.h"
 #include "backward.h"
-#include "cegar.h"
+#include "cover.h"
 #include "minimize.h"
 #include "GitSHA1.h"
 #include "puura.h"
@@ -134,9 +134,9 @@ DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF&
     return common.run_minimize_info(cnf, all_indep);
 }
 
-DLL_PUBLIC lbool Arjun::standalone_cegar(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls,
+DLL_PUBLIC lbool Arjun::standalone_cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls,
         const double budget, const bool stop_at_cex, vector<lbool>& cex) {
-    return cegar(cnf, cls, budget, stop_at_cex, cex);
+    return cover(cnf, cls, budget, stop_at_cex, cex);
 }
 
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {

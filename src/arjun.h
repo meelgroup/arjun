@@ -2143,8 +2143,8 @@ public:
     SimplifiedCNF standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& cegr_conf);
     SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
-    // Counterexample-guided expansion, see cegar.h
-    CMSat::lbool standalone_cegar(SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
+    // Model covering, see cover.h
+    CMSat::lbool standalone_cover(SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
             const double budget, const bool stop_at_cex, std::vector<CMSat::lbool>& cex);
 
     //Set config

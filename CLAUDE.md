@@ -58,10 +58,11 @@ short. Pick them from existing cluster results instead of guessing:
 `arjun --2qbf file.qdimacs` decides forall X exists Y. F, with X the `a`
 block (or `c p show`). Exit code 10 = true, 20 = false plus `V` lines giving
 an X that has no Y. All of it is in `do_synthesis()` in `main.cpp`,
-`cegar.{h,cpp}` and the `*2qbf*` methods of `SimplifiedCNF`:
+`cover.{h,cpp}` and the `*2qbf*` methods of `SimplifiedCNF`:
 
-1. `cegar()` — budgeted counterexample-guided expansion on the orig CNF
-   (`--cegar`, 0 = off). Wins when its refinements are short (sortnetsort
+1. `cover()` — budgeted model covering on the orig CNF (`--cover`, 0 =
+   off): a model of F settles every X that satisfies the universal parts of
+   the clauses its Y leaves unsatisfied; repeat until all X are covered. Wins when its refinements are short (sortnetsort
    family), gives up quickly otherwise. The models of F it refines with
    are the decide-false ones: that is what keeps them short. When it
    finishes, its models give the Skolem functions. `--synth` runs it too,
@@ -123,8 +124,7 @@ All must pass before reporting a change as complete.
   non-deterministic across runs).
 - `cegr.{h,cpp}`, `cegr_learn.{h,cpp}` — counterexample-guided
   synthesis / repair loop. Hot path for large benchmarks.
-- `cegar.{h,cpp}` — counterexample-guided expansion (see "2QBF"). Not to be
-  confused with cegr.
+- `cover.{h,cpp}` — model covering (see "2QBF").
 - `aig_rewrite.{h,cpp}` — structural hashing, CSE, absorption, ITE
   flattening. Runs before cegr and between repair rounds.
 - `interpolant.{h,cpp}` — definition extraction by Craig interpolation

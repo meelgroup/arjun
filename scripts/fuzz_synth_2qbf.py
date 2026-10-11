@@ -539,8 +539,8 @@ if __name__ == "__main__":
         print(col("Using prefix ", YELLOW) + prefix + col(" for synthesis output files", YELLOW))
         solver = "./arjun --verb 2 --debugsynth %s " % prefix
         solver += "--2qbf " if qbf2 else "--synth "
-        # CEGAR solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
-        solver += "--cegar %s " % random.choice([0, 0, 0, 0.1, 1, 50])
+        # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
+        solver += "--cover %s " % random.choice([0, 0, 0, 0.1, 1, 50])
 
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)

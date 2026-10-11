@@ -1,6 +1,6 @@
 c rejected: exists-forall
-c RUN: %arjun --2qbf --cegar 0 %s > %t.log; test $? -eq 1
-c RUN: %arjun --2qbf --cegar 50 %s > %t.log; test $? -eq 1
+c RUN: %arjun --2qbf --cover 0 %s > %t.log; test $? -eq 1
+c RUN: %arjun --2qbf --cover 50 %s > %t.log; test $? -eq 1
 p cnf 2 1
 e 1 0
 a 2 0

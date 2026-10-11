@@ -153,6 +153,6 @@ skolem functions:
   ./arjun --2qbf input.qdimacs skolem.aig
   ```
 
-  Both `--synth` and `--2qbf` first try a cheap counterexample-guided
-  expansion, which gives up by itself when it is not converging. Its budget
-  is `--cegar` (a work measure, not a time limit); `--cegar 0` turns it off.
+  Both `--synth` and `--2qbf` first try to cover all inputs with a few
+  models of the CNF, which gives up by itself when it is not converging. Its
+  budget is `--cover` (a work measure, not a time limit); `--cover 0` turns it off.
