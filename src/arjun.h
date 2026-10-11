@@ -1519,6 +1519,8 @@ public:
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
         n_no_touch = other.n_no_touch;
+        quant_prefix = other.quant_prefix;
+        quant_vars = other.quant_vars;
         if (!other.need_aig) {
             for(const auto& d: other.defs)
                 assert(d == nullptr);
@@ -1558,6 +1560,14 @@ public:
     // ORIG vars 0..n_no_touch-1 must end up as CNF vars 0..n_no_touch-1
     void set_no_touch_vars(const std::vector<uint32_t>& vars);
     [[nodiscard]] uint32_t get_num_no_touch() const { return n_no_touch; }
+
+    // QDIMACS 'a'/'e' blocks, in file order. Called by the DIMACS parser
+    void add_quant_block(bool forall, const std::vector<uint32_t>& vars) {
+        quant_prefix += forall ? 'a' : 'e';
+        quant_vars.insert(vars.begin(), vars.end());
+    }
+    [[nodiscard]] const auto& get_quant_prefix() const { return quant_prefix; }
+    [[nodiscard]] const auto& get_quant_vars() const { return quant_vars; }
     // no-touch set in CNF numbering
     [[nodiscard]] std::set<uint32_t> get_no_touch_cur() const {
         std::set<uint32_t> ret;
@@ -1997,6 +2007,8 @@ private:
     std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
                                                     // does NOT map to vars NOT in the CNF
     uint32_t n_no_touch = 0;
+    std::string quant_prefix;
+    std::set<uint32_t> quant_vars;
     AIGManager aig_mng; // only for const true/false
     std::vector<aig_lit> defs; //Definition of variables in terms of AIG. ORIGINAL number space.
                                //Size is the original number of variables, ALWAYS

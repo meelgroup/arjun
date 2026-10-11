@@ -415,42 +415,14 @@ void set_config(ArjunNS::Arjun* arj) {
 }
 
 void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
-    if (input_file == "-") {
-        cout << "ERROR: --2qbf reads the file twice, so it cannot read from stdin" << endl;
-        exit(EXIT_FAILURE);
-    }
-    #ifndef USE_ZLIB
-    FILE* in = fopen(input_file.c_str(), "rb");
-    CMSat::StreamBuffer<FILE*, CMSat::FN> buf(in);
-    #else
-    gzFile in = gzopen(input_file.c_str(), "rb");
-    CMSat::StreamBuffer<gzFile, CMSat::GZ> buf(in);
-    #endif
-    string prefix;
-    vector<char> bound(cnf.nVars(), 0);
-    for(;;) {
-        buf.skipWhitespace();
-        const char c = *buf;
-        if (c == 'c' || c == 'p' || c == '\n') { buf.skipLine(); continue; }
-        if (c != 'a' && c != 'e') break;
-        prefix += c;
-        ++buf;
-        for(int32_t v; buf.parseInt(v, 0) && v != 0;) if ((uint32_t)v <= cnf.nVars()) bound[v-1] = 1;
-        buf.skipLine();
-    }
-    #ifndef USE_ZLIB
-    fclose(in);
-    #else
-    gzclose(in);
-    #endif
-
+    const string& prefix = cnf.get_quant_prefix();
     if (prefix != "" && prefix != "a" && prefix != "e" && prefix != "ae") {
         cout << "ERROR: --2qbf needs a forall-exists quantifier prefix, but the "
             "blocks in the file are: " << prefix << endl;
         exit(EXIT_FAILURE);
     }
     if (prefix.empty()) return;
-    for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl) if (!bound[l.var()]) {
+    for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl) if (!cnf.get_quant_vars().count(l.var())) {
         cout << "ERROR: variable " << l.var()+1 << " is free, i.e. existential "
             "BEFORE the universals, so this is not a forall-exists 2QBF" << endl;
         exit(EXIT_FAILURE);
