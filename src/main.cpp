@@ -538,7 +538,13 @@ void do_synthesis() {
             verb_print(1, "[arjun] the simplified CNF stands in for the orig one");
             if (qbf2) check_2qbf_univ_clause(cnf, qbf2_cls);
             // BVE can make the refinements much shorter
-            if (!cnf.synth_done()) try_cover(qbf2_cls);
+            auto sorted = [](vector<vector<CMSat::Lit>> cls) {
+                for(auto& cl: cls) std::sort(cl.begin(), cl.end());
+                std::sort(cls.begin(), cls.end());
+                return cls;
+            };
+            const bool changed = sorted(qbf2_cls) != sorted(cnf.get_orig_clauses());
+            if (!cnf.synth_done() && changed) try_cover(qbf2_cls);
         } else verb_print(1, "[arjun] the simplified CNF cannot stand in for the orig one");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
