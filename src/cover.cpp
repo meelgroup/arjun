@@ -405,6 +405,22 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
             cost += sq_frac(cube.size(), num_univ);
             abs.add_clause(cube);
             cubes++;
+            if (cubes == 1) {
+                // From here on abs only picks an X that has a Y: cubes say
+                // little, the files that have them need 100k+ of them
+                vector<uint32_t> to_abs(num_defs, none);
+                for (const auto& v : outer) to_abs[v] = to_f[v];
+                for (const auto& v : ys) {
+                    to_abs[v] = abs.nVars();
+                    abs.new_var();
+                }
+                vector<Lit> cl2;
+                for (const auto& cl : cls) {
+                    cl2.clear();
+                    for (const auto& l : cl) cl2.emplace_back(to_abs[l.var()], l.sign());
+                    abs.add_clause(cl2);
+                }
+            }
             continue;
         }
 
