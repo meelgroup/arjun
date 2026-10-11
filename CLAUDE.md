@@ -98,15 +98,28 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
 1. `cover()` on the orig clauses, at most `--coverticks` million CaDiCaL
    ticks (20 here, no limit under `--2qbf`).
 2. Puura, exactly as for counting and synthesis: NEVER trim or budget it
-   for this mode. `get_2qbf_cls()` gives its clauses over the orig vars.
-3. `cover()` again if Puura changed a clause, then the `bve` cegr strategy
-   for `--prerepairs` repairs. If that finishes, `get_2qbf_cex()` gets
-   `--preconfl` conflicts to give the verdict.
-4. Whatever gave up: `write_qdimacs()` writes the clauses of step 2.
+   for this mode. `get_2qbf_cls()` gives its clauses over the orig vars,
+   and `cover()` runs on them if Puura changed a clause.
+3. `bce_2qbf()` removes the clauses blocked on an existential literal
+   (bloqqer's QBCE). That keeps the truth and the X with no Y, but not the
+   solution count, so it cannot be a Puura step: what is left becomes a new
+   problem (`cnf_of_2qbf_cls()`) and step 2 runs on it again, `--prebce`
+   times (3). The 2nd and 3rd of those let BVE grow the CNF (bloqqer's
+   variable elimination), and are dropped unless they end up with fewer
+   literals.
+4. The `bve` cegr strategy for `--prerepairs` repairs. If that finishes,
+   `get_2qbf_cex()` gets `--preconfl` conflicts to give the verdict.
+5. Whatever gave up: `write_qdimacs()` writes the clauses of step 3.
+
+What to lift from bloqqer next is found by running it on arjun's output
+with one technique off at a time (`--no-bce`, `--no-ve`, `--no-exp`, ...)
+and seeing which one the downstream solver cannot do without. Both parts
+of step 3 came from that.
 
 `--prewitness f.aig` writes the functions it has at that point: the
 existentials gone from the output, over the variables left in it (check
-with `test-synth in.qdimacs f.aig`; `-u -q` if it was solved true).
+with `test-synth in.qdimacs f.aig`; `-u -q` if it was solved true). It
+switches step 3 off: blocked clause elimination does not keep them.
 
 `fuzz_synth_2qbf.py` runs `--2qbfpre` on every 2QBF iteration, solves the
 output with `--2qbf` and compares the verdicts. `scripts/bench_2qbfpre.py`
