@@ -85,11 +85,14 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
      vars with no def, see `cover.h`.
    When it finishes, its models give the Skolem functions. `--synth` skips
    the X that have no Y instead of stopping at the first one. It runs on
-   the orig clauses, there only while the refinements are short
-   (`--coverorig`: that is where an X with no Y is found, so `--2qbf`
-   puts no tick limit on this run), then on the
-   simplified CNF, and again after extend/backward/unate if they defined
-   something: that last run takes a handful of rounds when it works. NEVER build AIGs per round in it: the functions are made once,
+   the simplified CNF, and again after extend/backward/unate if they
+   defined something (`--coverstages`, a sum, 1 and 2). That last run
+   takes a handful of rounds when it works, so it has its own, lower limit
+   (`--coverlateticks`, 100): a failing one is slow. Only `--2qbf` and
+   `--2qbfpre` also run it on the orig clauses first, while the refinements
+   are short: that is where an X with no Y is found, so `--2qbf` puts no
+   tick limit on that run. NEVER add that run to `--synth`: all it covered
+   there is covered after Puura too, and it cost 7 s per file. NEVER build AIGs per round in it: the functions are made once,
    at the end, from the stored models.
    `--verb 1` prints a `[cover]` stats line (rounds, refinement size,
    ticks and time per solver) at the end and every 1000 rounds.

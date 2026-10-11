@@ -582,7 +582,7 @@ if __name__ == "__main__":
         # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
         solver += "--cover %s " % random.choice([0, 0, 0, 0.1, 1, 50])
         solver += "--coverminim %d " % random.randint(0, 7)
-        solver += "--coverorig %s " % random.choice([0, 50])
+        solver += "--coverstages %d --coverlateticks %s " % (random.randint(0, 3), random.choice([0, 0.01, 100]))
 
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)

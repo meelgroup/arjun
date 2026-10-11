@@ -82,9 +82,9 @@ int debug_verilog = 0;
 int64_t pre_confl = 10000;
 double cover_budget = 100000;
 double cover_ticks = 500;
-double cover_orig_budget = 50;
+double cover_late_ticks = 100;
 int cover_minim = 1;
-int cover_stages = 7;
+int cover_stages = 3;
 bool cover_done = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
@@ -184,8 +184,8 @@ void add_arjun_options() {
     myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
-    myopt("--coverstages", cover_stages, "Which covering runs there are, a sum: 1 = on the original clauses, 2 = after simplification, 4 = after the definition passes");
-    myopt("--coverorig", cover_orig_budget, "Budget of the covering run on the original clauses, before simplification. As for --cover, and no more than it");
+    myopt("--coverstages", cover_stages, "Which covering runs there are, a sum: 1 = after simplification, 2 = after the definition passes");
+    myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
     myopt("--coverminim", cover_minim, "How covering shortens a refinement, a sum: 1 = SAT calls for a model of the same input whose existentials satisfy more clauses, 2 = flipping existentials no clause needs, 4 = dropping what another part of it implies");
     myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
@@ -641,17 +641,17 @@ void do_synth_2qbf() {
         exit(EXIT_FAILURE);
     }
     if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
-    // Before Puura only while the refinements are short: an X with no Y is
-    // then found here, and otherwise there are far fewer rounds after it.
+    // Before Puura only for 2QBF, while the refinements are short: an X with
+    // no Y is found here. Synthesis covers the same files after Puura.
     // No tick limit for --2qbf: finding that X can take long (sortnetsort10)
     const bool only_verdict = qbf2 && !qbf2pre && !program.is_used("--coverticks");
-    if (cover_stages & 1) try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_budget, cover_orig_budget),
+    if (qbf2) try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_budget, 50.0),
             only_verdict ? 0 : cover_ticks);
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2 && !need_funs;
     if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
-    if ((cover_stages & 2) && !cnf.synth_done()) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_ticks);
+    if ((cover_stages & 1) && !cnf.synth_done()) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_ticks);
 
     auto write_2qbfpre = [&] {
         if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
@@ -700,7 +700,7 @@ void do_synth_2qbf() {
     }
 
     // covering follows the functions found since its last run
-    if ((cover_stages & 4) && !cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_ticks);
+    if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_late_ticks);
 
     // the rewriter takes minutes on the long ITE chains of covering, and grows them
     const bool rewrite = !qbf2pre && (!cover_done || cnf.num_def_nodes() < 10000);
@@ -929,6 +929,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
     if (qbf2pre && !program.is_used("--coverticks")) cover_ticks = 20;
+    if (qbf2pre && !program.is_used("--coverlateticks")) cover_late_ticks = cover_ticks;
     if (qbf2_puura_rounds < 1 || qbf2_puura_rounds > 4) {
         cout << "ERROR: --2qbfpuurarounds must be between 1 and 4" << endl;
         exit(EXIT_FAILURE);
