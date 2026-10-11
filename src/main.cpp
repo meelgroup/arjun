@@ -174,7 +174,7 @@ void add_arjun_options() {
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
     myflag("--2qbfpre", qbf2pre, "Preprocess the 2QBF instead of solving it: the output file gets an equivalent forall-exists QDIMACS over the same variables. If it gets solved on the way, the output is 'p cnf N 0' (true) or has an empty clause (false), and the exit code is 10 or 20, like bloqqer");
     myopt("--prewitness", pre_witness, "--2qbfpre: write the functions found so far to this .aig file. They define the existentials that are gone from the output file, over the variables that are left in it, so with Skolem functions for those they are Skolem functions for the input");
-    myopt("--prebce", pre_bce, "--2qbfpre: remove the clauses blocked on an existential literal, as bloqqer does, and simplify again, at most this many times. 0 = off. The Skolem functions of the output are then not ones of the input, so --prewitness turns it off too");
+    myopt("--prebce", pre_bce, "--2qbfpre: remove the clauses blocked on an existential literal, as bloqqer does, and simplify again, at most this many times: from the 2nd time on with BVE that may grow the CNF, kept only if what comes out is smaller. 0 = off. The Skolem functions of the output are then not ones of the input, so --prewitness turns it off too");
     myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
@@ -550,8 +550,22 @@ void do_synthesis() {
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2pre && pre_witness.empty();
+    auto num_lits = [](const vector<vector<CMSat::Lit>>& cls) {
+        size_t ret = 0;
+        for(const auto& cl: cls) ret += cl.size();
+        return ret;
+    };
     for (int round = 0; do_synth_bve && !cnf.synth_done(); round++) {
-        cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+        // bloqqer's variable elimination: resolvents may outnumber the clauses
+        auto round_conf = simp_conf;
+        if (round >= 2) {
+            round_conf.bve_grow_iter1 = round == 2 ? 16 : 100;
+            round_conf.bve_grow_iter2 = round == 2 ? 100 : 1000;
+            round_conf.bve_grow_iter2_large = -1;
+        }
+        if (round >= 3) round_conf.bve_too_large_resolvent = round_conf.bve_too_large_resolvent2 = -1;
+        const auto before = qbf2_cls;
+        cnf = arjun->standalone_get_simplified_cnf(cnf, round_conf);
         if (cnf.get_2qbf_cls(qbf2_cls)) {
             verb_print(1, "[arjun] the simplified CNF stands in for the orig one");
             if (qbf2) check_2qbf_univ_clause(cnf, qbf2_cls);
@@ -575,12 +589,17 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
 
         // without the blocked clauses there is more to simplify
-        if (!bce || cnf.synth_done() || round >= pre_bce) break;
+        if (!bce || pre_bce == 0 || cnf.synth_done()) break;
         const auto removed = cnf.bce_2qbf(qbf2_cls);
-        verb_print(1, "[2qbf-bce] round: " << round << " removed: " << removed << " left: " << qbf2_cls.size());
         if (qbf2_cls.empty()) qbf2_result(cnf, true);
-        if (removed == 0) break;
+        const bool smaller = round == 0 || num_lits(qbf2_cls) < num_lits(before);
+        verb_print(1, "[2qbf-pre] round: " << round << " blocked cls removed: " << removed
+                << " cls: " << qbf2_cls.size() << " lits: " << num_lits(qbf2_cls)
+                << (smaller ? "" : " -- not smaller, dropped") << " T: " << (cpuTime() - start_time));
+        if (!smaller) qbf2_cls = before;
         cnf = cnf_of_2qbf_cls(cnf, qbf2_cls);
+        if (round == 0 && removed == 0) round++;
+        if (round >= pre_bce) break;
     }
 
     auto write_witness = [&] {
