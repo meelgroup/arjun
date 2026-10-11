@@ -101,8 +101,7 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
 1. `cover()` on the orig clauses, at most `--coverticks` million CaDiCaL
    ticks (20 here, no limit under `--2qbf`).
 2. Puura, exactly as for counting and synthesis: NEVER trim or budget it
-   for this mode. `get_2qbf_cls()` gives its clauses over the orig vars,
-   and `cover()` runs on them if Puura changed a clause.
+   for this mode. `get_2qbf_cls()` gives its clauses over the orig vars.
 3. `bce_2qbf()` removes the clauses blocked on an existential literal
    (bloqqer's QBCE; `--prebce 0` turns it off). That keeps the truth and
    the X with no Y, but not the solution count, so it cannot be a Puura
@@ -111,7 +110,8 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
    again on what step 3 left, as a new problem (`cnf_of_2qbf_cls()`): the
    2nd run as the 1st, the 3rd and 4th with BVE that may grow the CNF
    (bloqqer's variable elimination). A further run is dropped unless it
-   ends up with fewer literals.
+   ends up with fewer literals. `cover()` runs once more after all of
+   this, if the clauses changed.
 4. The `bve` cegr strategy for `--prerepairs` repairs. If that finishes,
    `get_2qbf_cex()` gets `--preconfl` conflicts to give the verdict.
 5. Whatever gave up: `write_qdimacs()` writes the clauses of step 3.

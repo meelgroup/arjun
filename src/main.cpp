@@ -555,8 +555,6 @@ void puura_round(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls, c
         verb_print(1, "[arjun] no universal left, and the CNF is satisfiable");
         qbf2_result(cnf, true);
     }
-    // BVE can make the refinements much shorter
-    if (!cnf.synth_done() && !same_cls(cls, cnf.get_orig_clauses())) try_cover(cnf, cls, need_funs);
 }
 
 // Puura rounds with blocked clause elimination in between. cls: the 2QBF over the orig vars
@@ -644,7 +642,12 @@ void do_synth_2qbf() {
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2 && !need_funs;
-    if (do_synth_bve) simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
+    if (do_synth_bve) {
+        const auto before = qbf2_cls;
+        simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
+        // BVE can make the refinements much shorter
+        if (!cnf.synth_done() && !same_cls(qbf2_cls, before)) try_cover(cnf, qbf2_cls, need_funs);
+    }
 
     auto write_witness = [&] {
         if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
@@ -719,14 +722,14 @@ void do_synth_2qbf() {
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
     if (rewrite) cnf.rewrite_aigs(conf.verb, true);
+    auto final_cnf = cnf;
+    final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
     if (!output_file.empty() && !qbf2pre) {
-        if (output_file.ends_with(".aig")) cnf.write_aig_defs_to_file(output_file);
-        else cnf.write_aig_def_to_verilog(output_file);
+        if (output_file.ends_with(".aig")) final_cnf.write_aig_defs_to_file(output_file);
+        else final_cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to '" << output_file << "'" << endl;
     }
     if (!conf.debug_synth.empty()) {
-        auto final_cnf = cnf;
-        final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
         const string final_fname = conf.debug_synth + (debug_verilog ? "-final.v" : "-final.aig");
         if (debug_verilog) final_cnf.write_aig_def_to_verilog(final_fname);
         else final_cnf.write_aig_defs_to_file(final_fname);
