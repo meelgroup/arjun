@@ -1828,6 +1828,9 @@ public:
                          std::vector<std::vector<CMSat::Lit>>&& red);
 
     void write_simpcnf(const std::string& fname, bool red = true) const;
+    // cls is over the orig vars: forall the orig sampl vars, exists the rest
+    void write_qdimacs(const std::string& fname,
+            const std::vector<std::vector<CMSat::Lit>>& cls) const;
 
     [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);

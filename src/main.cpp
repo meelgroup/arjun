@@ -72,6 +72,7 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 
 int synthesis = false;
 int qbf2 = false;
+int qbf2pre = false;
 double cover_budget = 50;
 bool cover_done = false;
 int use_brute_force_synth = 1;
@@ -165,6 +166,7 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
+    myflag("--2qbfpre", qbf2pre, "Preprocess the 2QBF instead of solving it: the output file gets an equivalent forall-exists QDIMACS over the same variables. If it gets solved on the way, the output is 'p cnf N 0' (true) or has an empty clause (false), and the exit code is 10 or 20, like bloqqer");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
@@ -411,6 +413,7 @@ void set_config(ArjunNS::Arjun* arj) {
         const bool val = v < cex.size() && cex[v] == CMSat::l_True;
         cout << "V " << (val ? "" : "-") << v+1 << " 0" << endl;
     }
+    if (qbf2pre) cnf.write_qdimacs(output_file, is_true ? vector<vector<CMSat::Lit>>{} : vector<vector<CMSat::Lit>>{{}});
     exit(is_true ? 10 : 20);
 }
 
@@ -501,7 +504,7 @@ void do_synthesis() {
         if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
         // the functions are in place, and get written out below
         cover_done = ret == CMSat::l_True;
-        const bool need_funs = !qbf2 || !output_file.empty() || !conf.debug_synth.empty();
+        const bool need_funs = !qbf2 || (!qbf2pre && !output_file.empty()) || !conf.debug_synth.empty();
         if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
     };
     try_cover(cnf.get_orig_clauses());
@@ -530,6 +533,12 @@ void do_synthesis() {
         }
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
+    }
+
+    if (qbf2pre && !cnf.synth_done()) {
+        cnf.write_qdimacs(output_file, qbf2_cls);
+        cout << "c o [arjun] dumped preprocessed 2QBF to '" << output_file << "'" << endl;
+        return;
     }
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
@@ -582,7 +591,7 @@ void do_synthesis() {
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
     if (rewrite) cnf.rewrite_aigs(conf.verb, true);
-    if (!output_file.empty()) {
+    if (!output_file.empty() && !qbf2pre) {
         if (output_file.ends_with(".aig")) cnf.write_aig_defs_to_file(output_file);
         else if (output_file.ends_with(".v")) cnf.write_aig_def_to_verilog(output_file);
         else {
@@ -764,6 +773,13 @@ int main(int argc, char** argv) {
     cout << "c o [arjun] Input file: " << input_file << endl;
     if (!output_file.empty())
         cout << "c o [arjun] Output file: " << output_file << endl;
+    if (qbf2pre) {
+        qbf2 = true;
+        if (output_file.empty()) {
+            cout << "ERROR: --2qbfpre needs an output file" << endl;
+            exit(EXIT_FAILURE);
+        }
+    }
     if (synthesis || qbf2) {
         do_synthesis();
     } else {

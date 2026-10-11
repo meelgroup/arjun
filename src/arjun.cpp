@@ -1904,6 +1904,27 @@ DLL_PUBLIC void SimplifiedCNF::renumber_vars(const vector<uint32_t>& map_here_to
     defs.resize(std::max<size_t>(defs.size(), nvars));
 }
 
+DLL_PUBLIC void SimplifiedCNF::write_qdimacs(const string& fname,
+        const vector<vector<Lit>>& cls) const {
+    set<uint32_t> univ, exist;
+    for(const auto& cl: cls) for(const auto& l: cl)
+        (orig_sampl_vars.count(l.var()) ? univ : exist).insert(l.var());
+    ofstream outf(fname);
+    outf << "p cnf " << get_orig_num_vars() << " " << cls.size() << "\n";
+    auto block = [&](const char type, const set<uint32_t>& vars) {
+        if (vars.empty()) return;
+        outf << type;
+        for(const auto& v: vars) outf << " " << v+1;
+        outf << " 0\n";
+    };
+    block('a', univ);
+    block('e', exist);
+    for(const auto& cl: cls) {
+        for(const auto& l: cl) outf << l << " ";
+        outf << "0\n";
+    }
+}
+
 DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) const {
     uint32_t num_cls = clauses.size();
     ofstream outf;
