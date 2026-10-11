@@ -40,7 +40,7 @@ using std::map;
 
 lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double budget,
         const uint64_t max_ticks,
-        const bool stop_at_cex, vector<lbool>& cex, const uint32_t verb) {
+        const bool stop_at_cex, const bool need_funs, vector<lbool>& cex, const uint32_t verb) {
     const double my_time = cpuTime();
     const auto& orig_sampl_vars = cnf.get_orig_sampl_vars();
     const auto& aig_mng = cnf.get_aig_mng();
@@ -111,7 +111,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     auto sq_frac = [](const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); };
     double cost = 0;
     uint64_t rounds = 0, ref_lits = 0, cubes = 0;
-    double abs_time = 0, f_time = 0, refine_time = 0;
+    double abs_time = 0, f_time = 0, refine_time = 0, funs_time = 0;
     const double setup_time = cpuTime() - my_time;
     auto ticks = [&] { return abs.get_sum_ticks() + f.get_sum_ticks(); };
     auto stats = [&](const char* what) {
@@ -124,7 +124,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
             << " ticks(M) abs: " << abs.get_sum_ticks() / 1e6 << " f: " << f.get_sum_ticks() / 1e6
             << " confl abs: " << abs.get_sum_conflicts() << " f: " << f.get_sum_conflicts()
             << " T: " << (cpuTime() - my_time) << " (setup: " << setup_time << " abs: " << abs_time
-            << " f: " << f_time << " refine: " << refine_time << ")" << std::endl;
+            << " f: " << f_time << " refine: " << refine_time << " funs: " << funs_time << ")" << std::endl;
     };
     auto finish = [&](const lbool ret) {
         stats(ret == l_True ? "all X covered" : ret == l_False ? "X with no Y" : "gave up");
@@ -139,7 +139,7 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
     for (; cost < budget && (max_ticks == 0 || ticks() < max_ticks); rounds++) {
         if (rounds && rounds % 1000 == 0) stats("progress");
         if (timed(abs_time, [&] { return abs.solve(); }) == l_False) {
-            for (uint32_t v = 0; v < num_defs; v++)
+            if (need_funs) for (uint32_t v = 0; v < num_defs; v++)
                 if (!orig_sampl_vars.count(v) && !cnf.defined(v)) cnf.set_def(v, funs[v]);
             return finish(l_True);
         }
@@ -173,12 +173,15 @@ lbool ArjunInt::cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const 
         cost += sq_frac(some_false.size(), univ_to_helper.size());
         ref_lits += some_false.size();
 
+        refine_time += cpuTime() - refine_start;
+        if (!need_funs) continue;
+        const double funs_start = cpuTime();
         aig_lit works = aig_mng.new_const(true);
         for (const auto& h : some_false) works = AIG::new_and(works, univ_true[h.var() - orig_sampl_vars.size()]);
         const aig_lit first = AIG::new_and(works, ~covered);
         covered = AIG::new_or(covered, works);
         for (const auto& v : ys) if (model[to_f[v]] == l_True) funs[v] = AIG::new_or(funs[v], first);
-        refine_time += cpuTime() - refine_start;
+        funs_time += cpuTime() - funs_start;
     }
     return finish(l_Undef);
 }

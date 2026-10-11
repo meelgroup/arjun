@@ -505,15 +505,16 @@ void do_synthesis() {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
     }
+    const bool need_funs = !qbf2 || (!qbf2pre && !output_file.empty()) || !conf.debug_synth.empty()
+        || !pre_witness.empty();
     auto try_cover = [&](const vector<vector<CMSat::Lit>>& cls) {
         vector<CMSat::lbool> cex;
-        auto ret = arjun->standalone_cover(cnf, cls, cover_budget, (uint64_t)(cover_ticks * 1e6), qbf2, cex);
+        auto ret = arjun->standalone_cover(cnf, cls, cover_budget, (uint64_t)(cover_ticks * 1e6), qbf2,
+                need_funs, cex);
         if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
         if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
         // the functions are in place, and get written out below
         cover_done = ret == CMSat::l_True;
-        const bool need_funs = !qbf2 || (!qbf2pre && !output_file.empty()) || !conf.debug_synth.empty()
-            || !pre_witness.empty();
         if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
     };
     try_cover(cnf.get_orig_clauses());
@@ -537,6 +538,13 @@ void do_synthesis() {
         if (cnf.get_2qbf_cls(qbf2_cls)) {
             verb_print(1, "[arjun] the simplified CNF stands in for the orig one");
             if (qbf2) check_2qbf_univ_clause(cnf, qbf2_cls);
+            const bool univ_left = std::any_of(qbf2_cls.begin(), qbf2_cls.end(), [&](const auto& cl) {
+                return std::any_of(cl.begin(), cl.end(),
+                        [&](const CMSat::Lit l) { return cnf.get_orig_sampl_vars().count(l.var()); }); });
+            if (!univ_left && !need_funs) {
+                verb_print(1, "[arjun] no universal left, and the CNF is satisfiable");
+                qbf2_result(cnf, true);
+            }
             // BVE can make the refinements much shorter
             auto sorted = [](vector<vector<CMSat::Lit>> cls) {
                 for(auto& cl: cls) std::sort(cl.begin(), cl.end());
