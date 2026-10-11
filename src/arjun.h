@@ -1908,7 +1908,8 @@ public:
 
     // An X with ~cls(X, defs(X)), or empty if forall X exists Y. cls holds
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex(
-            const std::vector<std::vector<CMSat::Lit>>& cls) const;
+            const std::vector<std::vector<CMSat::Lit>>& cls,
+            const int64_t max_confl = -1, bool* gave_up = nullptr) const;
     // No Y extends X to a model of the orig clauses
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
     // The clauses over ORIG vars. False if they cannot stand in for the orig

@@ -4,7 +4,9 @@
 #   ../scripts/bench_2qbfpre.py -t 20 ~/media/2qbf/qbfeval16/*.qdimacs
 
 import argparse
+import gzip
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -33,7 +35,12 @@ def size(fname):
 
 
 # per preprocessor: (verdict or None, time, [per solver (verdict, time)])
-def bench(fname):
+def bench(orig_fname):
+    fname = orig_fname
+    if fname.endswith(".gz"):
+        fname = os.path.join(tmpdir, os.path.basename(fname)[:-3])
+        with gzip.open(orig_fname, "rb") as f, open(fname, "wb") as f2:
+            shutil.copyfileobj(f, f2)
     res = []
     for name, cmd in pres:
         out = os.path.join(tmpdir, "%s-%s" % (name, os.path.basename(fname)))
@@ -58,6 +65,8 @@ def bench(fname):
         res.append((VERDICT.get(ret, ""), t, size(out), solved))
         if cmd is not None:
             os.unlink(out)
+    if fname != orig_fname:
+        os.unlink(fname)
     return fname, res
 
 

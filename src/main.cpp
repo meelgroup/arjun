@@ -73,8 +73,10 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 int synthesis = false;
 int qbf2 = false;
 int qbf2pre = false;
+int pre_repairs = 400;
+int64_t pre_confl = 10000;
 double cover_budget = 50;
-uint64_t cover_ticks = 0;
+double cover_ticks = 0;
 bool cover_done = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
@@ -168,6 +170,8 @@ void add_arjun_options() {
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
     myflag("--2qbfpre", qbf2pre, "Preprocess the 2QBF instead of solving it: the output file gets an equivalent forall-exists QDIMACS over the same variables. If it gets solved on the way, the output is 'p cnf N 0' (true) or has an empty clause (false), and the exit code is 10 or 20, like bloqqer");
+    myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
+    myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverticks", cover_ticks, "Give up on covering after this many million ticks of SAT solver work. 0 = no limit");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
@@ -501,7 +505,7 @@ void do_synthesis() {
     }
     auto try_cover = [&](const vector<vector<CMSat::Lit>>& cls) {
         vector<CMSat::lbool> cex;
-        auto ret = arjun->standalone_cover(cnf, cls, cover_budget, cover_ticks * 1000000ULL, qbf2, cex);
+        auto ret = arjun->standalone_cover(cnf, cls, cover_budget, (uint64_t)(cover_ticks * 1e6), qbf2, cex);
         if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
         if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
         // the functions are in place, and get written out below
@@ -532,15 +536,23 @@ void do_synthesis() {
             if (qbf2) check_2qbf_univ_clause(cnf, qbf2_cls);
             // BVE can make the refinements much shorter
             if (!cnf.synth_done()) try_cover(qbf2_cls);
-        }
+        } else verb_print(1, "[arjun] the simplified CNF cannot stand in for the orig one");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage("simplified_cnf"));
     }
 
-    if (qbf2pre && !cnf.synth_done()) {
+    auto write_2qbfpre = [&] {
         cnf.write_qdimacs(output_file, qbf2_cls);
         cout << "c o [arjun] dumped preprocessed 2QBF to '" << output_file << "'" << endl;
-        return;
+    };
+    if (qbf2pre && !cnf.synth_done()) {
+        auto try_mconf = mconf;
+        try_mconf.cegr_base = 2;
+        try_mconf.max_repairs = pre_repairs;
+        auto tried = pre_repairs > 0 ? arjun->standalone_cegr(ArjunNS::SimplifiedCNF(cnf), try_mconf) : cnf;
+        if (!tried.synth_done()) return write_2qbfpre();
+        verb_print(1, "[arjun] the synthesis try finished");
+        cnf = std::move(tried);
     }
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
@@ -570,7 +582,7 @@ void do_synthesis() {
     }
 
     // the rewriter takes minutes on the long ITE chains of covering, and grows them
-    const bool rewrite = !cover_done || cnf.num_def_nodes() < 10000;
+    const bool rewrite = !qbf2pre && (!cover_done || cnf.num_def_nodes() < 10000);
     if (rewrite) cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force: enumerate consistent X assignments, build per-y
@@ -612,7 +624,9 @@ void do_synthesis() {
     }
     if (qbf2 && cover_done) qbf2_result(cnf, true);
     if (qbf2) {
-        auto cex = cnf.get_2qbf_cex(qbf2_cls);
+        bool gave_up = false;
+        auto cex = cnf.get_2qbf_cex(qbf2_cls, qbf2pre ? pre_confl : -1, &gave_up);
+        if (gave_up) return write_2qbfpre();
         if (!cex.empty() && !cnf.is_2qbf_cex(cex)) {
             verb_print(1, "[2qbf] spurious counterexample, checking on the orig CNF");
             cex = cnf.get_2qbf_cex(cnf.get_orig_clauses());
@@ -782,6 +796,7 @@ int main(int argc, char** argv) {
             exit(EXIT_FAILURE);
         }
     }
+    if (qbf2pre && !program.is_used("--coverticks")) cover_ticks = 20;
     if (synthesis || qbf2) {
         do_synthesis();
     } else {

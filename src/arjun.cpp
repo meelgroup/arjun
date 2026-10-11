@@ -799,7 +799,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     return -1;
 }
 
-DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& cls) const {
+DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& cls,
+        const int64_t max_confl, bool* gave_up) const {
     assert(need_aig && synth_done());
     MetaSolver s;
     s.new_vars(defs.size());
@@ -837,9 +838,11 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
     }
     s.add_clause(some_false);
 
+    if (max_confl >= 0) s.set_max_confl(max_confl);
     const auto ret = s.solve();
-    release_assert(ret != l_Undef);
-    if (ret == l_False) return {};
+    release_assert(ret != l_Undef || gave_up);
+    if (gave_up) *gave_up = ret == l_Undef;
+    if (ret != l_True) return {};
     vector<lbool> cex(defs.size(), l_Undef);
     for (const auto& v : orig_sampl_vars) cex[v] = s.get_model()[v];
     return cex;

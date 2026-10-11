@@ -344,6 +344,8 @@ def qbf2_pre_verdict(fname):
     pre_fname = fname + "-pre.qdimacs"
     cmd = "./arjun --2qbfpre --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
     cmd += " --synthbve %d" % random.choice([0, 1, 1, 1])
+    cmd += " --coverticks %s" % random.choice([0, 0.01, 20])
+    cmd += " --prerepairs %d --preconfl %d" % (random.choice([0, 5, 400]), random.choice([0, 10, 10000]))
     cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
     print(col("Running 2QBF preprocessing: ", CYAN) + cmd)
     _, _, pre_code = run(cmd.split() + [fname, pre_fname])
