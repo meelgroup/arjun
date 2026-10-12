@@ -663,15 +663,9 @@ void do_synth_2qbf() {
         cnf.write_qdimacs(output_file, qbf2_cls);
         cout << "c o [arjun] dumped preprocessed 2QBF to '" << output_file << "'" << endl;
     };
-    if (qbf2pre && !cnf.synth_done()) {
-        auto try_mconf = mconf;
-        try_mconf.cegr_base = 2;
-        try_mconf.max_repairs = pre_repairs;
-        auto tried = pre_repairs > 0 ? arjun->standalone_cegr(ArjunNS::SimplifiedCNF(cnf), try_mconf) : cnf;
-        if (!tried.synth_done()) return write_2qbfpre();
-        verb_print(1, "[arjun] the synthesis try finished");
-        cnf = std::move(tried);
-    }
+    // --2qbfpre: what follows is a try, the output is of the CNF as it is here
+    ArjunNS::SimplifiedCNF pre_cnf(fg);
+    if (qbf2pre) pre_cnf = cnf;
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
@@ -701,6 +695,19 @@ void do_synth_2qbf() {
 
     // covering follows the functions found since its last run
     if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_late_ticks);
+
+    if (qbf2pre && !cnf.synth_done()) {
+        auto try_mconf = mconf;
+        try_mconf.cegr_base = 2;
+        try_mconf.max_repairs = pre_repairs;
+        auto tried = pre_repairs > 0 ? arjun->standalone_cegr(ArjunNS::SimplifiedCNF(cnf), try_mconf) : cnf;
+        if (!tried.synth_done()) {
+            cnf = std::move(pre_cnf);
+            return write_2qbfpre();
+        }
+        verb_print(1, "[arjun] the synthesis try finished");
+        cnf = std::move(tried);
+    }
 
     // the rewriter takes minutes on the long ITE chains of covering, and grows them
     const bool rewrite = !qbf2pre && (!cover_done || cnf.num_def_nodes() < 10000);

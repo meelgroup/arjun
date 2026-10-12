@@ -133,9 +133,13 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
    (bloqqer's variable elimination). A further run is dropped unless it
    ends up with fewer literals. `cover()` runs once more after all of
    this.
-4. The `bve` cegr strategy for `--prerepairs` repairs. If that finishes,
-   `get_2qbf_cex()` gets `--preconfl` conflicts to give the verdict.
-5. Whatever gave up: `write_qdimacs()` writes the clauses of step 3.
+4. A try at solving it, on a copy: autarky, extend, backward, unate_def
+   and the late `cover()`, as in `--2qbf`, then the `bve` cegr strategy
+   for `--prerepairs` repairs. If that finishes, `get_2qbf_cex()` gets
+   `--preconfl` conflicts to give the verdict. The definition passes are
+   what solves most of what bloqqer solves on arjun's output.
+5. Whatever gave up: `write_qdimacs()` writes the clauses of step 3, none
+   of step 4 is in the output.
 
 What to lift from bloqqer next is found by running it on arjun's output
 with one technique off at a time (`--no-bce`, `--no-ve`, `--no-exp`, ...)
