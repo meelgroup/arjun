@@ -76,9 +76,12 @@ only_dirs = [
     # "out-synth-2263789-2", # fixing up the distill with new cadical
     # "out-synth-2272478-4", # even better maybe
     # "out-synth-2273894-3", # limit unate
-    "out-synth-2535088-1", # CEGAR for Y->X skolem and also testing 2QBF
+    # "out-synth-2535088-1", # CEGAR for Y->X skolem and also testing 2QBF
     # "out-synth-2535088-2", # CEGAR for Y->X skolem and also testing 2QBF
     "out-synth-2538628-", # improved cover
+    "out-synth-2539107-0", # improved cover
+    "out-synth-2539107-4", # improved cover
+    "out-synth-2539107-3", # improved cover
 
     # "out-synth-1367674-0", # before unate-eq
 ]
