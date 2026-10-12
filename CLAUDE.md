@@ -169,6 +169,15 @@ forall-exists ones). All of these but the first are `.qdimacs.gz`.
 One-line sanity bench for comparing simplification tweaks. Runs `arjun` on a
 CNF and prints a single line with the headline counts (vars, indep, optind,
 bin cls, long cls, lits, time).
+## Other QBF solvers and preprocessors: `qbf_solvers/`
+
+Sources of the tools to compare against and to lift ideas from are in
+`qbf_solvers/` of this repo (untracked), one directory each: `areqs`,
+`bloqqer`, `cadet`, `caqe`, `cqesto`, `depqbf`, `miniQU`, `pedant-solver`
+(DQBF), `qesto`, `qfun`, `qratpreplus` (preprocessor), `quabs`, `qute`,
+`rareqs`; `dl/` has the tarballs. They are built in place. All benchmarks
+are described in `~/media/qbf/README.md`.
+
 
 Run from `build/` (where `arjun` and `count_literals.py` live):
 
