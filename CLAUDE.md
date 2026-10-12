@@ -157,18 +157,18 @@ switches step 3 off: blocked clause elimination does not keep them.
 output with `--2qbf` and compares the verdicts. `scripts/bench_2qbfpre.py`
 compares no preprocessing, bloqqer and arjun, each followed by
 `../cadet/cadet` and `../rareqs-1.1/rareqs` (built with
-`CFLAGS=-fpermissive`, minisat's `libr` first). More benchmarks:
+`CFLAGS=-fpermissive`, minisat's `libr` first).
+`scripts/qbf2pre_bench/` is the staged one with a result cache: `bench.py`
+(preprocessors, then solvers on their outputs, then `report`), `chain.py`
+(a 2nd preprocessor on the outputs of a 1st), `solve_all.sh` (the 4 solvers
+of `qbf_solvers/`), on the 114 files of `sample.tsv`. Its limits are
+wall-clock: nothing else may run on the machine. More benchmarks:
 `~/media/qbf/2qbf/2010-comp`, `~/media/qbf/abdst-paper/robots2d`,
 `~/media/qbf/qbflib/<family>/` (one directory per QBFLIB family),
 `~/media/qbf/qbfeval17/2QBF` and `~/media/qbf/qbfeval20/PCNF` (mixed
 prefixes there: `~/media/qbf/qbflib/qbf_prefix.py` prints `KEEP ae` for the
 forall-exists ones). All of these but the first are `.qdimacs.gz`.
 
-## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
-
-One-line sanity bench for comparing simplification tweaks. Runs `arjun` on a
-CNF and prints a single line with the headline counts (vars, indep, optind,
-bin cls, long cls, lits, time).
 ## Other QBF solvers and preprocessors: `qbf_solvers/`
 
 Sources of the tools to compare against and to lift ideas from are in
@@ -178,6 +178,11 @@ Sources of the tools to compare against and to lift ideas from are in
 `rareqs`; `dl/` has the tarballs. They are built in place. All benchmarks
 are described in `~/media/qbf/README.md`.
 
+## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
+
+One-line sanity bench for comparing simplification tweaks. Runs `arjun` on a
+CNF and prints a single line with the headline counts (vars, indep, optind,
+bin cls, long cls, lits, time).
 
 Run from `build/` (where `arjun` and `count_literals.py` live):
 

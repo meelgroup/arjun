@@ -1,0 +1,2 @@
+cache-coherence-3-fixpoint-2.qdimacs univ=600(sampled 600) exist=682 univ-lit-occs=5673 removable=27 (0.5%) avg-dep-frac=0.53 exist-indep-of-all-sampled=3 T=12.4
+ethernet-fixpoint-3.qdimacs univ=928(sampled 928) exist=852 univ-lit-occs=8205 removable=20 (0.2%) avg-dep-frac=0.51 exist-indep-of-all-sampled=0 T=30.6

@@ -1,0 +1,1520 @@
+pre	arjun		6s289rb05233_c0to63.sat.qdimacs	TO	120.00			
+pre	arjun		AR-fixpoint-6.qdimacs	TO	120.00			
+pre	arjun		ActivityService.qdimacs		78.13	4172	4839	16839
+pre	arjun		ConcreteActivityService.qdimacs		116.97	4841	5747	20142
+pre	arjun		GuidanceService2.qdimacs		42.17	3263	3528	12460
+pre	arjun		IssueServiceImpl.qdimacs		48.79	3630	4130	14581
+pre	arjun		IterationService.qdimacs		77.07	4172	4839	16839
+pre	arjun		LoginService.qdimacs	TO	120.00			
+pre	arjun		NotificationServiceImpl2.qdimacs	TO	120.00			
+pre	arjun		add20y.sat.qdimacs	T	0.17			
+pre	arjun		amba4c7n.sat.qdimacs		27.80	2914	5192	13744
+pre	arjun		axquery_query42_1344n.qdimacs	F	0.12			
+pre	arjun		PhaseService.qdimacs		77.23	4172	4839	16839
+pre	arjun		bobtuint31neg.qdimacs	T	0.87			
+pre	arjun		bs128n.sat.qdimacs	T	1.42			
+pre	arjun		cache-coherence-3-fixpoint-2.qdimacs		5.83	5489	2836	11103
+pre	arjun		ceiling256.qdimacs	T	0.82			
+pre	arjun		ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs		14.71	3247	3189	10815
+pre	arjun		ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs		60.04	7457	9101	30678
+pre	arjun		cycle_sched_4_4_2.sat.qdimacs	T	1.82			
+pre	arjun		decomposition128.qdimacs	T	0.32			
+pre	arjun		driver_a10y.sat.qdimacs	T	1.37			
+pre	arjun		eequery_query42_1344n.qdimacs		3.93	1026	1824	6558
+pre	arjun		eijkbs3330.qdimacs	T	5.63			
+pre	arjun		equalization128.qdimacs	T	0.72			
+pre	arjun		beemskbn1f1_c0to7.sat.qdimacs	TO	120.00			
+pre	arjun		exquery_query42_1344n.qdimacs	F	0.12			
+pre	arjun		falsequ_query42_1344n.qdimacs	F	0.02			
+pre	arjun		floor128.qdimacs	T	0.72			
+pre	arjun		ethernet-fixpoint-3.qdimacs		10.55	12515	3914	16134
+pre	arjun		genbuf12b4y.sat.qdimacs		38.03	2939	6911	17380
+pre	arjun		itc-b13-fixpoint-3.qdimacs	T	0.67			
+pre	arjun		itc-b13-fixpoint-8.qdimacs	T	1.67			
+pre	arjun		kenflashp04.qdimacs	T	0.32			
+pre	arjun		intermediate256.qdimacs	TO	120.00			
+pre	arjun		load_full_3_comp5_REAL.sat.qdimacs	TO	120.00			
+pre	arjun		mult_bool_matrix_dyn_7_7.sat.qdimacs		6.53	5649	1041	4662
+pre	arjun		ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	120.00			
+pre	arjun		neclaftp2002.qdimacs	TO	120.00			
+pre	arjun		ntrivil_query42_1344n.qdimacs	F	0.12			
+pre	arjun		nxquery_query42_1344n.qdimacs	F	0.12			
+pre	arjun		nreachq_query54_1344n.qdimacs	TO	120.00			
+pre	arjun		pdtpmsrotate32.qdimacs	T	0.67			
+pre	arjun		oski3ub5i_c0to63.sat.qdimacs	TO	120.00			
+pre	arjun		query02_query42_1344n.qdimacs	F	0.12			
+pre	arjun		query54_query42_1344n.qdimacs		7.75	1262	2133	7628
+pre	arjun		pi-bus-fixpoint-2.qdimacs	TO	120.00			
+pre	arjun		rankfunc2_unsigned_64.qdimacs	T	1.32			
+pre	arjun		rankfunc54_unsigned_64.qdimacs	T	1.12			
+pre	arjun		query10_query45_1344n.qdimacs	TO	120.00			
+pre	arjun		sdlx-fixpoint-4.qdimacs		25.21	6608	3622	13249
+pre	arjun		reachqu_query42_1344n.qdimacs	TO	120.00			
+pre	arjun		small-dyn-partition-fixpoint-6.qdimacs	F	1.37			
+pre	arjun		sdlx-fixpoint-8.qdimacs		55.29	14028	8185	29535
+pre	arjun		sortnetsort7.AE.stepl.008.qdimacs	F	0.92			
+pre	arjun		small-equiv-fixpoint-3.qdimacs	TO	120.00			
+pre	arjun		stmt31_22_328.qdimacs	F	3.13			
+pre	arjun		sortnetsort9.AE.stepl.010.qdimacs	TO	120.00			
+pre	arjun		stmt17_82_86.qdimacs	T	3.68			
+pre	arjun		trivial_query42_1344n.qdimacs	F	0.12			
+pre	arjun		trueque_query42_1344n.qdimacs	F	0.02			
+pre	arjun		stmt47_340_389.qdimacs	F	8.04			
+pre	arjun		usb-phy-fixpoint-4.qdimacs	F	25.19			
+pre	arjun		ProcessBean.qdimacs	TO	120.00			
+pre	arjun		ProjectService3.qdimacs		113.68	6965	8688	30788
+pre	arjun		beemldelec4b1_c0to127.sat.qdimacs	TO	120.00			
+pre	arjun		pdtpmsmiim.qdimacs	T	3.83			
+pre	arjun		bobsmfpu.qdimacs	TO	120.00			
+pre	arjun		stay24n.sat.qdimacs	T	33.43			
+pre	arjun		mutex-16-s.qdimacs	T	0.02			
+pre	arjun		qshifter_6.qdimacs	T	0.32			
+pre	arjun		rankfunc48_unsigned_16.qdimacs	T	0.97			
+pre	arjun		rankfunc41_signed_32.qdimacs	T	0.82			
+pre	arjun		sortnetsort8.AE.stepl.005.qdimacs		77.52	3077	3896	12631
+pre	arjun		stmt1_919_920.qdimacs	T	0.17			
+pre	arjun		stmt52_117_295.qdimacs	F	3.08			
+pre	arjun		ceiling128.qdimacs	T	0.67			
+pre	arjun		bobsmhdlc2.qdimacs		8.00	1293	1964	7562
+pre	arjun		unit8_2_b.qdimacs	TO	120.00			
+pre	arjun		ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs		29.65	4899	5770	19508
+pre	arjun		ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs		31.11	5623	6324	21417
+pre	arjun		stmt19_79_83.qdimacs	T	5.73			
+pre	arjun		stmt47_112_290.qdimacs	F	3.33			
+pre	arjun		stmt41_118_131.qdimacs	T	0.62			
+pre	arjun		Q_2-3_v-80-100_r-9.7.qdimacs		5.58	180	900	4500
+pre	arjun		ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs		32.02	5295	6074	20583
+pre	arjun		Q_3-3_v-100-100_r-15.1.qdimacs		9.90	200	1500	9000
+pre	arjun		query36_query07_1344n.qdimacs	T	0.12			
+pre	arjun		horn_400CNF1800_2aQBF_248.qdimacs	F	0.04			
+pre	arjun		renHorn_400CNF1720_2aQBF_20.qdimacs	F	0.04			
+pre	arjun		tree-exa10-20.qdimacs	T	0.02			
+pre	arjun		robots_1_5_3_98.5.qdimacs	T	0.77			
+pre	arjun		robots_1_5_4_50.5.qdimacs	F	0.37			
+pre	arjun		robots_1_5_5_26.5.qdimacs	T	0.12			
+pre	arjun		x110.14.qdimacs	TO	120.00			
+pre	arjun		sortnetsort9.AE.stepl.005.qdimacs	TO	120.00			
+pre	arjun		2qbf-5cnf-20var-160cl.3.qdimacs	F	0.04			
+pre	arjun		2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.02			
+pre	arjun		2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.07			
+pre	arjun		2qbf-5cnf-160var-1280cl.0.qdimacs		9.64	320	1280	6400
+pre	arjun		ltl2dpa_C26_comp3_REAL.sat.qdimacs	T	2.57			
+pre	arjun		amba6b5y.sat.qdimacs		52.56	3055	6475	16975
+pre	arjun		driver_b8y.sat.qdimacs	T	3.18			
+pre	arjun		genbuf5c3y.sat.qdimacs		21.83	1903	4855	12521
+pre	arjun		ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	120.00			
+pre	arjun		oski3ub5i_c0to15.sat.qdimacs	TO	120.00			
+pre	arjun		mult_bool_matrix_dyn_5_6.sat.qdimacs		3.73	3072	605	2581
+pre	arjun		cnt10n.sat.qdimacs	T	0.07			
+pre	arjun		small-swap2-fixpoint-9.qdimacs	T	3.03			
+pre	arjun		rankfunc41_signed_16.qdimacs	T	0.87			
+pre	arjun		robots_1_5_2_54.2.qdimacs	T	0.07			
+pre	arjun		robots_1_5_2_72.6.qdimacs	T	0.27			
+pre	arjun		load_full_2_comp7_REAL.sat.qdimacs		93.26	14343	3619	10029
+pre	arjun		robots_1_5_2_19.9.qdimacs	F	18.97			
+pre	arjun-9eb86eb		AR-fixpoint-6.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		6s289rb05233_c0to63.sat.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		ActivityService.qdimacs		5.94	4172	4839	16839
+pre	arjun-9eb86eb		ConcreteActivityService.qdimacs		8.94	4841	5747	20142
+pre	arjun-9eb86eb		GuidanceService2.qdimacs		4.28	3263	3528	12460
+pre	arjun-9eb86eb		IssueServiceImpl.qdimacs		5.53	3630	4130	14581
+pre	arjun-9eb86eb		IterationService.qdimacs		5.88	4172	4839	16839
+pre	arjun-9eb86eb		LoginService.qdimacs		12.86	5289	5946	20106
+pre	arjun-9eb86eb		NotificationServiceImpl2.qdimacs		13.35	5402	6076	20215
+pre	arjun-9eb86eb		add20y.sat.qdimacs	T	0.17			
+pre	arjun-9eb86eb		PhaseService.qdimacs		5.68	4172	4839	16839
+pre	arjun-9eb86eb		axquery_query42_1344n.qdimacs	F	0.12			
+pre	arjun-9eb86eb		amba4c7n.sat.qdimacs		20.98	2914	5192	13744
+pre	arjun-9eb86eb		bobtuint31neg.qdimacs	T	0.87			
+pre	arjun-9eb86eb		bs128n.sat.qdimacs	T	1.47			
+pre	arjun-9eb86eb		cache-coherence-3-fixpoint-2.qdimacs		3.98	5489	2836	11103
+pre	arjun-9eb86eb		ceiling256.qdimacs	T	0.82			
+pre	arjun-9eb86eb		ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs		6.04	3247	3189	10815
+pre	arjun-9eb86eb		ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs		34.56	7457	9101	30678
+pre	arjun-9eb86eb		cycle_sched_4_4_2.sat.qdimacs	T	1.77			
+pre	arjun-9eb86eb		decomposition128.qdimacs	T	0.32			
+pre	arjun-9eb86eb		driver_a10y.sat.qdimacs	T	1.37			
+pre	arjun-9eb86eb		eequery_query42_1344n.qdimacs		2.27	1026	1824	6558
+pre	arjun-9eb86eb		eijkbs3330.qdimacs		3.63	1298	2390	9155
+pre	arjun-9eb86eb		equalization128.qdimacs	T	0.72			
+pre	arjun-9eb86eb		ethernet-fixpoint-3.qdimacs		7.19	12515	3914	16134
+pre	arjun-9eb86eb		exquery_query42_1344n.qdimacs	F	0.12			
+pre	arjun-9eb86eb		falsequ_query42_1344n.qdimacs	F	0.02			
+pre	arjun-9eb86eb		floor128.qdimacs	T	0.72			
+pre	arjun-9eb86eb		genbuf12b4y.sat.qdimacs		32.36	2939	6911	17380
+pre	arjun-9eb86eb		beemskbn1f1_c0to7.sat.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		itc-b13-fixpoint-3.qdimacs	T	0.77			
+pre	arjun-9eb86eb		itc-b13-fixpoint-8.qdimacs	T	1.87			
+pre	arjun-9eb86eb		kenflashp04.qdimacs	T	0.37			
+pre	arjun-9eb86eb		intermediate256.qdimacs		9.70	2559	5599	20092
+pre	arjun-9eb86eb		load_full_3_comp5_REAL.sat.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		mult_bool_matrix_dyn_7_7.sat.qdimacs		2.73	5649	1041	4662
+pre	arjun-9eb86eb		neclaftp2002.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		ntrivil_query42_1344n.qdimacs	F	0.12			
+pre	arjun-9eb86eb		nxquery_query42_1344n.qdimacs	F	0.12			
+pre	arjun-9eb86eb		nreachq_query54_1344n.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		pdtpmsrotate32.qdimacs	T	0.72			
+pre	arjun-9eb86eb		pi-bus-fixpoint-2.qdimacs		74.41	33225	15544	58599
+pre	arjun-9eb86eb		query02_query42_1344n.qdimacs	F	0.12			
+pre	arjun-9eb86eb		query54_query42_1344n.qdimacs		2.32	1262	2133	7628
+pre	arjun-9eb86eb		oski3ub5i_c0to63.sat.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		rankfunc2_unsigned_64.qdimacs	T	1.32			
+pre	arjun-9eb86eb		rankfunc54_unsigned_64.qdimacs	T	1.17			
+pre	arjun-9eb86eb		query10_query45_1344n.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		sdlx-fixpoint-4.qdimacs		4.69	6608	3622	13249
+pre	arjun-9eb86eb		sdlx-fixpoint-8.qdimacs		17.09	14028	8185	29535
+pre	arjun-9eb86eb		small-dyn-partition-fixpoint-6.qdimacs		1.47	665	320	1269
+pre	arjun-9eb86eb		reachqu_query42_1344n.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		sortnetsort7.AE.stepl.008.qdimacs	F	0.87			
+pre	arjun-9eb86eb		small-equiv-fixpoint-3.qdimacs		27.91	7039	8636	29788
+pre	arjun-9eb86eb		stmt31_22_328.qdimacs		2.57	2937	1153	4304
+pre	arjun-9eb86eb		stmt47_340_389.qdimacs		3.18	5651	1673	6305
+pre	arjun-9eb86eb		stmt17_82_86.qdimacs	T	3.63			
+pre	arjun-9eb86eb		trivial_query42_1344n.qdimacs	F	0.07			
+pre	arjun-9eb86eb		trueque_query42_1344n.qdimacs	F	0.02			
+pre	arjun-9eb86eb		usb-phy-fixpoint-4.qdimacs		8.89	7766	3918	15075
+pre	arjun-9eb86eb		ProcessBean.qdimacs		34.34	9954	12151	40287
+pre	arjun-9eb86eb		ProjectService3.qdimacs		13.51	6965	8688	30788
+pre	arjun-9eb86eb		sortnetsort9.AE.stepl.010.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		beemldelec4b1_c0to127.sat.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		pdtpmsmiim.qdimacs		2.97	965	1261	4658
+pre	arjun-9eb86eb		stay24n.sat.qdimacs	T	34.38			
+pre	arjun-9eb86eb		unit8_2_b.qdimacs		6.39	3405	2862	9902
+pre	arjun-9eb86eb		mutex-16-s.qdimacs	T	0.02			
+pre	arjun-9eb86eb		qshifter_6.qdimacs	T	0.37			
+pre	arjun-9eb86eb		rankfunc48_unsigned_16.qdimacs	T	1.12			
+pre	arjun-9eb86eb		rankfunc41_signed_32.qdimacs	T	0.92			
+pre	arjun-9eb86eb		bobsmfpu.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		stmt1_919_920.qdimacs	T	0.22			
+pre	arjun-9eb86eb		stmt52_117_295.qdimacs		2.53	3259	1052	4062
+pre	arjun-9eb86eb		ceiling128.qdimacs	T	0.67			
+pre	arjun-9eb86eb		bobsmhdlc2.qdimacs		2.83	1293	1964	7562
+pre	arjun-9eb86eb		ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs		9.00	4899	5770	19508
+pre	arjun-9eb86eb		sortnetsort8.AE.stepl.005.qdimacs		44.46	3077	3896	12631
+pre	arjun-9eb86eb		ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs		20.73	5295	6074	20583
+pre	arjun-9eb86eb		ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs		50.27	5623	6324	21417
+pre	arjun-9eb86eb		stmt47_112_290.qdimacs		2.42	3209	1081	4033
+pre	arjun-9eb86eb		stmt41_118_131.qdimacs	T	0.62			
+pre	arjun-9eb86eb		stmt19_79_83.qdimacs		5.88	9829	396	1533
+pre	arjun-9eb86eb		Q_2-3_v-80-100_r-9.7.qdimacs		3.78	180	900	4500
+pre	arjun-9eb86eb		Q_3-3_v-100-100_r-15.1.qdimacs		4.68	200	1500	9000
+pre	arjun-9eb86eb		query36_query07_1344n.qdimacs	T	0.12			
+pre	arjun-9eb86eb		horn_400CNF1800_2aQBF_248.qdimacs	F	0.04			
+pre	arjun-9eb86eb		renHorn_400CNF1720_2aQBF_20.qdimacs	F	0.04			
+pre	arjun-9eb86eb		tree-exa10-20.qdimacs	T	0.02			
+pre	arjun-9eb86eb		robots_1_5_3_98.5.qdimacs	T	0.72			
+pre	arjun-9eb86eb		robots_1_5_4_50.5.qdimacs	F	0.37			
+pre	arjun-9eb86eb		robots_1_5_5_26.5.qdimacs	T	0.12			
+pre	arjun-9eb86eb		sortnetsort9.AE.stepl.005.qdimacs		65.52	4034	5136	16556
+pre	arjun-9eb86eb		2qbf-5cnf-160var-1280cl.0.qdimacs		4.58	320	1280	6400
+pre	arjun-9eb86eb		2qbf-5cnf-20var-160cl.3.qdimacs	F	0.04			
+pre	arjun-9eb86eb		2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.02			
+pre	arjun-9eb86eb		2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.07			
+pre	arjun-9eb86eb		x110.14.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		ltl2dpa_C26_comp3_REAL.sat.qdimacs	T	2.52			
+pre	arjun-9eb86eb		amba6b5y.sat.qdimacs		43.50	3055	6475	16975
+pre	arjun-9eb86eb		driver_b8y.sat.qdimacs		2.92	4475	828	3736
+pre	arjun-9eb86eb		genbuf5c3y.sat.qdimacs		14.31	1903	4855	12521
+pre	arjun-9eb86eb		ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	120.00			
+pre	arjun-9eb86eb		load_full_2_comp7_REAL.sat.qdimacs		76.57	14343	3619	10029
+pre	arjun-9eb86eb		mult_bool_matrix_dyn_5_6.sat.qdimacs		1.72	3072	605	2581
+pre	arjun-9eb86eb		cnt10n.sat.qdimacs	T	0.07			
+pre	arjun-9eb86eb		small-swap2-fixpoint-9.qdimacs	T	2.62			
+pre	arjun-9eb86eb		rankfunc41_signed_16.qdimacs	T	0.77			
+pre	arjun-9eb86eb		robots_1_5_2_54.2.qdimacs	T	0.07			
+pre	arjun-9eb86eb		robots_1_5_2_72.6.qdimacs	T	0.22			
+pre	arjun-9eb86eb		robots_1_5_2_19.9.qdimacs	F	26.70			
+pre	arjun-9eb86eb		oski3ub5i_c0to15.sat.qdimacs	TO	120.00			
+pre	bloqqer		6s289rb05233_c0to63.sat.qdimacs	TO	120.00			
+pre	bloqqer		AR-fixpoint-6.qdimacs	TO	120.00			
+pre	bloqqer		ActivityService.qdimacs		6.49	4172	6544	31128
+pre	bloqqer		ConcreteActivityService.qdimacs		7.59	4841	8104	38538
+pre	bloqqer		GuidanceService2.qdimacs		4.88	3263	4481	21801
+pre	bloqqer		IssueServiceImpl.qdimacs		5.48	3630	4974	23377
+pre	bloqqer		IterationService.qdimacs		6.48	4172	6544	31128
+pre	bloqqer		LoginService.qdimacs		8.59	5289	8795	38905
+pre	bloqqer		NotificationServiceImpl2.qdimacs		8.79	5402	8920	39699
+pre	bloqqer		add20y.sat.qdimacs	T	0.22			
+pre	bloqqer		PhaseService.qdimacs		6.48	4172	6544	31128
+pre	bloqqer		axquery_query42_1344n.qdimacs		0.87	977	3398	17294
+pre	bloqqer		amba4c7n.sat.qdimacs		2.62	2925	7651	96413
+pre	bloqqer		bobtuint31neg.qdimacs	T	0.52			
+pre	bloqqer		bs128n.sat.qdimacs	T	2.67			
+pre	bloqqer		cache-coherence-3-fixpoint-2.qdimacs	F	8.90			
+pre	bloqqer		ceiling256.qdimacs	T	1.12			
+pre	bloqqer		ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs		3.58	3397	3048	16232
+pre	bloqqer		ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs		10.70	7512	4114	25001
+pre	bloqqer		cycle_sched_4_4_2.sat.qdimacs		3.83	7448	3340	80507
+pre	bloqqer		decomposition128.qdimacs	T	0.17			
+pre	bloqqer		driver_a10y.sat.qdimacs	T	3.48			
+pre	bloqqer		eequery_query42_1344n.qdimacs		1.12	1199	2927	22057
+pre	bloqqer		eijkbs3330.qdimacs		1.37	1298	2352	14642
+pre	bloqqer		equalization128.qdimacs	T	0.47			
+pre	bloqqer		beemskbn1f1_c0to7.sat.qdimacs		42.29	34863	36956	295294
+pre	bloqqer		exquery_query42_1344n.qdimacs		0.87	991	3876	21454
+pre	bloqqer		falsequ_query42_1344n.qdimacs	F	0.03			
+pre	bloqqer		floor128.qdimacs	T	0.12			
+pre	bloqqer		genbuf12b4y.sat.qdimacs		3.88	2940	10712	192096
+pre	bloqqer		ethernet-fixpoint-3.qdimacs		11.40	12515	2560	18425
+pre	bloqqer		intermediate256.qdimacs		3.17	2559	5392	27949
+pre	bloqqer		itc-b13-fixpoint-3.qdimacs	T	2.17			
+pre	bloqqer		kenflashp04.qdimacs	T	0.07			
+pre	bloqqer		itc-b13-fixpoint-8.qdimacs	T	8.04			
+pre	bloqqer		load_full_3_comp5_REAL.sat.qdimacs		41.63	30420	26137	352532
+pre	bloqqer		ltl2dba_Q4_comp4_REAL.sat.qdimacs		37.63	35359	24503	86038
+pre	bloqqer		mult_bool_matrix_dyn_7_7.sat.qdimacs		4.33	5907	3369	19348
+pre	bloqqer		nreachq_query54_1344n.qdimacs		11.15	8369	35622	202426
+pre	bloqqer		neclaftp2002.qdimacs		14.81	17797	30714	180597
+pre	bloqqer		ntrivil_query42_1344n.qdimacs		1.87	2021	5878	39777
+pre	bloqqer		nxquery_query42_1344n.qdimacs		0.87	969	3378	17807
+pre	bloqqer		pdtpmsrotate32.qdimacs	T	0.07			
+pre	bloqqer		pi-bus-fixpoint-2.qdimacs		35.93	33225	29404	256210
+pre	bloqqer		query02_query42_1344n.qdimacs		1.07	901	3418	25346
+pre	bloqqer		query54_query42_1344n.qdimacs		1.47	1459	3482	25190
+pre	bloqqer		query10_query45_1344n.qdimacs		16.42	4589	26730	179847
+pre	bloqqer		rankfunc2_unsigned_64.qdimacs	T	3.68			
+pre	bloqqer		rankfunc54_unsigned_64.qdimacs	T	1.32			
+pre	bloqqer		reachqu_query42_1344n.qdimacs		13.21	8987	37584	277839
+pre	bloqqer		sdlx-fixpoint-4.qdimacs		4.89	6608	3980	25414
+pre	bloqqer		sdlx-fixpoint-8.qdimacs		11.85	14028	12730	91990
+pre	bloqqer		small-dyn-partition-fixpoint-6.qdimacs	F	0.42			
+pre	bloqqer		small-equiv-fixpoint-3.qdimacs		8.99	7039	12564	56230
+pre	bloqqer		sortnetsort7.AE.stepl.008.qdimacs		3.98	3595	4412	17549
+pre	bloqqer		sortnetsort9.AE.stepl.010.qdimacs		11.61	8215	11312	196087
+pre	bloqqer		oski3ub5i_c0to63.sat.qdimacs	TO	120.00			
+pre	bloqqer		stmt31_22_328.qdimacs		4.78	2937	3059	19409
+pre	bloqqer		stmt47_340_389.qdimacs		9.14	5880	2396	12622
+pre	bloqqer		trivial_query42_1344n.qdimacs		1.87	2021	5825	38673
+pre	bloqqer		trueque_query42_1344n.qdimacs	F	0.02			
+pre	bloqqer		stmt17_82_86.qdimacs		13.00	10699	6688	35569
+pre	bloqqer		usb-phy-fixpoint-4.qdimacs		11.70	8395	3377	34753
+pre	bloqqer		ProcessBean.qdimacs		17.26	9954	18197	85122
+pre	bloqqer		ProjectService3.qdimacs		12.10	6965	11183	55139
+pre	bloqqer		bobsmfpu.qdimacs		14.55	15280	18900	94038
+pre	bloqqer		pdtpmsmiim.qdimacs	T	0.32			
+pre	bloqqer		stay24n.sat.qdimacs	T	7.74			
+pre	bloqqer		unit8_2_b.qdimacs		3.93	3405	5358	22407
+pre	bloqqer		mutex-16-s.qdimacs	T	0.57			
+pre	bloqqer		qshifter_6.qdimacs	T	0.32			
+pre	bloqqer		rankfunc48_unsigned_16.qdimacs	T	1.07			
+pre	bloqqer		rankfunc41_signed_32.qdimacs	T	0.92			
+pre	bloqqer		sortnetsort8.AE.stepl.005.qdimacs		3.28	3081	3919	15974
+pre	bloqqer		stmt1_919_920.qdimacs	T	0.42			
+pre	bloqqer		stmt52_117_295.qdimacs		4.68	3259	2719	17932
+pre	bloqqer		ceiling128.qdimacs	T	0.57			
+pre	bloqqer		bobsmhdlc2.qdimacs		2.22	1750	3119	21475
+pre	bloqqer		ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs		7.29	4964	2356	13302
+pre	bloqqer		ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs		7.89	5675	2957	17127
+pre	bloqqer		ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs		7.79	5347	2550	14270
+pre	bloqqer		stmt19_79_83.qdimacs		12.21	9829	6416	33858
+pre	bloqqer		stmt47_112_290.qdimacs		4.78	3439	2333	14851
+pre	bloqqer		stmt41_118_131.qdimacs	T	0.47			
+pre	bloqqer		Q_2-3_v-80-100_r-9.7.qdimacs		0.17	479	3507	17592
+pre	bloqqer		Q_3-3_v-100-100_r-15.1.qdimacs		0.17	300	2936	17552
+pre	bloqqer		x110.14.qdimacs		4.43	3418	8734	31165
+pre	bloqqer		query36_query07_1344n.qdimacs	T	0.37			
+pre	bloqqer		horn_400CNF1800_2aQBF_248.qdimacs		0.27	569	3487	35534
+pre	bloqqer		renHorn_400CNF1720_2aQBF_20.qdimacs		0.27	577	3373	33899
+pre	bloqqer		tree-exa10-20.qdimacs	T	0.01			
+pre	bloqqer		robots_1_5_3_98.5.qdimacs		9.60	5932	4353	56952
+pre	bloqqer		robots_1_5_4_50.5.qdimacs		6.68	5932	3020	28288
+pre	bloqqer		robots_1_5_5_26.5.qdimacs	T	5.84			
+pre	bloqqer		sortnetsort9.AE.stepl.005.qdimacs		4.18	4040	5294	22150
+pre	bloqqer		2qbf-5cnf-160var-1280cl.0.qdimacs		0.17	479	2560	12903
+pre	bloqqer		2qbf-5cnf-20var-160cl.3.qdimacs		0.27	597	4492	25378
+pre	bloqqer		2qbf-5cnf-40var-1280cl.2.qdimacs		0.17	120	2481	12325
+pre	bloqqer		2qbf-5cnf-80var-1280cl.7.qdimacs		0.12	240	2513	12518
+pre	bloqqer		beemldelec4b1_c0to127.sat.qdimacs	TO	120.00			
+pre	bloqqer		ltl2dpa_C26_comp3_REAL.sat.qdimacs	T	8.03			
+pre	bloqqer		ltl2dba_U1-4_comp4_REAL.sat.qdimacs		10.75	13084	11693	39437
+pre	bloqqer		driver_b8y.sat.qdimacs	T	2.27			
+pre	bloqqer		amba6b5y.sat.qdimacs		3.43	3070	10111	119931
+pre	bloqqer		genbuf5c3y.sat.qdimacs		1.72	1904	6527	79691
+pre	bloqqer		load_full_2_comp7_REAL.sat.qdimacs		21.33	14347	7558	35381
+pre	bloqqer		mult_bool_matrix_dyn_5_6.sat.qdimacs		2.62	3386	2907	16474
+pre	bloqqer		cnt10n.sat.qdimacs	T	0.27			
+pre	bloqqer		small-swap2-fixpoint-9.qdimacs	T	2.68			
+pre	bloqqer		rankfunc41_signed_16.qdimacs	T	0.42			
+pre	bloqqer		robots_1_5_2_54.2.qdimacs	T	3.32			
+pre	bloqqer		robots_1_5_2_72.6.qdimacs		13.06	6921	9026	274785
+pre	bloqqer		robots_1_5_2_19.9.qdimacs		23.44	9963	15210	443836
+pre	bloqqer		oski3ub5i_c0to15.sat.qdimacs		113.97	89111	79341	497006
+solve	arjun	cadet	ConcreteActivityService.qdimacs	TO	20.00
+solve	arjun	cadet	ActivityService.qdimacs	TO	20.00
+solve	arjun	cadet	GuidanceService2.qdimacs	TO	20.00
+solve	arjun	cadet	IssueServiceImpl.qdimacs	TO	20.00
+solve	arjun	cadet	IterationService.qdimacs	TO	20.00
+solve	arjun	cadet	PhaseService.qdimacs	TO	20.00
+solve	arjun	cadet	cache-coherence-3-fixpoint-2.qdimacs	F	0.22
+solve	arjun	cadet	amba4c7n.sat.qdimacs	TO	20.00
+solve	arjun	cadet	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	arjun	cadet	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	arjun	cadet	eequery_query42_1344n.qdimacs	TO	20.00
+solve	arjun	cadet	ethernet-fixpoint-3.qdimacs	F	2.72
+solve	arjun	cadet	mult_bool_matrix_dyn_7_7.sat.qdimacs	T	2.48
+solve	arjun	cadet	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	arjun	cadet	sdlx-fixpoint-4.qdimacs	F	0.22
+solve	arjun	cadet	query54_query42_1344n.qdimacs	TO	20.00
+solve	arjun	cadet	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	arjun	cadet	ProjectService3.qdimacs	TO	20.00
+solve	arjun	cadet	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	arjun	cadet	bobsmhdlc2.qdimacs	TO	20.00
+solve	arjun	cadet	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	arjun	cadet	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	arjun	cadet	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	arjun	cadet	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	arjun	cadet	2qbf-5cnf-160var-1280cl.0.qdimacs	F	1.17
+solve	arjun	cadet	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	arjun	cadet	amba6b5y.sat.qdimacs	TO	20.00
+solve	arjun	cadet	load_full_2_comp7_REAL.sat.qdimacs	T	2.12
+solve	arjun	cadet	mult_bool_matrix_dyn_5_6.sat.qdimacs	T	0.12
+solve	arjun	cadet	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	arjun	caqe	ActivityService.qdimacs	F	0.92
+solve	arjun	caqe	ConcreteActivityService.qdimacs	TO	20.00
+solve	arjun	caqe	GuidanceService2.qdimacs	TO	20.00
+solve	arjun	caqe	IterationService.qdimacs	F	0.92
+solve	arjun	caqe	PhaseService.qdimacs	F	0.92
+solve	arjun	caqe	IssueServiceImpl.qdimacs	TO	20.00
+solve	arjun	caqe	amba4c7n.sat.qdimacs	TO	20.00
+solve	arjun	caqe	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	arjun	caqe	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	arjun	caqe	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	arjun	caqe	eequery_query42_1344n.qdimacs	TO	20.00
+solve	arjun	caqe	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	arjun	caqe	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	arjun	caqe	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	arjun	caqe	query54_query42_1344n.qdimacs	TO	20.00
+solve	arjun	caqe	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	arjun	caqe	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	arjun	caqe	sortnetsort8.AE.stepl.005.qdimacs	T	3.83
+solve	arjun	caqe	ProjectService3.qdimacs	TO	20.00
+solve	arjun	caqe	bobsmhdlc2.qdimacs	TO	20.00
+solve	arjun	caqe	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	arjun	caqe	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	arjun	caqe	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	arjun	caqe	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	arjun	caqe	2qbf-5cnf-160var-1280cl.0.qdimacs	F	2.68
+solve	arjun	caqe	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	arjun	caqe	amba6b5y.sat.qdimacs	TO	20.00
+solve	arjun	caqe	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	arjun	caqe	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	arjun	caqe	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	arjun	rareqs	ConcreteActivityService.qdimacs	TO	20.00
+solve	arjun	rareqs	ActivityService.qdimacs	TO	20.00
+solve	arjun	rareqs	GuidanceService2.qdimacs	F	4.53
+solve	arjun	rareqs	IssueServiceImpl.qdimacs	TO	20.00
+solve	arjun	rareqs	IterationService.qdimacs	TO	20.00
+solve	arjun	rareqs	PhaseService.qdimacs	TO	20.00
+solve	arjun	rareqs	amba4c7n.sat.qdimacs	TO	20.00
+solve	arjun	rareqs	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	arjun	rareqs	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	arjun	rareqs	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	arjun	rareqs	eequery_query42_1344n.qdimacs	TO	20.00
+solve	arjun	rareqs	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	arjun	rareqs	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	arjun	rareqs	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	arjun	rareqs	query54_query42_1344n.qdimacs	TO	20.00
+solve	arjun	rareqs	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	arjun	rareqs	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	arjun	rareqs	sortnetsort8.AE.stepl.005.qdimacs	T	5.63
+solve	arjun	rareqs	ProjectService3.qdimacs	TO	20.00
+solve	arjun	rareqs	bobsmhdlc2.qdimacs	TO	20.00
+solve	arjun	rareqs	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	arjun	rareqs	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	arjun	rareqs	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	arjun	rareqs	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	arjun	rareqs	2qbf-5cnf-160var-1280cl.0.qdimacs	F	5.33
+solve	arjun	rareqs	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	arjun	rareqs	amba6b5y.sat.qdimacs	TO	20.00
+solve	arjun	rareqs	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	arjun	rareqs	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	arjun	rareqs	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	arjun	depqbf	ActivityService.qdimacs	TO	20.00
+solve	arjun	depqbf	ConcreteActivityService.qdimacs	TO	20.00
+solve	arjun	depqbf	GuidanceService2.qdimacs	TO	20.00
+solve	arjun	depqbf	IssueServiceImpl.qdimacs	TO	20.00
+solve	arjun	depqbf	IterationService.qdimacs	TO	20.00
+solve	arjun	depqbf	PhaseService.qdimacs	TO	20.00
+solve	arjun	depqbf	amba4c7n.sat.qdimacs	TO	20.00
+solve	arjun	depqbf	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	arjun	depqbf	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	arjun	depqbf	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	arjun	depqbf	eequery_query42_1344n.qdimacs	TO	20.00
+solve	arjun	depqbf	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	arjun	depqbf	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	arjun	depqbf	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	arjun	depqbf	query54_query42_1344n.qdimacs	TO	20.00
+solve	arjun	depqbf	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	arjun	depqbf	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	arjun	depqbf	ProjectService3.qdimacs	TO	20.00
+solve	arjun	depqbf	bobsmhdlc2.qdimacs	TO	20.00
+solve	arjun	depqbf	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	arjun	depqbf	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	arjun	depqbf	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	arjun	depqbf	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	arjun	depqbf	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	arjun	depqbf	2qbf-5cnf-160var-1280cl.0.qdimacs	F	4.63
+solve	arjun	depqbf	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	arjun	depqbf	amba6b5y.sat.qdimacs	TO	20.00
+solve	arjun	depqbf	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	arjun	depqbf	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	arjun	depqbf	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ConcreteActivityService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ActivityService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	GuidanceService2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	IssueServiceImpl.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	IterationService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	LoginService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	PhaseService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	cache-coherence-3-fixpoint-2.qdimacs	F	0.22
+solve	arjun-9eb86eb	cadet	amba4c7n.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	eequery_query42_1344n.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ethernet-fixpoint-3.qdimacs	F	2.77
+solve	arjun-9eb86eb	cadet	eijkbs3330.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	mult_bool_matrix_dyn_7_7.sat.qdimacs	T	2.52
+solve	arjun-9eb86eb	cadet	pi-bus-fixpoint-2.qdimacs	F	3.18
+solve	arjun-9eb86eb	cadet	intermediate256.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	sdlx-fixpoint-4.qdimacs	F	0.22
+solve	arjun-9eb86eb	cadet	query54_query42_1344n.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	small-dyn-partition-fixpoint-6.qdimacs	F	0.01
+solve	arjun-9eb86eb	cadet	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	stmt31_22_328.qdimacs	F	0.22
+solve	arjun-9eb86eb	cadet	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	usb-phy-fixpoint-4.qdimacs	F	0.27
+solve	arjun-9eb86eb	cadet	stmt47_340_389.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ProcessBean.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	pdtpmsmiim.qdimacs	T	9.05
+solve	arjun-9eb86eb	cadet	ProjectService3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	unit8_2_b.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	stmt52_117_295.qdimacs	F	1.97
+solve	arjun-9eb86eb	cadet	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	bobsmhdlc2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	stmt47_112_290.qdimacs	F	0.17
+solve	arjun-9eb86eb	cadet	stmt19_79_83.qdimacs	T	0.97
+solve	arjun-9eb86eb	cadet	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	2qbf-5cnf-160var-1280cl.0.qdimacs	F	1.17
+solve	arjun-9eb86eb	cadet	sortnetsort9.AE.stepl.005.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	driver_b8y.sat.qdimacs	T	0.72
+solve	arjun-9eb86eb	cadet	amba6b5y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	cadet	load_full_2_comp7_REAL.sat.qdimacs	T	2.12
+solve	arjun-9eb86eb	cadet	mult_bool_matrix_dyn_5_6.sat.qdimacs	T	0.12
+solve	arjun-9eb86eb	cadet	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ActivityService.qdimacs	F	0.92
+solve	arjun-9eb86eb	caqe	ConcreteActivityService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	GuidanceService2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	IterationService.qdimacs	F	0.87
+solve	arjun-9eb86eb	caqe	IssueServiceImpl.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	LoginService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	PhaseService.qdimacs	F	0.87
+solve	arjun-9eb86eb	caqe	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	amba4c7n.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	eequery_query42_1344n.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	eijkbs3330.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	intermediate256.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	query54_query42_1344n.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	small-dyn-partition-fixpoint-6.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	stmt31_22_328.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	stmt47_340_389.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	usb-phy-fixpoint-4.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ProcessBean.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ProjectService3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	pdtpmsmiim.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	unit8_2_b.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	sortnetsort8.AE.stepl.005.qdimacs	T	3.88
+solve	arjun-9eb86eb	caqe	stmt52_117_295.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	bobsmhdlc2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	stmt19_79_83.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	stmt47_112_290.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	sortnetsort9.AE.stepl.005.qdimacs	T	6.89
+solve	arjun-9eb86eb	caqe	2qbf-5cnf-160var-1280cl.0.qdimacs	F	2.73
+solve	arjun-9eb86eb	caqe	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	amba6b5y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	driver_b8y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	caqe	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ConcreteActivityService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ActivityService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	GuidanceService2.qdimacs	F	4.58
+solve	arjun-9eb86eb	rareqs	IssueServiceImpl.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	IterationService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	LoginService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	PhaseService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	amba4c7n.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	eequery_query42_1344n.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	eijkbs3330.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	intermediate256.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	query54_query42_1344n.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	small-dyn-partition-fixpoint-6.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	stmt31_22_328.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	stmt47_340_389.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	usb-phy-fixpoint-4.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ProcessBean.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ProjectService3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	pdtpmsmiim.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	unit8_2_b.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	sortnetsort8.AE.stepl.005.qdimacs	T	5.58
+solve	arjun-9eb86eb	rareqs	stmt52_117_295.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	bobsmhdlc2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	stmt19_79_83.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	stmt47_112_290.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	sortnetsort9.AE.stepl.005.qdimacs	T	17.83
+solve	arjun-9eb86eb	rareqs	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	2qbf-5cnf-160var-1280cl.0.qdimacs	F	5.18
+solve	arjun-9eb86eb	rareqs	amba6b5y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	driver_b8y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	rareqs	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ActivityService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ConcreteActivityService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	GuidanceService2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	IssueServiceImpl.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	LoginService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	IterationService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	PhaseService.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	amba4c7n.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	eequery_query42_1344n.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	eijkbs3330.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	intermediate256.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	query54_query42_1344n.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	small-dyn-partition-fixpoint-6.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	stmt31_22_328.qdimacs	F	0.02
+solve	arjun-9eb86eb	depqbf	stmt47_340_389.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	usb-phy-fixpoint-4.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ProcessBean.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ProjectService3.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	pdtpmsmiim.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	unit8_2_b.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	stmt52_117_295.qdimacs	F	0.07
+solve	arjun-9eb86eb	depqbf	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	bobsmhdlc2.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	stmt47_112_290.qdimacs	F	0.02
+solve	arjun-9eb86eb	depqbf	stmt19_79_83.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	2qbf-5cnf-160var-1280cl.0.qdimacs	F	4.03
+solve	arjun-9eb86eb	depqbf	sortnetsort9.AE.stepl.005.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	driver_b8y.sat.qdimacs	T	0.17
+solve	arjun-9eb86eb	depqbf	amba6b5y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	arjun-9eb86eb	depqbf	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	ActivityService.qdimacs	TO	20.00
+solve	bloqqer	cadet	ConcreteActivityService.qdimacs	TO	20.00
+solve	bloqqer	cadet	GuidanceService2.qdimacs	TO	20.00
+solve	bloqqer	cadet	IssueServiceImpl.qdimacs	TO	20.00
+solve	bloqqer	cadet	IterationService.qdimacs	TO	20.00
+solve	bloqqer	cadet	LoginService.qdimacs	TO	20.00
+solve	bloqqer	cadet	PhaseService.qdimacs	TO	20.00
+solve	bloqqer	cadet	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	bloqqer	cadet	axquery_query42_1344n.qdimacs	F	0.03
+solve	bloqqer	cadet	amba4c7n.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	beemskbn1f1_c0to7.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	bloqqer	cadet	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	bloqqer	cadet	cycle_sched_4_4_2.sat.qdimacs	T	0.72
+solve	bloqqer	cadet	eequery_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	cadet	ethernet-fixpoint-3.qdimacs	F	0.22
+solve	bloqqer	cadet	exquery_query42_1344n.qdimacs	F	0.04
+solve	bloqqer	cadet	eijkbs3330.qdimacs	TO	20.00
+solve	bloqqer	cadet	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	intermediate256.qdimacs	TO	20.00
+solve	bloqqer	cadet	load_full_3_comp5_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	neclaftp2002.qdimacs	TO	20.00
+solve	bloqqer	cadet	ntrivil_query42_1344n.qdimacs	F	0.27
+solve	bloqqer	cadet	nxquery_query42_1344n.qdimacs	F	3.83
+solve	bloqqer	cadet	pi-bus-fixpoint-2.qdimacs	F	0.67
+solve	bloqqer	cadet	query02_query42_1344n.qdimacs	F	3.63
+solve	bloqqer	cadet	nreachq_query54_1344n.qdimacs	TO	20.00
+solve	bloqqer	cadet	query54_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	cadet	query10_query45_1344n.qdimacs	TO	20.00
+solve	bloqqer	cadet	reachqu_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	cadet	sdlx-fixpoint-4.qdimacs	F	12.76
+solve	bloqqer	cadet	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	bloqqer	cadet	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	bloqqer	cadet	sortnetsort7.AE.stepl.008.qdimacs	F	6.84
+solve	bloqqer	cadet	stmt31_22_328.qdimacs	F	0.07
+solve	bloqqer	cadet	sortnetsort9.AE.stepl.010.qdimacs	TO	20.00
+solve	bloqqer	cadet	stmt47_340_389.qdimacs	TO	20.00
+solve	bloqqer	cadet	trivial_query42_1344n.qdimacs	F	0.17
+solve	bloqqer	cadet	usb-phy-fixpoint-4.qdimacs	F	0.12
+solve	bloqqer	cadet	stmt17_82_86.qdimacs	TO	20.00
+solve	bloqqer	cadet	ProcessBean.qdimacs	TO	20.00
+solve	bloqqer	cadet	ProjectService3.qdimacs	TO	20.00
+solve	bloqqer	cadet	bobsmfpu.qdimacs	TO	20.00
+solve	bloqqer	cadet	unit8_2_b.qdimacs	TO	20.00
+solve	bloqqer	cadet	stmt52_117_295.qdimacs	F	0.07
+solve	bloqqer	cadet	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	bloqqer	cadet	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	T	0.22
+solve	bloqqer	cadet	bobsmhdlc2.qdimacs	TO	20.00
+solve	bloqqer	cadet	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	bloqqer	cadet	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	bloqqer	cadet	stmt47_112_290.qdimacs	F	0.04
+solve	bloqqer	cadet	stmt19_79_83.qdimacs	TO	20.00
+solve	bloqqer	cadet	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	bloqqer	cadet	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	bloqqer	cadet	horn_400CNF1800_2aQBF_248.qdimacs	F	0.12
+solve	bloqqer	cadet	renHorn_400CNF1720_2aQBF_20.qdimacs	F	0.03
+solve	bloqqer	cadet	x110.14.qdimacs	TO	20.00
+solve	bloqqer	cadet	robots_1_5_3_98.5.qdimacs	TO	20.00
+solve	bloqqer	cadet	robots_1_5_4_50.5.qdimacs	F	9.19
+solve	bloqqer	cadet	2qbf-5cnf-160var-1280cl.0.qdimacs	F	0.57
+solve	bloqqer	cadet	2qbf-5cnf-20var-160cl.3.qdimacs	F	0.12
+solve	bloqqer	cadet	2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.02
+solve	bloqqer	cadet	2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.02
+solve	bloqqer	cadet	ltl2dba_U1-4_comp4_REAL.sat.qdimacs	T	7.09
+solve	bloqqer	cadet	sortnetsort9.AE.stepl.005.qdimacs	TO	20.00
+solve	bloqqer	cadet	amba6b5y.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	oski3ub5i_c0to15.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	robots_1_5_2_72.6.qdimacs	T	0.57
+solve	bloqqer	cadet	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	bloqqer	cadet	robots_1_5_2_19.9.qdimacs	F	14.30
+solve	bloqqer	caqe	ActivityService.qdimacs	TO	20.00
+solve	bloqqer	caqe	ConcreteActivityService.qdimacs	TO	20.00
+solve	bloqqer	caqe	GuidanceService2.qdimacs	TO	20.00
+solve	bloqqer	caqe	IssueServiceImpl.qdimacs	TO	20.00
+solve	bloqqer	caqe	LoginService.qdimacs	TO	20.00
+solve	bloqqer	caqe	IterationService.qdimacs	TO	20.00
+solve	bloqqer	caqe	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	bloqqer	caqe	PhaseService.qdimacs	TO	20.00
+solve	bloqqer	caqe	axquery_query42_1344n.qdimacs	F	0.02
+solve	bloqqer	caqe	amba4c7n.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	beemskbn1f1_c0to7.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	bloqqer	caqe	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	bloqqer	caqe	cycle_sched_4_4_2.sat.qdimacs	T	0.12
+solve	bloqqer	caqe	eequery_query42_1344n.qdimacs	T	13.06
+solve	bloqqer	caqe	eijkbs3330.qdimacs	TO	20.00
+solve	bloqqer	caqe	exquery_query42_1344n.qdimacs	F	0.03
+solve	bloqqer	caqe	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	bloqqer	caqe	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	intermediate256.qdimacs	TO	20.00
+solve	bloqqer	caqe	load_full_3_comp5_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	neclaftp2002.qdimacs	TO	20.00
+solve	bloqqer	caqe	ntrivil_query42_1344n.qdimacs	F	0.07
+solve	bloqqer	caqe	nxquery_query42_1344n.qdimacs	F	0.03
+solve	bloqqer	caqe	nreachq_query54_1344n.qdimacs	TO	20.00
+solve	bloqqer	caqe	query02_query42_1344n.qdimacs	F	0.12
+solve	bloqqer	caqe	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	bloqqer	caqe	query54_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	caqe	query10_query45_1344n.qdimacs	TO	20.00
+solve	bloqqer	caqe	reachqu_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	caqe	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	bloqqer	caqe	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	bloqqer	caqe	sortnetsort7.AE.stepl.008.qdimacs	F	0.72
+solve	bloqqer	caqe	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	bloqqer	caqe	stmt31_22_328.qdimacs	F	5.68
+solve	bloqqer	caqe	stmt47_340_389.qdimacs	F	0.07
+solve	bloqqer	caqe	sortnetsort9.AE.stepl.010.qdimacs	F	19.12
+solve	bloqqer	caqe	trivial_query42_1344n.qdimacs	F	0.07
+solve	bloqqer	caqe	usb-phy-fixpoint-4.qdimacs	F	0.17
+solve	bloqqer	caqe	stmt17_82_86.qdimacs	TO	20.00
+solve	bloqqer	caqe	ProcessBean.qdimacs	TO	20.00
+solve	bloqqer	caqe	ProjectService3.qdimacs	TO	20.00
+solve	bloqqer	caqe	bobsmfpu.qdimacs	TO	20.00
+solve	bloqqer	caqe	sortnetsort8.AE.stepl.005.qdimacs	T	5.63
+solve	bloqqer	caqe	stmt52_117_295.qdimacs	F	1.22
+solve	bloqqer	caqe	unit8_2_b.qdimacs	TO	20.00
+solve	bloqqer	caqe	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	T	0.02
+solve	bloqqer	caqe	bobsmhdlc2.qdimacs	TO	20.00
+solve	bloqqer	caqe	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	bloqqer	caqe	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	bloqqer	caqe	stmt47_112_290.qdimacs	F	0.07
+solve	bloqqer	caqe	stmt19_79_83.qdimacs	TO	20.00
+solve	bloqqer	caqe	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	bloqqer	caqe	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	bloqqer	caqe	horn_400CNF1800_2aQBF_248.qdimacs	F	0.07
+solve	bloqqer	caqe	renHorn_400CNF1720_2aQBF_20.qdimacs	F	0.07
+solve	bloqqer	caqe	robots_1_5_3_98.5.qdimacs	T	0.17
+solve	bloqqer	caqe	robots_1_5_4_50.5.qdimacs	F	0.07
+solve	bloqqer	caqe	x110.14.qdimacs	TO	20.00
+solve	bloqqer	caqe	sortnetsort9.AE.stepl.005.qdimacs	T	9.55
+solve	bloqqer	caqe	2qbf-5cnf-20var-160cl.3.qdimacs	F	0.07
+solve	bloqqer	caqe	2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.02
+solve	bloqqer	caqe	2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.02
+solve	bloqqer	caqe	2qbf-5cnf-160var-1280cl.0.qdimacs	F	4.08
+solve	bloqqer	caqe	ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	amba6b5y.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	oski3ub5i_c0to15.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	caqe	robots_1_5_2_72.6.qdimacs	T	0.12
+solve	bloqqer	caqe	robots_1_5_2_19.9.qdimacs	F	1.27
+solve	bloqqer	caqe	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	ActivityService.qdimacs	TO	20.00
+solve	bloqqer	rareqs	ConcreteActivityService.qdimacs	TO	20.00
+solve	bloqqer	rareqs	GuidanceService2.qdimacs	F	0.42
+solve	bloqqer	rareqs	IssueServiceImpl.qdimacs	TO	20.00
+solve	bloqqer	rareqs	IterationService.qdimacs	TO	20.00
+solve	bloqqer	rareqs	LoginService.qdimacs	TO	20.00
+solve	bloqqer	rareqs	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	bloqqer	rareqs	PhaseService.qdimacs	TO	20.00
+solve	bloqqer	rareqs	axquery_query42_1344n.qdimacs	F	0.02
+solve	bloqqer	rareqs	amba4c7n.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	beemskbn1f1_c0to7.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	bloqqer	rareqs	cycle_sched_4_4_2.sat.qdimacs	T	0.22
+solve	bloqqer	rareqs	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	bloqqer	rareqs	eequery_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	rareqs	eijkbs3330.qdimacs	TO	20.00
+solve	bloqqer	rareqs	exquery_query42_1344n.qdimacs	F	0.02
+solve	bloqqer	rareqs	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	bloqqer	rareqs	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	intermediate256.qdimacs	TO	20.00
+solve	bloqqer	rareqs	load_full_3_comp5_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	neclaftp2002.qdimacs	TO	20.00
+solve	bloqqer	rareqs	ntrivil_query42_1344n.qdimacs	F	0.04
+solve	bloqqer	rareqs	nxquery_query42_1344n.qdimacs	F	0.02
+solve	bloqqer	rareqs	nreachq_query54_1344n.qdimacs	TO	20.00
+solve	bloqqer	rareqs	query02_query42_1344n.qdimacs	F	0.04
+solve	bloqqer	rareqs	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	bloqqer	rareqs	query54_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	rareqs	query10_query45_1344n.qdimacs	TO	20.00
+solve	bloqqer	rareqs	reachqu_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	rareqs	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	bloqqer	rareqs	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	bloqqer	rareqs	sortnetsort7.AE.stepl.008.qdimacs	F	0.42
+solve	bloqqer	rareqs	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	bloqqer	rareqs	sortnetsort9.AE.stepl.010.qdimacs	TO	20.00
+solve	bloqqer	rareqs	stmt31_22_328.qdimacs	TO	20.00
+solve	bloqqer	rareqs	stmt47_340_389.qdimacs	TO	20.00
+solve	bloqqer	rareqs	trivial_query42_1344n.qdimacs	F	0.07
+solve	bloqqer	rareqs	stmt17_82_86.qdimacs	TO	20.00
+solve	bloqqer	rareqs	usb-phy-fixpoint-4.qdimacs	F	0.72
+solve	bloqqer	rareqs	ProcessBean.qdimacs	TO	20.00
+solve	bloqqer	rareqs	ProjectService3.qdimacs	TO	20.00
+solve	bloqqer	rareqs	bobsmfpu.qdimacs	TO	20.00
+solve	bloqqer	rareqs	unit8_2_b.qdimacs	TO	20.00
+solve	bloqqer	rareqs	stmt52_117_295.qdimacs	F	1.57
+solve	bloqqer	rareqs	sortnetsort8.AE.stepl.005.qdimacs	T	6.24
+solve	bloqqer	rareqs	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	T	0.03
+solve	bloqqer	rareqs	bobsmhdlc2.qdimacs	TO	20.00
+solve	bloqqer	rareqs	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	bloqqer	rareqs	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	bloqqer	rareqs	stmt47_112_290.qdimacs	F	0.27
+solve	bloqqer	rareqs	stmt19_79_83.qdimacs	TO	20.00
+solve	bloqqer	rareqs	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	bloqqer	rareqs	x110.14.qdimacs	F	0.82
+solve	bloqqer	rareqs	horn_400CNF1800_2aQBF_248.qdimacs	F	0.02
+solve	bloqqer	rareqs	renHorn_400CNF1720_2aQBF_20.qdimacs	F	0.02
+solve	bloqqer	rareqs	robots_1_5_3_98.5.qdimacs	T	0.22
+solve	bloqqer	rareqs	robots_1_5_4_50.5.qdimacs	F	0.07
+solve	bloqqer	rareqs	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	bloqqer	rareqs	2qbf-5cnf-160var-1280cl.0.qdimacs	F	2.68
+solve	bloqqer	rareqs	2qbf-5cnf-20var-160cl.3.qdimacs	F	0.02
+solve	bloqqer	rareqs	2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.01
+solve	bloqqer	rareqs	2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.01
+solve	bloqqer	rareqs	sortnetsort9.AE.stepl.005.qdimacs	T	15.67
+solve	bloqqer	rareqs	ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	amba6b5y.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	oski3ub5i_c0to15.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	rareqs	robots_1_5_2_72.6.qdimacs	T	0.12
+solve	bloqqer	rareqs	robots_1_5_2_19.9.qdimacs	F	0.42
+solve	bloqqer	rareqs	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ActivityService.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ConcreteActivityService.qdimacs	TO	20.00
+solve	bloqqer	depqbf	GuidanceService2.qdimacs	TO	20.00
+solve	bloqqer	depqbf	IssueServiceImpl.qdimacs	TO	20.00
+solve	bloqqer	depqbf	IterationService.qdimacs	TO	20.00
+solve	bloqqer	depqbf	LoginService.qdimacs	TO	20.00
+solve	bloqqer	depqbf	PhaseService.qdimacs	TO	20.00
+solve	bloqqer	depqbf	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	bloqqer	depqbf	axquery_query42_1344n.qdimacs	F	0.03
+solve	bloqqer	depqbf	amba4c7n.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	beemskbn1f1_c0to7.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	bloqqer	depqbf	cycle_sched_4_4_2.sat.qdimacs	T	0.92
+solve	bloqqer	depqbf	eequery_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	depqbf	eijkbs3330.qdimacs	TO	20.00
+solve	bloqqer	depqbf	exquery_query42_1344n.qdimacs	F	0.82
+solve	bloqqer	depqbf	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	bloqqer	depqbf	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	intermediate256.qdimacs	TO	20.00
+solve	bloqqer	depqbf	load_full_3_comp5_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	neclaftp2002.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ntrivil_query42_1344n.qdimacs	F	0.07
+solve	bloqqer	depqbf	nxquery_query42_1344n.qdimacs	F	0.12
+solve	bloqqer	depqbf	nreachq_query54_1344n.qdimacs	TO	20.00
+solve	bloqqer	depqbf	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	bloqqer	depqbf	query02_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	depqbf	query54_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	depqbf	query10_query45_1344n.qdimacs	TO	20.00
+solve	bloqqer	depqbf	reachqu_query42_1344n.qdimacs	TO	20.00
+solve	bloqqer	depqbf	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	bloqqer	depqbf	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	bloqqer	depqbf	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	bloqqer	depqbf	sortnetsort7.AE.stepl.008.qdimacs	TO	20.00
+solve	bloqqer	depqbf	sortnetsort9.AE.stepl.010.qdimacs	TO	20.00
+solve	bloqqer	depqbf	stmt31_22_328.qdimacs	F	4.58
+solve	bloqqer	depqbf	stmt47_340_389.qdimacs	TO	20.00
+solve	bloqqer	depqbf	trivial_query42_1344n.qdimacs	F	0.72
+solve	bloqqer	depqbf	usb-phy-fixpoint-4.qdimacs	F	0.12
+solve	bloqqer	depqbf	stmt17_82_86.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ProcessBean.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ProjectService3.qdimacs	TO	20.00
+solve	bloqqer	depqbf	bobsmfpu.qdimacs	TO	20.00
+solve	bloqqer	depqbf	unit8_2_b.qdimacs	TO	20.00
+solve	bloqqer	depqbf	stmt52_117_295.qdimacs	F	0.17
+solve	bloqqer	depqbf	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	T	0.04
+solve	bloqqer	depqbf	bobsmhdlc2.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	bloqqer	depqbf	stmt47_112_290.qdimacs	F	0.03
+solve	bloqqer	depqbf	stmt19_79_83.qdimacs	TO	20.00
+solve	bloqqer	depqbf	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	bloqqer	depqbf	x110.14.qdimacs	F	9.30
+solve	bloqqer	depqbf	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	bloqqer	depqbf	horn_400CNF1800_2aQBF_248.qdimacs	TO	20.00
+solve	bloqqer	depqbf	robots_1_5_3_98.5.qdimacs	T	0.62
+solve	bloqqer	depqbf	robots_1_5_4_50.5.qdimacs	F	0.12
+solve	bloqqer	depqbf	renHorn_400CNF1720_2aQBF_20.qdimacs	TO	20.00
+solve	bloqqer	depqbf	2qbf-5cnf-160var-1280cl.0.qdimacs	F	5.28
+solve	bloqqer	depqbf	2qbf-5cnf-20var-160cl.3.qdimacs	F	0.04
+solve	bloqqer	depqbf	2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.07
+solve	bloqqer	depqbf	2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.02
+solve	bloqqer	depqbf	sortnetsort9.AE.stepl.005.qdimacs	TO	20.00
+solve	bloqqer	depqbf	ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	amba6b5y.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	oski3ub5i_c0to15.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	robots_1_5_2_72.6.qdimacs	T	0.27
+solve	bloqqer	depqbf	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	bloqqer	depqbf	robots_1_5_2_19.9.qdimacs	F	16.72
+pre	none		6s289rb05233_c0to63.sat.qdimacs		0.00	218792	611497	1443801
+pre	none		AR-fixpoint-6.qdimacs		0.00	452677	1452861	3863372
+pre	none		ActivityService.qdimacs		0.00	4172	15089	38538
+pre	none		ConcreteActivityService.qdimacs		0.00	4841	17651	45185
+pre	none		GuidanceService2.qdimacs		0.00	3263	11495	29083
+pre	none		IssueServiceImpl.qdimacs		0.00	3630	12896	32738
+pre	none		IterationService.qdimacs		0.00	4172	15089	38538
+pre	none		LoginService.qdimacs		0.00	5289	21667	55773
+pre	none		NotificationServiceImpl2.qdimacs		0.00	5402	22075	56589
+pre	none		PhaseService.qdimacs		0.00	4172	15089	38538
+pre	none		add20y.sat.qdimacs		0.00	616	1651	3851
+pre	none		amba4c7n.sat.qdimacs		0.00	2914	19573	53089
+pre	none		axquery_query42_1344n.qdimacs		0.00	618	1647	4555
+pre	none		beemskbn1f1_c0to7.sat.qdimacs		0.00	34863	102404	239658
+pre	none		bobtuint31neg.qdimacs		0.00	1638	4587	13347
+pre	none		bs128n.sat.qdimacs		0.00	6938	20267	47459
+pre	none		cache-coherence-3-fixpoint-2.qdimacs		0.00	5489	15891	41084
+pre	none		ceiling256.qdimacs		0.00	2639	7753	22729
+pre	none		ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs		0.00	3247	9214	21498
+pre	none		ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs		0.00	7457	21838	50954
+pre	none		cycle_sched_4_4_2.sat.qdimacs		0.00	6450	19353	45745
+pre	none		decomposition128.qdimacs		0.00	1146	3154	9179
+pre	none		driver_a10y.sat.qdimacs		0.00	5500	15005	35677
+pre	none		eequery_query42_1344n.qdimacs		0.00	1026	2427	6691
+pre	none		eijkbs3330.qdimacs		0.00	1298	3578	10688
+pre	none		equalization128.qdimacs		0.00	1864	5754	17160
+pre	none		ethernet-fixpoint-3.qdimacs		0.00	12515	33884	84241
+pre	none		exquery_query42_1344n.qdimacs		0.00	618	1647	4555
+pre	none		falsequ_query42_1344n.qdimacs		0.00	319	1089	2545
+pre	none		floor128.qdimacs		0.00	1136	3116	9058
+pre	none		genbuf12b4y.sat.qdimacs		0.00	2939	24993	69409
+pre	none		intermediate256.qdimacs		0.00	2559	7412	20701
+pre	none		itc-b13-fixpoint-3.qdimacs		0.00	3510	10014	24623
+pre	none		itc-b13-fixpoint-8.qdimacs		0.00	10265	29564	72503
+pre	none		kenflashp04.qdimacs		0.00	409	1020	3114
+pre	none		load_full_3_comp5_REAL.sat.qdimacs		0.00	30111	101864	249138
+pre	none		ltl2dba_Q4_comp4_REAL.sat.qdimacs		0.00	35339	118338	288668
+pre	none		mult_bool_matrix_dyn_7_7.sat.qdimacs		0.00	5649	16676	39030
+pre	none		neclaftp2002.qdimacs		0.00	17797	34731	98271
+pre	none		nreachq_query54_1344n.qdimacs		0.00	8369	50386	134146
+pre	none		ntrivil_query42_1344n.qdimacs		0.00	2021	6920	19430
+pre	none		nxquery_query42_1344n.qdimacs		0.00	618	1647	4555
+pre	none		oski3ub5i_c0to63.sat.qdimacs		0.00	89111	243053	571953
+pre	none		pdtpmsrotate32.qdimacs		0.00	722	1893	5870
+pre	none		pi-bus-fixpoint-2.qdimacs		0.00	33225	96657	249316
+pre	none		query02_query42_1344n.qdimacs		0.00	730	1987	5539
+pre	none		query54_query42_1344n.qdimacs		0.00	1262	2897	7865
+pre	none		query10_query45_1344n.qdimacs		0.00	4589	31298	97658
+pre	none		rankfunc2_unsigned_64.qdimacs		0.00	2572	6905	18140
+pre	none		rankfunc54_unsigned_64.qdimacs		0.00	5268	13886	36519
+pre	none		reachqu_query42_1344n.qdimacs		0.00	8987	42390	130662
+pre	none		sdlx-fixpoint-4.qdimacs		0.00	6608	19598	47681
+pre	none		sdlx-fixpoint-8.qdimacs		0.00	14028	41770	101525
+pre	none		small-dyn-partition-fixpoint-6.qdimacs		0.00	665	1895	4946
+pre	none		small-equiv-fixpoint-3.qdimacs		0.00	7039	23169	58786
+pre	none		sortnetsort7.AE.stepl.008.qdimacs		0.00	3591	6030	16056
+pre	none		sortnetsort9.AE.stepl.010.qdimacs		0.00	8049	13468	35742
+pre	none		stmt31_22_328.qdimacs		0.00	2937	9739	24030
+pre	none		stmt47_340_389.qdimacs		0.00	5651	19175	47332
+pre	none		stmt17_82_86.qdimacs		0.00	10699	41813	105802
+pre	none		trivial_query42_1344n.qdimacs		0.00	2021	6920	19430
+pre	none		trueque_query42_1344n.qdimacs		0.00	335	531	2003
+pre	none		usb-phy-fixpoint-4.qdimacs		0.00	7766	22589	59150
+pre	none		ProcessBean.qdimacs		0.00	9954	41338	106607
+pre	none		ProjectService3.qdimacs		0.00	6965	24678	62655
+pre	none		beemldelec4b1_c0to127.sat.qdimacs		0.00	74715	215451	504471
+pre	none		bobsmfpu.qdimacs		0.00	15280	59562	177536
+pre	none		pdtpmsmiim.qdimacs		0.00	965	2350	6901
+pre	none		stay24n.sat.qdimacs		0.00	8373	24907	58179
+pre	none		unit8_2_b.qdimacs		0.00	3405	9675	22573
+pre	none		mutex-16-s.qdimacs		0.00	3961	1779	4375
+pre	none		qshifter_6.qdimacs		0.00	134	8192	65536
+pre	none		rankfunc48_unsigned_16.qdimacs		0.00	1480	4026	10758
+pre	none		rankfunc41_signed_32.qdimacs		0.00	3442	8787	23875
+pre	none		sortnetsort8.AE.stepl.005.qdimacs		0.00	3077	5151	13687
+pre	none		stmt1_919_920.qdimacs		0.00	686	2263	5670
+pre	none		stmt52_117_295.qdimacs		0.00	3259	10698	26333
+pre	none		ceiling128.qdimacs		0.00	1317	3861	11313
+pre	none		bobsmhdlc2.qdimacs		0.00	1293	3029	9051
+pre	none		ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs		0.00	4899	14398	33594
+pre	none		ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs		0.00	5623	16318	38074
+pre	none		ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs		0.00	5295	15358	35834
+pre	none		stmt19_79_83.qdimacs		0.00	9829	38279	96824
+pre	none		stmt47_112_290.qdimacs		0.00	3209	10498	25829
+pre	none		stmt41_118_131.qdimacs		0.00	689	2254	5699
+pre	none		Q_2-3_v-80-100_r-9.7.qdimacs		0.00	180	900	4500
+pre	none		Q_3-3_v-100-100_r-15.1.qdimacs		0.00	200	1500	9000
+pre	none		x110.14.qdimacs		0.00	3414	10265	27600
+pre	none		query36_query07_1344n.qdimacs		0.00	488	849	2175
+pre	none		horn_400CNF1800_2aQBF_248.qdimacs		0.00	400	1800	17839
+pre	none		renHorn_400CNF1720_2aQBF_20.qdimacs		0.00	400	1720	17047
+pre	none		tree-exa10-20.qdimacs		0.00	40	38	114
+pre	none		robots_1_5_3_98.5.qdimacs		0.00	5928	19543	84117
+pre	none		robots_1_5_4_50.5.qdimacs		0.00	5928	19544	84118
+pre	none		robots_1_5_5_26.5.qdimacs		0.00	5928	19545	84119
+pre	none		sortnetsort9.AE.stepl.005.qdimacs		0.00	4034	6743	17892
+pre	none		2qbf-5cnf-160var-1280cl.0.qdimacs		0.00	320	1280	6400
+pre	none		2qbf-5cnf-20var-160cl.3.qdimacs		0.00	40	160	800
+pre	none		2qbf-5cnf-40var-1280cl.2.qdimacs		0.00	80	1280	6400
+pre	none		2qbf-5cnf-80var-1280cl.7.qdimacs		0.00	160	1280	6400
+pre	none		ltl2dba_U1-4_comp4_REAL.sat.qdimacs		0.00	13075	46592	114862
+pre	none		ltl2dpa_C26_comp3_REAL.sat.qdimacs		0.00	8064	23262	55280
+pre	none		amba6b5y.sat.qdimacs		0.00	3055	24071	66371
+pre	none		driver_b8y.sat.qdimacs		0.00	4475	12155	28839
+pre	none		genbuf5c3y.sat.qdimacs		0.00	1903	15355	42435
+pre	none		oski3ub5i_c0to15.sat.qdimacs		0.00	89111	243053	571953
+pre	none		load_full_2_comp7_REAL.sat.qdimacs		0.00	14343	44976	108450
+pre	none		mult_bool_matrix_dyn_5_6.sat.qdimacs		0.00	3072	9108	21378
+pre	none		cnt10n.sat.qdimacs		0.00	358	1031	2427
+pre	none		small-swap2-fixpoint-9.qdimacs		0.00	2817	8151	24220
+pre	none		rankfunc41_signed_16.qdimacs		0.00	1746	4435	12035
+pre	none		robots_1_5_2_54.2.qdimacs		0.00	2964	8640	35339
+pre	none		robots_1_5_2_72.6.qdimacs		0.00	6916	23176	100375
+pre	none		robots_1_5_2_19.9.qdimacs		0.00	9880	34078	149152
+solve	none	cadet	AR-fixpoint-6.qdimacs	F	16.62
+solve	none	cadet	6s289rb05233_c0to63.sat.qdimacs	TO	20.00
+solve	none	cadet	ActivityService.qdimacs	TO	20.00
+solve	none	cadet	ConcreteActivityService.qdimacs	TO	20.00
+solve	none	cadet	GuidanceService2.qdimacs	TO	20.00
+solve	none	cadet	IssueServiceImpl.qdimacs	TO	20.00
+solve	none	cadet	IterationService.qdimacs	TO	20.00
+solve	none	cadet	LoginService.qdimacs	TO	20.00
+solve	none	cadet	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	none	cadet	add20y.sat.qdimacs	T	0.04
+solve	none	cadet	PhaseService.qdimacs	TO	20.00
+solve	none	cadet	amba4c7n.sat.qdimacs	TO	20.00
+solve	none	cadet	axquery_query42_1344n.qdimacs	TO	20.00
+solve	none	cadet	beemskbn1f1_c0to7.sat.qdimacs	TO	20.00
+solve	none	cadet	bobtuint31neg.qdimacs	TO	20.00
+solve	none	cadet	cache-coherence-3-fixpoint-2.qdimacs	F	0.12
+solve	none	cadet	ceiling256.qdimacs	T	7.04
+solve	none	cadet	bs128n.sat.qdimacs	TO	20.00
+solve	none	cadet	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	none	cadet	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	none	cadet	cycle_sched_4_4_2.sat.qdimacs	TO	20.00
+solve	none	cadet	decomposition128.qdimacs	TO	20.00
+solve	none	cadet	driver_a10y.sat.qdimacs	TO	20.00
+solve	none	cadet	eequery_query42_1344n.qdimacs	TO	20.00
+solve	none	cadet	equalization128.qdimacs	T	0.17
+solve	none	cadet	ethernet-fixpoint-3.qdimacs	F	0.27
+solve	none	cadet	exquery_query42_1344n.qdimacs	F	1.92
+solve	none	cadet	falsequ_query42_1344n.qdimacs	F	0.02
+solve	none	cadet	floor128.qdimacs	T	0.03
+solve	none	cadet	eijkbs3330.qdimacs	TO	20.00
+solve	none	cadet	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	none	cadet	itc-b13-fixpoint-3.qdimacs	T	0.12
+solve	none	cadet	itc-b13-fixpoint-8.qdimacs	T	0.27
+solve	none	cadet	kenflashp04.qdimacs	T	0.37
+solve	none	cadet	intermediate256.qdimacs	TO	20.00
+solve	none	cadet	load_full_3_comp5_REAL.sat.qdimacs	TO	20.00
+solve	none	cadet	ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	none	cadet	neclaftp2002.qdimacs	F	1.17
+solve	none	cadet	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	none	cadet	ntrivil_query42_1344n.qdimacs	F	0.17
+solve	none	cadet	nreachq_query54_1344n.qdimacs	TO	20.00
+solve	none	cadet	nxquery_query42_1344n.qdimacs	TO	20.00
+solve	none	cadet	oski3ub5i_c0to63.sat.qdimacs	TO	20.00
+solve	none	cadet	pi-bus-fixpoint-2.qdimacs	F	0.72
+solve	none	cadet	pdtpmsrotate32.qdimacs	TO	20.00
+solve	none	cadet	query02_query42_1344n.qdimacs	TO	20.00
+solve	none	cadet	query54_query42_1344n.qdimacs	TO	20.00
+solve	none	cadet	rankfunc2_unsigned_64.qdimacs	T	0.12
+solve	none	cadet	rankfunc54_unsigned_64.qdimacs	T	0.17
+solve	none	cadet	query10_query45_1344n.qdimacs	TO	20.00
+solve	none	cadet	sdlx-fixpoint-4.qdimacs	F	0.32
+solve	none	cadet	sdlx-fixpoint-8.qdimacs	T	3.08
+solve	none	cadet	small-dyn-partition-fixpoint-6.qdimacs	F	0.02
+solve	none	cadet	reachqu_query42_1344n.qdimacs	TO	20.00
+solve	none	cadet	sortnetsort7.AE.stepl.008.qdimacs	F	0.72
+solve	none	cadet	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	none	cadet	stmt31_22_328.qdimacs	F	0.12
+solve	none	cadet	sortnetsort9.AE.stepl.010.qdimacs	TO	20.00
+solve	none	cadet	stmt17_82_86.qdimacs	T	4.23
+solve	none	cadet	trivial_query42_1344n.qdimacs	F	0.22
+solve	none	cadet	trueque_query42_1344n.qdimacs	F	0.01
+solve	none	cadet	usb-phy-fixpoint-4.qdimacs	F	0.17
+solve	none	cadet	stmt47_340_389.qdimacs	TO	20.00
+solve	none	cadet	ProcessBean.qdimacs	TO	20.00
+solve	none	cadet	ProjectService3.qdimacs	TO	20.00
+solve	none	cadet	beemldelec4b1_c0to127.sat.qdimacs	TO	20.00
+solve	none	cadet	bobsmfpu.qdimacs	TO	20.00
+solve	none	cadet	pdtpmsmiim.qdimacs	TO	20.00
+solve	none	cadet	unit8_2_b.qdimacs	T	1.92
+solve	none	cadet	mutex-16-s.qdimacs	T	0.04
+solve	none	cadet	qshifter_6.qdimacs	T	0.27
+solve	none	cadet	rankfunc48_unsigned_16.qdimacs	T	0.07
+solve	none	cadet	rankfunc41_signed_32.qdimacs	T	0.12
+solve	none	cadet	stay24n.sat.qdimacs	TO	20.00
+solve	none	cadet	stmt1_919_920.qdimacs	T	0.04
+solve	none	cadet	stmt52_117_295.qdimacs	F	0.12
+solve	none	cadet	ceiling128.qdimacs	T	1.57
+solve	none	cadet	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	none	cadet	bobsmhdlc2.qdimacs	TO	20.00
+solve	none	cadet	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	none	cadet	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	none	cadet	stmt19_79_83.qdimacs	T	3.93
+solve	none	cadet	stmt47_112_290.qdimacs	F	0.12
+solve	none	cadet	stmt41_118_131.qdimacs	T	0.04
+solve	none	cadet	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	none	cadet	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	none	cadet	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	none	cadet	x110.14.qdimacs	TO	20.00
+solve	none	cadet	horn_400CNF1800_2aQBF_248.qdimacs	F	0.07
+solve	none	cadet	renHorn_400CNF1720_2aQBF_20.qdimacs	F	0.02
+solve	none	cadet	tree-exa10-20.qdimacs	T	0.00
+solve	none	cadet	query36_query07_1344n.qdimacs	TO	20.00
+solve	none	cadet	robots_1_5_3_98.5.qdimacs	TO	20.00
+solve	none	cadet	robots_1_5_5_26.5.qdimacs	T	3.18
+solve	none	cadet	robots_1_5_4_50.5.qdimacs	TO	20.00
+solve	none	cadet	2qbf-5cnf-160var-1280cl.0.qdimacs	F	0.27
+solve	none	cadet	2qbf-5cnf-20var-160cl.3.qdimacs	F	0.01
+solve	none	cadet	2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.01
+solve	none	cadet	2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.01
+solve	none	cadet	sortnetsort9.AE.stepl.005.qdimacs	TO	20.00
+solve	none	cadet	ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	none	cadet	ltl2dpa_C26_comp3_REAL.sat.qdimacs	TO	20.00
+solve	none	cadet	amba6b5y.sat.qdimacs	TO	20.00
+solve	none	cadet	driver_b8y.sat.qdimacs	TO	20.00
+solve	none	cadet	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	none	cadet	oski3ub5i_c0to15.sat.qdimacs	TO	20.00
+solve	none	cadet	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	none	cadet	cnt10n.sat.qdimacs	T	0.17
+solve	none	cadet	small-swap2-fixpoint-9.qdimacs	T	0.12
+solve	none	cadet	rankfunc41_signed_16.qdimacs	T	0.07
+solve	none	cadet	robots_1_5_2_54.2.qdimacs	T	0.77
+solve	none	cadet	robots_1_5_2_72.6.qdimacs	T	2.22
+solve	none	cadet	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	none	cadet	robots_1_5_2_19.9.qdimacs	TO	20.00
+solve	none	caqe	6s289rb05233_c0to63.sat.qdimacs	ERR-6	3.53
+solve	none	caqe	AR-fixpoint-6.qdimacs	ERR-6	4.59
+solve	none	caqe	ActivityService.qdimacs	TO	20.00
+solve	none	caqe	ConcreteActivityService.qdimacs	TO	20.00
+solve	none	caqe	GuidanceService2.qdimacs	TO	20.00
+solve	none	caqe	IssueServiceImpl.qdimacs	TO	20.00
+solve	none	caqe	IterationService.qdimacs	TO	20.00
+solve	none	caqe	LoginService.qdimacs	TO	20.00
+solve	none	caqe	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	none	caqe	PhaseService.qdimacs	TO	20.00
+solve	none	caqe	add20y.sat.qdimacs	TO	20.00
+solve	none	caqe	axquery_query42_1344n.qdimacs	F	0.07
+solve	none	caqe	amba4c7n.sat.qdimacs	TO	20.00
+solve	none	caqe	beemskbn1f1_c0to7.sat.qdimacs	TO	20.00
+solve	none	caqe	bobtuint31neg.qdimacs	TO	20.00
+solve	none	caqe	bs128n.sat.qdimacs	TO	20.00
+solve	none	caqe	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	none	caqe	ceiling256.qdimacs	TO	20.00
+solve	none	caqe	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	none	caqe	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	none	caqe	cycle_sched_4_4_2.sat.qdimacs	TO	20.00
+solve	none	caqe	decomposition128.qdimacs	TO	20.00
+solve	none	caqe	driver_a10y.sat.qdimacs	TO	20.00
+solve	none	caqe	eequery_query42_1344n.qdimacs	TO	20.00
+solve	none	caqe	eijkbs3330.qdimacs	TO	20.00
+solve	none	caqe	equalization128.qdimacs	TO	20.00
+solve	none	caqe	exquery_query42_1344n.qdimacs	F	0.03
+solve	none	caqe	falsequ_query42_1344n.qdimacs	F	0.02
+solve	none	caqe	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	none	caqe	floor128.qdimacs	TO	20.00
+solve	none	caqe	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	none	caqe	intermediate256.qdimacs	TO	20.00
+solve	none	caqe	itc-b13-fixpoint-3.qdimacs	TO	20.00
+solve	none	caqe	itc-b13-fixpoint-8.qdimacs	TO	20.00
+solve	none	caqe	kenflashp04.qdimacs	TO	20.00
+solve	none	caqe	load_full_3_comp5_REAL.sat.qdimacs	TO	20.00
+solve	none	caqe	ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	none	caqe	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	none	caqe	neclaftp2002.qdimacs	TO	20.00
+solve	none	caqe	ntrivil_query42_1344n.qdimacs	F	0.07
+solve	none	caqe	nxquery_query42_1344n.qdimacs	F	0.03
+solve	none	caqe	oski3ub5i_c0to63.sat.qdimacs	ERR-6	3.43
+solve	none	caqe	nreachq_query54_1344n.qdimacs	TO	20.00
+solve	none	caqe	pdtpmsrotate32.qdimacs	TO	20.00
+solve	none	caqe	query02_query42_1344n.qdimacs	F	0.03
+solve	none	caqe	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	none	caqe	query54_query42_1344n.qdimacs	TO	20.00
+solve	none	caqe	query10_query45_1344n.qdimacs	TO	20.00
+solve	none	caqe	rankfunc2_unsigned_64.qdimacs	TO	20.00
+solve	none	caqe	rankfunc54_unsigned_64.qdimacs	TO	20.00
+solve	none	caqe	reachqu_query42_1344n.qdimacs	TO	20.00
+solve	none	caqe	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	none	caqe	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	none	caqe	small-dyn-partition-fixpoint-6.qdimacs	TO	20.00
+solve	none	caqe	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	none	caqe	sortnetsort7.AE.stepl.008.qdimacs	F	9.34
+solve	none	caqe	sortnetsort9.AE.stepl.010.qdimacs	TO	20.00
+solve	none	caqe	stmt31_22_328.qdimacs	TO	20.00
+solve	none	caqe	stmt47_340_389.qdimacs	TO	20.00
+solve	none	caqe	trivial_query42_1344n.qdimacs	F	0.07
+solve	none	caqe	trueque_query42_1344n.qdimacs	F	0.01
+solve	none	caqe	stmt17_82_86.qdimacs	TO	20.00
+solve	none	caqe	usb-phy-fixpoint-4.qdimacs	TO	20.00
+solve	none	caqe	ProcessBean.qdimacs	TO	20.00
+solve	none	caqe	ProjectService3.qdimacs	TO	20.00
+solve	none	caqe	beemldelec4b1_c0to127.sat.qdimacs	TO	20.00
+solve	none	caqe	bobsmfpu.qdimacs	TO	20.00
+solve	none	caqe	pdtpmsmiim.qdimacs	TO	20.00
+solve	none	caqe	stay24n.sat.qdimacs	TO	20.00
+solve	none	caqe	mutex-16-s.qdimacs	T	0.01
+solve	none	caqe	qshifter_6.qdimacs	T	0.32
+solve	none	caqe	unit8_2_b.qdimacs	TO	20.00
+solve	none	caqe	rankfunc48_unsigned_16.qdimacs	TO	20.00
+solve	none	caqe	rankfunc41_signed_32.qdimacs	TO	20.00
+solve	none	caqe	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	none	caqe	stmt1_919_920.qdimacs	TO	20.00
+solve	none	caqe	stmt52_117_295.qdimacs	TO	20.00
+solve	none	caqe	ceiling128.qdimacs	TO	20.00
+solve	none	caqe	bobsmhdlc2.qdimacs	TO	20.00
+solve	none	caqe	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	none	caqe	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	none	caqe	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	none	caqe	stmt19_79_83.qdimacs	TO	20.00
+solve	none	caqe	stmt47_112_290.qdimacs	TO	20.00
+solve	none	caqe	stmt41_118_131.qdimacs	TO	20.00
+solve	none	caqe	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	none	caqe	x110.14.qdimacs	F	2.37
+solve	none	caqe	query36_query07_1344n.qdimacs	T	0.22
+solve	none	caqe	horn_400CNF1800_2aQBF_248.qdimacs	F	0.07
+solve	none	caqe	renHorn_400CNF1720_2aQBF_20.qdimacs	F	0.04
+solve	none	caqe	tree-exa10-20.qdimacs	T	0.02
+solve	none	caqe	robots_1_5_3_98.5.qdimacs	T	1.32
+solve	none	caqe	robots_1_5_4_50.5.qdimacs	F	0.77
+solve	none	caqe	robots_1_5_5_26.5.qdimacs	T	0.07
+solve	none	caqe	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	none	caqe	sortnetsort9.AE.stepl.005.qdimacs	TO	20.00
+solve	none	caqe	2qbf-5cnf-20var-160cl.3.qdimacs	F	0.01
+solve	none	caqe	2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.02
+solve	none	caqe	2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.02
+solve	none	caqe	2qbf-5cnf-160var-1280cl.0.qdimacs	F	10.95
+solve	none	caqe	ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	none	caqe	ltl2dpa_C26_comp3_REAL.sat.qdimacs	TO	20.00
+solve	none	caqe	amba6b5y.sat.qdimacs	TO	20.00
+solve	none	caqe	driver_b8y.sat.qdimacs	TO	20.00
+solve	none	caqe	oski3ub5i_c0to15.sat.qdimacs	ERR-6	3.43
+solve	none	caqe	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	none	caqe	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	none	caqe	cnt10n.sat.qdimacs	T	0.47
+solve	none	caqe	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	none	caqe	small-swap2-fixpoint-9.qdimacs	TO	20.00
+solve	none	caqe	robots_1_5_2_54.2.qdimacs	T	0.04
+solve	none	caqe	robots_1_5_2_72.6.qdimacs	T	0.12
+solve	none	caqe	robots_1_5_2_19.9.qdimacs	F	0.52
+solve	none	caqe	rankfunc41_signed_16.qdimacs	TO	20.00
+solve	none	rareqs	6s289rb05233_c0to63.sat.qdimacs	TO	20.00
+solve	none	rareqs	AR-fixpoint-6.qdimacs	TO	20.00
+solve	none	rareqs	ActivityService.qdimacs	TO	20.00
+solve	none	rareqs	ConcreteActivityService.qdimacs	TO	20.00
+solve	none	rareqs	GuidanceService2.qdimacs	TO	20.00
+solve	none	rareqs	IssueServiceImpl.qdimacs	TO	20.00
+solve	none	rareqs	IterationService.qdimacs	TO	20.00
+solve	none	rareqs	LoginService.qdimacs	TO	20.00
+solve	none	rareqs	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	none	rareqs	PhaseService.qdimacs	TO	20.00
+solve	none	rareqs	add20y.sat.qdimacs	TO	20.00
+solve	none	rareqs	amba4c7n.sat.qdimacs	TO	20.00
+solve	none	rareqs	axquery_query42_1344n.qdimacs	F	0.07
+solve	none	rareqs	beemskbn1f1_c0to7.sat.qdimacs	TO	20.00
+solve	none	rareqs	bobtuint31neg.qdimacs	TO	20.00
+solve	none	rareqs	bs128n.sat.qdimacs	TO	20.00
+solve	none	rareqs	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	none	rareqs	ceiling256.qdimacs	TO	20.00
+solve	none	rareqs	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	none	rareqs	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	none	rareqs	cycle_sched_4_4_2.sat.qdimacs	TO	20.00
+solve	none	rareqs	decomposition128.qdimacs	TO	20.00
+solve	none	rareqs	driver_a10y.sat.qdimacs	TO	20.00
+solve	none	rareqs	eequery_query42_1344n.qdimacs	TO	20.00
+solve	none	rareqs	eijkbs3330.qdimacs	TO	20.00
+solve	none	rareqs	equalization128.qdimacs	TO	20.00
+solve	none	rareqs	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	none	rareqs	falsequ_query42_1344n.qdimacs	F	0.01
+solve	none	rareqs	exquery_query42_1344n.qdimacs	F	0.17
+solve	none	rareqs	floor128.qdimacs	TO	20.00
+solve	none	rareqs	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	none	rareqs	intermediate256.qdimacs	TO	20.00
+solve	none	rareqs	itc-b13-fixpoint-3.qdimacs	TO	20.00
+solve	none	rareqs	itc-b13-fixpoint-8.qdimacs	TO	20.00
+solve	none	rareqs	kenflashp04.qdimacs	TO	20.00
+solve	none	rareqs	load_full_3_comp5_REAL.sat.qdimacs	TO	20.00
+solve	none	rareqs	ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	none	rareqs	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	none	rareqs	neclaftp2002.qdimacs	TO	20.00
+solve	none	rareqs	ntrivil_query42_1344n.qdimacs	F	0.04
+solve	none	rareqs	nxquery_query42_1344n.qdimacs	F	0.04
+solve	none	rareqs	nreachq_query54_1344n.qdimacs	TO	20.00
+solve	none	rareqs	oski3ub5i_c0to63.sat.qdimacs	TO	20.00
+solve	none	rareqs	pdtpmsrotate32.qdimacs	TO	20.00
+solve	none	rareqs	query02_query42_1344n.qdimacs	F	0.04
+solve	none	rareqs	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	none	rareqs	query54_query42_1344n.qdimacs	TO	20.00
+solve	none	rareqs	query10_query45_1344n.qdimacs	TO	20.00
+solve	none	rareqs	rankfunc2_unsigned_64.qdimacs	TO	20.00
+solve	none	rareqs	rankfunc54_unsigned_64.qdimacs	TO	20.00
+solve	none	rareqs	reachqu_query42_1344n.qdimacs	TO	20.00
+solve	none	rareqs	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	none	rareqs	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	none	rareqs	small-dyn-partition-fixpoint-6.qdimacs	TO	20.00
+solve	none	rareqs	sortnetsort7.AE.stepl.008.qdimacs	F	1.32
+solve	none	rareqs	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	none	rareqs	sortnetsort9.AE.stepl.010.qdimacs	TO	20.00
+solve	none	rareqs	stmt31_22_328.qdimacs	TO	20.00
+solve	none	rareqs	stmt47_340_389.qdimacs	TO	20.00
+solve	none	rareqs	trivial_query42_1344n.qdimacs	F	0.04
+solve	none	rareqs	trueque_query42_1344n.qdimacs	F	0.01
+solve	none	rareqs	stmt17_82_86.qdimacs	TO	20.00
+solve	none	rareqs	usb-phy-fixpoint-4.qdimacs	TO	20.00
+solve	none	rareqs	ProcessBean.qdimacs	TO	20.00
+solve	none	rareqs	ProjectService3.qdimacs	TO	20.00
+solve	none	rareqs	beemldelec4b1_c0to127.sat.qdimacs	TO	20.00
+solve	none	rareqs	bobsmfpu.qdimacs	TO	20.00
+solve	none	rareqs	pdtpmsmiim.qdimacs	TO	20.00
+solve	none	rareqs	stay24n.sat.qdimacs	TO	20.00
+solve	none	rareqs	mutex-16-s.qdimacs	T	0.01
+solve	none	rareqs	unit8_2_b.qdimacs	TO	20.00
+solve	none	rareqs	qshifter_6.qdimacs	TO	20.00
+solve	none	rareqs	rankfunc48_unsigned_16.qdimacs	TO	20.00
+solve	none	rareqs	rankfunc41_signed_32.qdimacs	TO	20.00
+solve	none	rareqs	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	none	rareqs	stmt1_919_920.qdimacs	TO	20.00
+solve	none	rareqs	stmt52_117_295.qdimacs	TO	20.00
+solve	none	rareqs	ceiling128.qdimacs	TO	20.00
+solve	none	rareqs	bobsmhdlc2.qdimacs	TO	20.00
+solve	none	rareqs	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	TO	20.00
+solve	none	rareqs	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	none	rareqs	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	none	rareqs	stmt19_79_83.qdimacs	TO	20.00
+solve	none	rareqs	stmt47_112_290.qdimacs	TO	20.00
+solve	none	rareqs	stmt41_118_131.qdimacs	TO	20.00
+solve	none	rareqs	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	none	rareqs	x110.14.qdimacs	F	1.22
+solve	none	rareqs	query36_query07_1344n.qdimacs	T	0.12
+solve	none	rareqs	horn_400CNF1800_2aQBF_248.qdimacs	F	0.01
+solve	none	rareqs	renHorn_400CNF1720_2aQBF_20.qdimacs	F	0.01
+solve	none	rareqs	tree-exa10-20.qdimacs	T	0.12
+solve	none	rareqs	robots_1_5_3_98.5.qdimacs	T	0.82
+solve	none	rareqs	robots_1_5_4_50.5.qdimacs	F	0.27
+solve	none	rareqs	robots_1_5_5_26.5.qdimacs	T	0.07
+solve	none	rareqs	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	none	rareqs	2qbf-5cnf-160var-1280cl.0.qdimacs	F	0.52
+solve	none	rareqs	2qbf-5cnf-20var-160cl.3.qdimacs	F	0.01
+solve	none	rareqs	2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.01
+solve	none	rareqs	2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.01
+solve	none	rareqs	sortnetsort9.AE.stepl.005.qdimacs	TO	20.00
+solve	none	rareqs	ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	none	rareqs	ltl2dpa_C26_comp3_REAL.sat.qdimacs	TO	20.00
+solve	none	rareqs	amba6b5y.sat.qdimacs	TO	20.00
+solve	none	rareqs	driver_b8y.sat.qdimacs	TO	20.00
+solve	none	rareqs	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	none	rareqs	oski3ub5i_c0to15.sat.qdimacs	TO	20.00
+solve	none	rareqs	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	none	rareqs	cnt10n.sat.qdimacs	T	0.27
+solve	none	rareqs	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	none	rareqs	small-swap2-fixpoint-9.qdimacs	TO	20.00
+solve	none	rareqs	robots_1_5_2_54.2.qdimacs	T	0.03
+solve	none	rareqs	robots_1_5_2_72.6.qdimacs	T	0.07
+solve	none	rareqs	robots_1_5_2_19.9.qdimacs	F	0.27
+solve	none	rareqs	rankfunc41_signed_16.qdimacs	TO	20.00
+solve	none	depqbf	AR-fixpoint-6.qdimacs	ERR-6	9.56
+solve	none	depqbf	6s289rb05233_c0to63.sat.qdimacs	TO	20.00
+solve	none	depqbf	ActivityService.qdimacs	TO	20.00
+solve	none	depqbf	ConcreteActivityService.qdimacs	TO	20.00
+solve	none	depqbf	GuidanceService2.qdimacs	TO	20.00
+solve	none	depqbf	IssueServiceImpl.qdimacs	TO	20.00
+solve	none	depqbf	IterationService.qdimacs	TO	20.00
+solve	none	depqbf	LoginService.qdimacs	TO	20.00
+solve	none	depqbf	NotificationServiceImpl2.qdimacs	TO	20.00
+solve	none	depqbf	PhaseService.qdimacs	TO	20.00
+solve	none	depqbf	add20y.sat.qdimacs	TO	20.00
+solve	none	depqbf	axquery_query42_1344n.qdimacs	F	0.03
+solve	none	depqbf	amba4c7n.sat.qdimacs	TO	20.00
+solve	none	depqbf	bobtuint31neg.qdimacs	T	0.02
+solve	none	depqbf	beemskbn1f1_c0to7.sat.qdimacs	TO	20.00
+solve	none	depqbf	bs128n.sat.qdimacs	TO	20.00
+solve	none	depqbf	cache-coherence-3-fixpoint-2.qdimacs	TO	20.00
+solve	none	depqbf	ceiling256.qdimacs	TO	20.00
+solve	none	depqbf	ctrl.e#1.a#3.E#128.A#48.c#.w#3.s#1.asp.qdimacs	TO	20.00
+solve	none	depqbf	ctrl.e#1.a#3.E#130.A#48.c#.w#7.s#11.asp.qdimacs	TO	20.00
+solve	none	depqbf	decomposition128.qdimacs	T	0.02
+solve	none	depqbf	cycle_sched_4_4_2.sat.qdimacs	TO	20.00
+solve	none	depqbf	driver_a10y.sat.qdimacs	TO	20.00
+solve	none	depqbf	eequery_query42_1344n.qdimacs	TO	20.00
+solve	none	depqbf	equalization128.qdimacs	T	0.04
+solve	none	depqbf	eijkbs3330.qdimacs	TO	20.00
+solve	none	depqbf	exquery_query42_1344n.qdimacs	F	0.57
+solve	none	depqbf	falsequ_query42_1344n.qdimacs	F	0.01
+solve	none	depqbf	floor128.qdimacs	T	0.01
+solve	none	depqbf	ethernet-fixpoint-3.qdimacs	TO	20.00
+solve	none	depqbf	genbuf12b4y.sat.qdimacs	TO	20.00
+solve	none	depqbf	intermediate256.qdimacs	TO	20.00
+solve	none	depqbf	itc-b13-fixpoint-3.qdimacs	TO	20.00
+solve	none	depqbf	kenflashp04.qdimacs	T	0.01
+solve	none	depqbf	itc-b13-fixpoint-8.qdimacs	TO	20.00
+solve	none	depqbf	load_full_3_comp5_REAL.sat.qdimacs	TO	20.00
+solve	none	depqbf	ltl2dba_Q4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	none	depqbf	mult_bool_matrix_dyn_7_7.sat.qdimacs	TO	20.00
+solve	none	depqbf	neclaftp2002.qdimacs	TO	20.00
+solve	none	depqbf	ntrivil_query42_1344n.qdimacs	F	0.12
+solve	none	depqbf	nxquery_query42_1344n.qdimacs	F	0.04
+solve	none	depqbf	nreachq_query54_1344n.qdimacs	TO	20.00
+solve	none	depqbf	oski3ub5i_c0to63.sat.qdimacs	TO	20.00
+solve	none	depqbf	pdtpmsrotate32.qdimacs	TO	20.00
+solve	none	depqbf	query02_query42_1344n.qdimacs	F	0.07
+solve	none	depqbf	pi-bus-fixpoint-2.qdimacs	TO	20.00
+solve	none	depqbf	query54_query42_1344n.qdimacs	TO	20.00
+solve	none	depqbf	query10_query45_1344n.qdimacs	TO	20.00
+solve	none	depqbf	rankfunc2_unsigned_64.qdimacs	TO	20.00
+solve	none	depqbf	rankfunc54_unsigned_64.qdimacs	TO	20.00
+solve	none	depqbf	reachqu_query42_1344n.qdimacs	TO	20.00
+solve	none	depqbf	sdlx-fixpoint-4.qdimacs	TO	20.00
+solve	none	depqbf	sdlx-fixpoint-8.qdimacs	TO	20.00
+solve	none	depqbf	small-dyn-partition-fixpoint-6.qdimacs	TO	20.00
+solve	none	depqbf	small-equiv-fixpoint-3.qdimacs	TO	20.00
+solve	none	depqbf	sortnetsort7.AE.stepl.008.qdimacs	TO	20.00
+solve	none	depqbf	stmt31_22_328.qdimacs	F	0.47
+solve	none	depqbf	sortnetsort9.AE.stepl.010.qdimacs	TO	20.00
+solve	none	depqbf	stmt47_340_389.qdimacs	TO	20.00
+solve	none	depqbf	trivial_query42_1344n.qdimacs	F	0.07
+solve	none	depqbf	trueque_query42_1344n.qdimacs	F	0.01
+solve	none	depqbf	stmt17_82_86.qdimacs	TO	20.00
+solve	none	depqbf	usb-phy-fixpoint-4.qdimacs	TO	20.00
+solve	none	depqbf	ProcessBean.qdimacs	TO	20.00
+solve	none	depqbf	ProjectService3.qdimacs	TO	20.00
+solve	none	depqbf	beemldelec4b1_c0to127.sat.qdimacs	TO	20.00
+solve	none	depqbf	bobsmfpu.qdimacs	TO	20.00
+solve	none	depqbf	pdtpmsmiim.qdimacs	TO	20.00
+solve	none	depqbf	stay24n.sat.qdimacs	TO	20.00
+solve	none	depqbf	mutex-16-s.qdimacs	T	0.04
+solve	none	depqbf	unit8_2_b.qdimacs	TO	20.00
+solve	none	depqbf	rankfunc48_unsigned_16.qdimacs	T	0.04
+solve	none	depqbf	rankfunc41_signed_32.qdimacs	T	0.04
+solve	none	depqbf	qshifter_6.qdimacs	TO	20.00
+solve	none	depqbf	sortnetsort8.AE.stepl.005.qdimacs	TO	20.00
+solve	none	depqbf	stmt52_117_295.qdimacs	F	0.07
+solve	none	depqbf	stmt1_919_920.qdimacs	TO	20.00
+solve	none	depqbf	ceiling128.qdimacs	TO	20.00
+solve	none	depqbf	ci.e#1.a#3.E#40.A#60.c#200.w#6.s#6.asp.qdimacs	T	0.12
+solve	none	depqbf	bobsmhdlc2.qdimacs	TO	20.00
+solve	none	depqbf	ctrl.e#1.a#3.E#136.A#48.c#.w#5.s#26.asp.qdimacs	TO	20.00
+solve	none	depqbf	ctrl.e#1.a#3.E#128.A#48.c#.w#5.s#53.asp.qdimacs	TO	20.00
+solve	none	depqbf	stmt47_112_290.qdimacs	F	0.07
+solve	none	depqbf	stmt19_79_83.qdimacs	TO	20.00
+solve	none	depqbf	stmt41_118_131.qdimacs	TO	20.00
+solve	none	depqbf	Q_2-3_v-80-100_r-9.7.qdimacs	TO	20.00
+solve	none	depqbf	Q_3-3_v-100-100_r-15.1.qdimacs	TO	20.00
+solve	none	depqbf	x110.14.qdimacs	TO	20.00
+solve	none	depqbf	horn_400CNF1800_2aQBF_248.qdimacs	F	0.04
+solve	none	depqbf	query36_query07_1344n.qdimacs	T	16.71
+solve	none	depqbf	tree-exa10-20.qdimacs	T	0.00
+solve	none	depqbf	renHorn_400CNF1720_2aQBF_20.qdimacs	TO	20.00
+solve	none	depqbf	robots_1_5_4_50.5.qdimacs	F	5.03
+solve	none	depqbf	robots_1_5_5_26.5.qdimacs	T	0.32
+solve	none	depqbf	robots_1_5_3_98.5.qdimacs	TO	20.00
+solve	none	depqbf	sortnetsort9.AE.stepl.005.qdimacs	TO	20.00
+solve	none	depqbf	2qbf-5cnf-20var-160cl.3.qdimacs	F	0.02
+solve	none	depqbf	2qbf-5cnf-40var-1280cl.2.qdimacs	F	0.07
+solve	none	depqbf	2qbf-5cnf-80var-1280cl.7.qdimacs	F	0.02
+solve	none	depqbf	2qbf-5cnf-160var-1280cl.0.qdimacs	TO	20.00
+solve	none	depqbf	ltl2dba_U1-4_comp4_REAL.sat.qdimacs	TO	20.00
+solve	none	depqbf	ltl2dpa_C26_comp3_REAL.sat.qdimacs	TO	20.00
+solve	none	depqbf	amba6b5y.sat.qdimacs	TO	20.00
+solve	none	depqbf	driver_b8y.sat.qdimacs	TO	20.00
+solve	none	depqbf	genbuf5c3y.sat.qdimacs	TO	20.00
+solve	none	depqbf	oski3ub5i_c0to15.sat.qdimacs	TO	20.00
+solve	none	depqbf	load_full_2_comp7_REAL.sat.qdimacs	TO	20.00
+solve	none	depqbf	cnt10n.sat.qdimacs	T	0.07
+solve	none	depqbf	mult_bool_matrix_dyn_5_6.sat.qdimacs	TO	20.00
+solve	none	depqbf	rankfunc41_signed_16.qdimacs	T	0.02
+solve	none	depqbf	robots_1_5_2_54.2.qdimacs	T	0.17
+solve	none	depqbf	robots_1_5_2_72.6.qdimacs	T	2.48
+solve	none	depqbf	robots_1_5_2_19.9.qdimacs	F	3.83
+solve	none	depqbf	small-swap2-fixpoint-9.qdimacs	TO	20.00
