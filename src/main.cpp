@@ -666,6 +666,7 @@ void do_synth_2qbf() {
     // --2qbfpre: what follows is a try, the output is of the CNF as it is here
     ArjunNS::SimplifiedCNF pre_cnf(fg);
     if (qbf2pre) pre_cnf = cnf;
+    if (qbf2pre && pre_repairs == 0 && !cnf.synth_done()) return write_2qbfpre();
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
@@ -700,7 +701,7 @@ void do_synth_2qbf() {
         auto try_mconf = mconf;
         try_mconf.cegr_base = 2;
         try_mconf.max_repairs = pre_repairs;
-        auto tried = pre_repairs > 0 ? arjun->standalone_cegr(ArjunNS::SimplifiedCNF(cnf), try_mconf) : cnf;
+        auto tried = arjun->standalone_cegr(ArjunNS::SimplifiedCNF(cnf), try_mconf);
         if (!tried.synth_done()) {
             cnf = std::move(pre_cnf);
             return write_2qbfpre();
