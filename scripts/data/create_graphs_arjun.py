@@ -85,9 +85,10 @@ only_dirs = [
     # "out-synth-2539107-4", # improved cover
     # "out-synth-2539107-3", # improved cover
     # "out-2qbf-2544900-4", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
-    # "out-2qbf-2544900-9", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
-    # "out-2qbf-2544900-6", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
-    "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    "out-2qbf-2544900-9", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    "out-2qbf-2544900-6", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    # "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    "out-2qbf-2554015-4", # improved cover + multi-run puura in qbf
 
     # "out-synth-1367674-0", # before unate-eq
 ]
