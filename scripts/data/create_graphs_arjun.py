@@ -84,7 +84,10 @@ only_dirs = [
     # "out-synth-2539107-0", # improved cover
     # "out-synth-2539107-4", # improved cover
     # "out-synth-2539107-3", # improved cover
-    "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    "out-2qbf-2544900-4", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    "out-2qbf-2544900-3", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    "out-2qbf-2544900-9", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    "out-2qbf-2544900-6", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
 
     # "out-synth-1367674-0", # before unate-eq
 ]
@@ -645,6 +648,17 @@ def generate_cdf(fname2_s):
             lines.append(f'"{fn}" u 2:1 with linespoints title "{label}"')
         return ",\\\n".join(lines)
 
+    times = []
+    for fn, *_ in fname2_s:
+        with open(fn) as f:
+            times += [float(line.split()[1]) for line in f if line.strip()]
+    xmax = max(times)
+    xmin = 1.0 if xmax > 2 else max(min(times), 0.01)
+    # log axis: tics at 1-2-5 per decade, and one at the last point
+    tics = [m * 10.0 ** e for e in range(-2, 7) for m in (1, 2, 5)]
+    tics = [t for t in tics if xmin <= t and t * 1.25 < xmax]
+    xtics = ", ".join(f'"{t:.4g}" {t:g}' for t in tics + [xmax])
+
     with open(gnuplotfn, "w") as f:
         for term, out in [
             ('pdfcairo size 15cm,12cm background "#d0d0d0"', pdf_file),
@@ -656,11 +670,14 @@ def generate_cdf(fname2_s):
             f.write('set key bottom right font ",6"\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
-            f.write(f'set xrange [10.0:{TIMEOUT}]\n')
+            # a tic exactly on the edge of a log axis is dropped
+            f.write(f'set xrange [{xmin * 0.999:g}:{xmax * 1.001:g}]\n')
+            f.write(f'set xtics ({xtics})\n')
+            f.write('set mxtics 10\n')
             # f.write('set yrange [0:]\n')
             f.write('set ylabel "Instances synthesised"\n')
             f.write('set xlabel "Time (s)"\n')
-            f.write('set grid\n')
+            f.write('set grid xtics mxtics ytics\n')
             f.write('set pointsize 0.2\n')
             f.write('plot \\\n')
             f.write(plot_lines())
