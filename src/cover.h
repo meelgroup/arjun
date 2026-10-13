@@ -29,6 +29,8 @@
 #include "config.h"
 #include "metasolver.h"
 #include "aig_to_cnf.h"
+#include "time_mem.h"
+#include <limits>
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -103,6 +105,12 @@ public:
     CMSat::lbool run(std::vector<CMSat::lbool>& cex, std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>& new_defs);
     uint64_t ticks() { return abs.get_sum_ticks() + f.get_sum_ticks() + in_abs_vars.work * 10; }
 
+    // The vars of cls that already have a function, in `defined`. state 1: a
+    // function of the universals only, 2: not
+    static void classify(const ArjunNS::SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
+            std::vector<char>& state, std::vector<uint32_t>& defined, std::vector<uint32_t>& free_leaves);
+    static constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
+
 private:
     void add_vars_and_cls();
     void tie_defs();
@@ -131,6 +139,13 @@ private:
     void new_f_var(const uint32_t v) {
         to_f[v] = f.nVars();
         f.new_var();
+    }
+    static double sq_frac(const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); }
+    template<class F> static auto timed(double& sum, F&& fun) {
+        const double start = cpuTime();
+        const auto ret = fun();
+        sum += cpuTime() - start;
+        return ret;
     }
     void print_stats(const char* what);
     CMSat::lbool finish(const CMSat::lbool ret);

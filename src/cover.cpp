@@ -24,11 +24,9 @@
 
 
 #include "cover.h"
-#include "time_mem.h"
 #include <iomanip>
 #include <iostream>
 #include <algorithm>
-#include <limits>
 #include <cmath>
 #include <functional>
 
@@ -39,11 +37,7 @@ using std::vector;
 using std::map;
 using std::set;
 
-namespace {
-
-// The vars of cls that already have a function, in `defined`. state 1: a
-// function of the universals only, 2: not
-void classify(const SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, vector<char>& state,
+void CoverComp::classify(const SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, vector<char>& state,
         vector<uint32_t>& defined, vector<uint32_t>& free_leaves) {
     const uint32_t num_defs = cnf.num_defs();
     vector<char> is_univ(num_defs, 0), in_cls(num_defs, 0);
@@ -68,19 +62,6 @@ void classify(const SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, vector<c
         return ret;
     };
     for (const auto& cl : cls) for (const auto& l : cl) fun_of_univ(l.var());
-}
-
-const uint32_t none = std::numeric_limits<uint32_t>::max();
-
-double sq_frac(const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); }
-
-template<class F> auto timed(double& sum, F&& fun) {
-    const double start = cpuTime();
-    const auto ret = fun();
-    sum += cpuTime() - start;
-    return ret;
-}
-
 }
 
 void CoverComp::add_vars_and_cls() {
@@ -533,7 +514,7 @@ void Cover::split_components() {
     const uint32_t num_defs = cnf.num_defs();
     vector<char> state;
     vector<uint32_t> defined, free_leaves;
-    classify(cnf, cls, state, defined, free_leaves);
+    CoverComp::classify(cnf, cls, state, defined, free_leaves);
     vector<char> is_outer(num_defs, 0);
     for (const auto& v : cnf.get_orig_sampl_vars()) is_outer[v] = 1;
     for (uint32_t v = 0; v < num_defs; v++) if (state[v] == 1) is_outer[v] = 1;
@@ -546,7 +527,7 @@ void Cover::split_components() {
     };
     auto first_inner = [&](const vector<Lit>& cl) {
         for (const auto& l : cl) if (!is_outer[l.var()]) return l.var();
-        return none;
+        return CoverComp::none;
     };
     for (const auto& cl : cls) {
         const uint32_t first = first_inner(cl);
@@ -557,12 +538,12 @@ void Cover::split_components() {
         AIG::get_dependent_vars(cnf.get_def(v), deps, v);
         for (const auto& d : deps) if (!is_outer[d]) par[find(d)] = find(v);
     }
-    vector<uint32_t> comp_of(num_defs, none);
+    vector<uint32_t> comp_of(num_defs, CoverComp::none);
     for (const auto& cl : cls) {
         const uint32_t first = first_inner(cl);
-        if (first == none) { outer_only.push_back(cl); continue; }
+        if (first == CoverComp::none) { outer_only.push_back(cl); continue; }
         uint32_t& c = comp_of[find(first)];
-        if (c == none) {
+        if (c == CoverComp::none) {
             c = comps.size();
             comps.emplace_back();
         }
