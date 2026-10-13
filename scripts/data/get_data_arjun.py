@@ -250,6 +250,17 @@ def clean_cmd(cmd):
     return re.sub(r' %[io]', '', cmd).strip()
 
 
+# What gave arjun's verdict: the Nth covering run, CEGR's functions, or
+# neither (simplification, or the try of --2qbfpre)
+def arjun_decided_by(fname):
+    with open(fname, "r", errors="replace") as f:
+        txt = f.read()
+    covers = re.findall(r"\[cover\] (all X covered|gave up|X with no Y)", txt)
+    if covers and covers[-1] != "gave up" and "[cegr]" not in txt[txt.rindex("[cover] " + covers[-1]):]:
+        return "cover%d-%s" % (len(covers), "covered" if covers[-1] == "all X covered" else "cex")
+    return "cegr" if "[cegr]" in txt else "simplification"
+
+
 # One 2QBF run (creator_2qbf.sh) is a preprocessor and a solver, each with its
 # own log and time file; .out_res has the commands and the RESULT line.
 def finalize_2qbf(entry):
@@ -291,6 +302,8 @@ def finalize_2qbf(entry):
     if arjun_log in parts:
         data = find_arjun_time(parts[arjun_log])
         entry.update({k: v for k, v in data.items() if k not in ("solved", "mem_out")})
+        if entry["verdict"] and res["by"] == ("pre" if arjun_log == "out_pre" else "solver"):
+            entry["decided_by"] = arjun_decided_by(parts[arjun_log])
     entry["mem_out"] = int(any(has_mem_out(parts[k]) for k in ("out_pre", "out_solve") if k in parts))
 
 
@@ -458,6 +471,8 @@ COLUMNS = [
     ("verdict",                 "TEXT"),
     ("res_by",                  "TEXT"),
     ("pre_time",                "REAL"),
+    # arjun's own verdicts: coverN-covered, coverN-cex, cegr, simplification
+    ("decided_by",              "TEXT"),
 ]
 
 
@@ -503,6 +518,8 @@ if __name__ == "__main__":
     parser.add_argument("--recreate", action="store_true",
                         help="Empty the database first and parse only the given files "
                              "(default: accumulate, skipping already-parsed entries)")
+    parser.add_argument("--reparse", action="store_true",
+                        help="Parse the directories of the given files again, replacing their entries")
     args = parser.parse_args()
 
     file_list = glob.glob(args.files)
@@ -513,6 +530,10 @@ if __name__ == "__main__":
 
     db_path = "data.sqlite3"
     conn = open_db(db_path, args.recreate)
+    if args.reparse:
+        for d in sorted({os.path.basename(os.path.dirname(f)) for f in file_list}):
+            conn.execute("DELETE FROM arjun WHERE dirname = ?", (d,))
+        conn.commit()
     existing = get_existing_keys(conn)
     if existing:
         print(f"Database already has {len(existing)} benchmark entries")
@@ -527,6 +548,12 @@ if __name__ == "__main__":
     print(f"Parsed {len(files)} new benchmark entries")
 
     insert_rows(conn, files)
+    bad = conn.execute("""SELECT a.fname, a.dirname, b.dirname FROM arjun a JOIN arjun b ON a.fname = b.fname
+        WHERE a.verdict = 'TRUE' AND b.verdict = 'FALSE'
+        AND rtrim(a.dirname, '0123456789') = rtrim(b.dirname, '0123456789')""").fetchall()
+    for fname, d_true, d_false in bad:
+        print(f"ERROR: verdicts differ on {fname}: TRUE in {d_true}, FALSE in {d_false}")
+    print(f"2QBF verdict disagreements between the runs of a job: {len(bad)}")
     conn.close()
 
     print(f"Database written to {db_path}")

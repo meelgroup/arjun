@@ -19,6 +19,25 @@ RAReQS/AReQS substitution all give the refinement clause cover already has.
 The QCDCL cover sets (DepQBF `cover_by_clauses`, Qute, miniQU) are one cube:
 weaker.
 
+## From the 2QBF cluster run out-2qbf-2544900 (787 files, 900 s)
+
+arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
+
+- `query*` (26): RAReQS after preprocessing gets 22, in 100-230 s median.
+  Covering gives up at 500M ticks, 10-20 s in, and CEGR then runs to the
+  timeout. With `--coverticks 30000`, 13 of the 26 are done in 300 s here.
+  The run needs a schedule: more covering when CEGR is not getting there.
+- `AR-fixpoint` (10, all false, 10k universals): CADET alone, 1-13 s. The
+  orig run never ends its 1st round: 20009 of 40018 helpers in the
+  refinement and one minimization call per helper, each a core of one. No
+  tick check inside `minimize()`, and `--2qbf` has no tick limit there.
+  Cap the calls of a round, and check the ticks in it. Even then Puura is
+  too slow on them, and `--2qbfpre` ran out of memory in the interpolation.
+- `small-pipeline-fixpoint` (7): the orig run takes 5867M ticks and 67 s for
+  201 rounds, refinements of 4656. bloqqer + CADET: 5 s.
+- `ctrl` (10), `ci` (6): only after bloqqer, with RAReQS or CAQE. Not after
+  `--2qbfpre`: find what bloqqer does to them (expansion?).
+
 ## To try, in order
 
 1. **Helpers decided true in abs.** QESTO `qesto/QestoGroups.nw:767`, and
