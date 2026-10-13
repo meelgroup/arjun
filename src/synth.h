@@ -49,10 +49,12 @@ public:
 
     // Run strategies in sequence on cnf. Skips finished strategies if cnf.synth_done().
     // Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited.
+    // before_last: called if the limited ones did not finish, and may finish cnf.
     void run_cegr_strategies(
         ArjunNS::SimplifiedCNF& cnf,
         const ArjunNS::Arjun::CegrConf& mconf_orig,
-        const std::vector<SynthStrategy>& strategies);
+        const std::vector<SynthStrategy>& strategies,
+        const std::function<void()>& before_last = nullptr);
 
 private:
     const ArjunInt::Config& conf;

@@ -610,9 +610,11 @@ if __name__ == "__main__":
         solver += "--debugverilog %d " % random.randint(0, 1)
         # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
         solver += "--cover %s " % random.choice([0, 0, 0.1, 1, 50, 100000])
-        solver += "--coverticks %s " % random.choice([0, 0.01, 5, 500])
+        solver += "--coverticks %s " % random.choice([0, 0.001, 0.01, 5, 500])
         solver += "--coverminim %d " % random.randint(0, 7)
         solver += "--coverstages %d --coverlateticks %s " % (random.randint(0, 3), random.choice([0, 0.01, 100]))
+        solver += "--coverbigticks %s --coverbiglateticks %s " % (random.choice([0, 5, 5000]), random.choice([0, 5, 600]))
+        solver += "--coverorigticks %s " % random.choice([0, 0.01, 2000])
 
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)

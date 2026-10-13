@@ -244,7 +244,8 @@ ArjunNS::Arjun::CegrConf SynthRunner::apply_strategy(const ArjunNS::Arjun::CegrC
 void SynthRunner::run_cegr_strategies(
         ArjunNS::SimplifiedCNF& cnf,
         const ArjunNS::Arjun::CegrConf& mconf_orig,
-        const vector<SynthStrategy>& strategies)
+        const vector<SynthStrategy>& strategies,
+        const std::function<void()>& before_last)
 {
     if (strategies.empty()) {
         cout << "ERROR: no strategies to run" << endl;
@@ -267,6 +268,10 @@ void SynthRunner::run_cegr_strategies(
     for (size_t i = 0; i < strategies.size(); i++) {
         const auto& strat = strategies[i];
         const bool is_last = (i == strategies.size() - 1);
+        if (is_last && before_last) {
+            before_last();
+            if (cnf.synth_done()) break;
+        }
 
         auto mconf = apply_strategy(mconf_orig, strat);
         if (is_last && strat.overrides.count("max_repairs") == 0)

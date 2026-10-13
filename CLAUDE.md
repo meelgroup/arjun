@@ -64,7 +64,7 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
 `cover.{h,cpp}` and the `*2qbf*` methods of `SimplifiedCNF`:
 
 1. `cover()` — budgeted model covering (`--cover`, 0 = off, and
-   `--coverticks`, million ticks of SAT work per run, 500 by default): a
+   `--coverticks`, million ticks of SAT work per run, 200 by default): a
    model of F settles every X that satisfies the universal parts of the
    clauses its Y leaves unsatisfied; repeat until all X are covered. Wins
    when its refinements are short (sortnetsort, the `query*` files), gives
@@ -88,10 +88,17 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
    the simplified CNF, and again after extend/backward/unate if they
    defined something (`--coverstages`, a sum, 1 and 2). That last run
    takes a handful of rounds when it works, so it has its own, lower limit
-   (`--coverlateticks`, 100): a failing one is slow. Only `--2qbf` and
+   (`--coverlateticks`, 100): a failing one is slow. These runs are SHORT:
+   most of what covering solves takes under 100M ticks, and a failing run
+   is paid by every file. The long runs (`--coverbigticks`, 5000, on the
+   CNF as it was after Puura, then `--coverbiglateticks`, 600, on the one
+   with the functions of the passes) come before the last, unlimited
+   strategy of `--mstrategy`: only once the repair-limited ones did not
+   finish either. NEVER make the 1st runs long instead. Only `--2qbf` and
    `--2qbfpre` also run it on the orig clauses first, while the refinements
-   are short: that is where an X with no Y is found, so `--2qbf` puts no
-   tick limit on that run. NEVER add that run to `--synth`: all it covered
+   are short: that is where an X with no Y is found
+   (`--coverorigticks`, 2000: sortnetsort10.008 takes 1800M there).
+   NEVER add that run to `--synth`: all it covered
    there is covered after Puura too, and it cost 7 s per file. NEVER build AIGs per round in it: the functions are made once,
    at the end, from the stored models.
    `--verb 1` prints a `[cover]` stats line (rounds, refinement size,
@@ -120,7 +127,7 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
 `--2qbf` pipeline that stops early, in `do_synth_2qbf()`:
 
 1. `cover()` on the orig clauses, at most `--coverticks` million CaDiCaL
-   ticks (20 here, 500 otherwise).
+   ticks (20 here, 200 otherwise). No long runs here.
 2. Puura, exactly as for counting and synthesis: NEVER trim or budget it
    for this mode. `get_2qbf_cls()` gives its clauses over the orig vars.
 3. `bce_2qbf()` removes the clauses blocked on an existential literal

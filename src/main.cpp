@@ -81,8 +81,11 @@ int qbf2_puura_rounds = 1;
 int debug_verilog = 0;
 int64_t pre_confl = 10000;
 double cover_budget = 100000;
-double cover_ticks = 500;
+double cover_ticks = 200;
 double cover_late_ticks = 100;
+double cover_big_ticks = 5000;
+double cover_big_late_ticks = 600;
+double cover_orig_ticks = 2000;
 int cover_minim = 1;
 int cover_stages = 3;
 bool cover_done = false;
@@ -186,8 +189,11 @@ void add_arjun_options() {
     myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverstages", cover_stages, "Which covering runs there are, a sum: 1 = after simplification, 2 = after the definition passes");
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
+    myopt("--coverbigticks", cover_big_ticks, "As --coverticks, for the 2nd covering run of the simplified CNF: before the last, unlimited synthesis strategy, so only if the limited ones did not finish. 0 = no such run");
+    myopt("--coverbiglateticks", cover_big_late_ticks, "As --coverbigticks, for the 2nd covering run after the definition passes");
+    myopt("--coverorigticks", cover_orig_ticks, "As --coverticks, for the covering run of --2qbf on the original clauses");
     myopt("--coverminim", cover_minim, "How covering shortens a refinement, a sum: 1 = SAT calls for a model of the same input whose existentials satisfy more clauses, 2 = flipping existentials no clause needs, 4 = dropping what another part of it implies");
-    myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit");
+    myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit. The 1st runs are short, see --coverbigticks");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthpuura", do_synth_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
@@ -643,15 +649,17 @@ void do_synth_2qbf() {
     if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
     // Before Puura only for 2QBF, while the refinements are short: an X with
     // no Y is found here. Synthesis covers the same files after Puura.
-    // No tick limit for --2qbf: finding that X can take long (sortnetsort10)
-    const bool only_verdict = qbf2 && !qbf2pre && !program.is_used("--coverticks");
     if (qbf2) try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_budget, 50.0),
-            only_verdict ? 0 : cover_ticks);
+            qbf2pre ? cover_ticks : cover_orig_ticks);
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2 && !need_funs;
     if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
     if ((cover_stages & 1) && !cnf.synth_done()) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_ticks);
+    // for the 2nd, long covering run: without the functions of the passes below
+    ArjunNS::SimplifiedCNF simplified_cnf(fg);
+    const bool big_cover = !qbf2pre && (cover_stages & 1) && cover_ticks != 0 && cover_big_ticks > cover_ticks;
+    if (big_cover && !cnf.synth_done()) simplified_cnf = cnf;
 
     auto write_2qbfpre = [&] {
         if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
@@ -725,7 +733,18 @@ void do_synth_2qbf() {
     if (!cnf.synth_done()) {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);
-        synth_runner.run_cegr_strategies(cnf, mconf, strategies);
+        // Covering is quick when it works, so the runs so far were short.
+        // The long ones only come once synthesis has not been quick either
+        synth_runner.run_cegr_strategies(cnf, mconf, strategies, [&] {
+            if (qbf2pre) return;
+            if (big_cover) {
+                try_cover(simplified_cnf, qbf2_cls, need_funs, cover_budget, cover_big_ticks);
+                if (cover_done) cnf = std::move(simplified_cnf);
+            }
+            if (!cover_done && (cover_stages & 2) && cover_late_ticks != 0 && cover_big_late_ticks > cover_late_ticks
+                    && has_defined(cnf, qbf2_cls))
+                try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_big_late_ticks);
+        });
 
         release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cegr.aig");
@@ -733,7 +752,7 @@ void do_synth_2qbf() {
     }
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
-    if (rewrite) cnf.rewrite_aigs(conf.verb, true);
+    if (rewrite && (!cover_done || cnf.num_def_nodes() < 10000)) cnf.rewrite_aigs(conf.verb, true);
     auto final_cnf = cnf;
     final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
     if (!output_file.empty() && !qbf2pre) {
