@@ -77,7 +77,7 @@ size_t qbf2_num_cls = 0;
 int pre_repairs = 400;
 string pre_witness;
 int pre_bce = 1;
-int qbf2_puura_rounds = 1;
+int qbf2_puura_rounds = 2;
 int debug_verilog = 0;
 int64_t pre_confl = 10000;
 double cover_budget = 100000;

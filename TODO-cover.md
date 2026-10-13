@@ -35,8 +35,10 @@ arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
   too slow on them, and `--2qbfpre` ran out of memory in the interpolation.
 - `small-pipeline-fixpoint` (7): the orig run takes 5867M ticks and 67 s for
   201 rounds, refinements of 4656. bloqqer + CADET: 5 s.
-- `ctrl` (10), `ci` (6): only after bloqqer, with RAReQS or CAQE. Not after
-  `--2qbfpre`: find what bloqqer does to them (expansion?).
+- `ctrl` (10): DONE, `--2qbfpuurarounds 2` is the default. bloqqer needs
+  its BCE and VE for them, not expansion; a 2nd Puura run after the blocked
+  clauses are gone does the same. 14 of 29 in 200 s, all by covering.
+- `ci` (6): 1 of 6 with 2 runs. bloqqer + RAReQS gets all 6. Open.
 
 ## To try, in order
 

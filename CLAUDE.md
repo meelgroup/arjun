@@ -134,10 +134,13 @@ solved instance is written as `p cnf N 0` (true) or with the empty clause
    (bloqqer's QBCE; `--prebce 0` turns it off). That keeps the truth and
    the X with no Y, but not the solution count, so it cannot be a Puura
    step. `--2qbf` does this too when no functions are asked for.
-   Puura runs ONCE by default. `--2qbfpuurarounds N` (up to 4) runs it
+   Puura runs TWICE by default. `--2qbfpuurarounds N` (up to 4) runs it
    again on what step 3 left, as a new problem (`cnf_of_2qbf_cls()`): the
    2nd run as the 1st, the 3rd and 4th with BVE that may grow the CNF
-   (bloqqer's variable elimination). A further run is dropped unless it
+   (bloqqer's variable elimination). The 2nd run is what the `ctrl`
+   family needs: with the blocked clauses gone it eliminates most of the
+   existentials left (5310 clauses -> 1119 on one), and `cover()` then
+   finishes. `--2qbf` with 1 run: 0 of 29 done, with 2: 14 in 200 s. A further run is dropped unless it
    ends up with fewer literals. `cover()` runs once more after all of
    this.
 4. A try at solving it, on a copy: autarky, extend, backward, unate_def

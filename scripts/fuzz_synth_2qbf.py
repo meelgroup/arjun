@@ -615,6 +615,7 @@ if __name__ == "__main__":
         solver += "--coverstages %d --coverlateticks %s " % (random.randint(0, 3), random.choice([0, 0.01, 100]))
         solver += "--coverbigticks %s --coverbiglateticks %s " % (random.choice([0, 5, 5000]), random.choice([0, 5, 600]))
         solver += "--coverorigticks %s " % random.choice([0, 0.01, 2000])
+        solver += "--2qbfpuurarounds %d " % random.randint(1, 4)
 
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
