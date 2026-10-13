@@ -227,6 +227,73 @@ def find_cadet_time(fname):
     }
 
 
+MEM_OUT_RE = re.compile(
+    r"bad_alloc|out of memory|OutOfMemoryException|memory allocation of"
+    r"|realloc failed|memory manager can't handle the load"
+    r"|while reallocating clause space")
+
+
+def has_mem_out(fname):
+    with open(fname, "r", errors="replace") as f:
+        return any(MEM_OUT_RE.search(line) for line in f)
+
+
+def tool_of(cmd):
+    name = os.path.basename(cmd.split()[0])
+    return "arjun" if name.startswith("arjun") else name
+
+
+def clean_cmd(cmd):
+    cmd = re.sub(r'^\./', '', cmd)
+    cmd = re.sub(r'^arjun\S*', 'arjun', cmd)
+    cmd = re.sub(r' --verb \S+', '', cmd)
+    return re.sub(r' %[io]', '', cmd).strip()
+
+
+# One 2QBF run (creator_2qbf.sh) is a preprocessor and a solver, each with its
+# own log and time file; .out_res has the commands and the RESULT line.
+def finalize_2qbf(entry):
+    parts = entry.pop("_2qbf")
+    if "out_res" not in parts:
+        return
+    with open(parts["out_res"], "r") as f:
+        lines = f.read().splitlines()
+    pre = lines[0][len("pre: "):]
+    solver = lines[1][len("solver: "):]
+    res = [l for l in lines if l.startswith("RESULT")]
+    if not res:
+        return
+    res = dict(x.split("=") for x in res[0].split()[1:])
+    has_pre = pre != "none"
+
+    names = []
+    if has_pre:
+        names.append("arjun-pre" if tool_of(pre) == "arjun" else tool_of(pre))
+    names.append("arjun-2qbf" if tool_of(solver) == "arjun" else tool_of(solver))
+    entry["solver"] = "+".join(names)
+    entry["timeout_call"] = " + ".join(clean_cmd(c) for c in ([pre] if has_pre else []) + [solver])
+
+    tos = [timeout_parse(parts[k]) for k in ("timeout_pre", "timeout_solve") if k in parts]
+    entry["timeout_call_full"] = " ; ".join(t["timeout_call_full"] for t in tos)
+    entry["timeout_mem"] = max((t["timeout_mem"] for t in tos), default=None)
+    entry["page_faults"] = sum(t["page_faults"] or 0 for t in tos)
+    entry["signal"] = tos[-1]["signal"] if tos else 0
+
+    total = int(res["total_ms"]) / 1000
+    entry["verdict"] = res["verdict"] if res["verdict"] != "UNKNOWN" else None
+    entry["res_by"] = res["by"]
+    entry["pre_time"] = int(res["pre_ms"]) / 1000 if has_pre else None
+    entry["timeout_t_nonnull"] = total
+    entry["timeout_t"] = total if entry["verdict"] else None
+
+    arjun_log = "out_pre" if has_pre and tool_of(pre) == "arjun" else \
+        "out_solve" if tool_of(solver) == "arjun" else None
+    if arjun_log in parts:
+        data = find_arjun_time(parts[arjun_log])
+        entry.update({k: v for k, v in data.items() if k not in ("solved", "mem_out")})
+    entry["mem_out"] = int(any(has_mem_out(parts[k]) for k in ("out_pre", "out_solve") if k in parts))
+
+
 def timeout_parse(fname):
     t = None
     signal = None
@@ -323,6 +390,11 @@ def read_file(fname, files, existing=None):
     files[base]["dirname"] = dirname
     files[base]["fname"] = basename
 
+    kind = parts[1][len(basename) + 1:]
+    if kind in ("out_res", "out_pre", "out_solve", "timeout_pre", "timeout_solve"):
+        files[base].setdefault("_2qbf", {})[kind] = fname
+        return
+
     if ".timeout_" in fname:
         data = timeout_parse(fname)
         files[base].update(data)
@@ -381,6 +453,11 @@ COLUMNS = [
     ("last_stage",              "TEXT"),
     ("last_stage_done",         "TEXT"),
     ("mem_out",                 "INTEGER"),
+    # 2QBF runs only: TRUE/FALSE, who ended the run (pre, solver, pre_failed,
+    # no_time_left) and the preprocessor's wall-clock time
+    ("verdict",                 "TEXT"),
+    ("res_by",                  "TEXT"),
+    ("pre_time",                "REAL"),
 ]
 
 
@@ -393,6 +470,10 @@ def open_db(db_path, recreate):
     conn = sqlite3.connect(db_path)
     col_defs = ", ".join(f"{name} {typ}" for name, typ in COLUMNS)
     conn.execute(f"CREATE TABLE IF NOT EXISTS arjun ({col_defs})")
+    have = {row[1] for row in conn.execute("PRAGMA table_info(arjun)")}
+    for name, typ in COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE arjun ADD COLUMN {name} {typ}")
     conn.commit()
     return conn
 
@@ -439,6 +520,9 @@ if __name__ == "__main__":
     files = {}
     for f in file_list:
         read_file(f, files, existing)
+    for entry in files.values():
+        if "_2qbf" in entry:
+            finalize_2qbf(entry)
 
     print(f"Parsed {len(files)} new benchmark entries")
 

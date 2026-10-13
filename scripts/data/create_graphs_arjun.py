@@ -24,8 +24,10 @@ VER_EXPR = "COALESCE(arjun_sha1, solver)"
 
 # Per-solver solve time: arjun reports it on the "All done." line; CADET has
 # no equivalent, so we use timeout_t (wall-clock user time, already nulled
-# by the parser when killed by signal).
-SOLVE_TIME_EXPR = "(CASE WHEN solver='cadet' THEN timeout_t ELSE arjun_time END)"
+# by the parser when killed by signal). 2QBF runs (solver is e.g.
+# 'arjun-pre+cadet', 'arjun-2qbf', 'caqe') have preprocessing + solving
+# wall-clock time in timeout_t, NULL without a verdict.
+SOLVE_TIME_EXPR = "(CASE WHEN solver='arjun' THEN arjun_time ELSE timeout_t END)"
 
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
@@ -78,10 +80,11 @@ only_dirs = [
     # "out-synth-2273894-3", # limit unate
     # "out-synth-2535088-1", # CEGAR for Y->X skolem and also testing 2QBF
     # "out-synth-2535088-2", # CEGAR for Y->X skolem and also testing 2QBF
-    "out-synth-2538628-", # improved cover
-    "out-synth-2539107-0", # improved cover
-    "out-synth-2539107-4", # improved cover
-    "out-synth-2539107-3", # improved cover
+    # "out-synth-2538628-", # improved cover
+    # "out-synth-2539107-0", # improved cover
+    # "out-synth-2539107-4", # improved cover
+    # "out-synth-2539107-3", # improved cover
+    "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
 
     # "out-synth-1367674-0", # before unate-eq
 ]
@@ -773,6 +776,9 @@ def main():
 
     versions = get_versions()
     matched_dirs = get_matching_dirs(only_dirs)
+    if matched_dirs and all(d.startswith("out-2qbf-") for d in matched_dirs):
+        global TIMEOUT
+        TIMEOUT = 900
     if args.verbose:
         print(f"Found {len(versions)} version(s) in database")
         print(f"Matched {len(matched_dirs)} dir(s): {matched_dirs}")
