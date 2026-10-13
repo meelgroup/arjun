@@ -80,13 +80,12 @@ int pre_bce = 1;
 int qbf2_puura_rounds = 2;
 int debug_verilog = 0;
 int64_t pre_confl = 10000;
-double cover_budget = 100000;
+ArjunNS::Arjun::CoverConf cover_conf;
 double cover_ticks = 200;
 double cover_late_ticks = 100;
 double cover_big_ticks = 5000;
 double cover_big_late_ticks = 600;
 double cover_orig_ticks = 2000;
-int cover_minim = 1;
 int cover_stages = 3;
 bool cover_done = false;
 int use_brute_force_synth = 1;
@@ -186,13 +185,13 @@ void add_arjun_options() {
     myopt("--2qbfpuurarounds", qbf2_puura_rounds, "2QBF with --prebce: how many times Puura runs, 1 to 4. Each further run is on the clauses left by the one before, less the blocked ones, and is kept only if it ends with fewer literals. The 2nd is like the 1st, the 3rd lets BVE grow the CNF (--iter1grow 16 --iter2grow 100), the 4th more so (100, 1000, and no resolvent size limit)");
     myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
     myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
-    myopt("--cover", cover_budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
+    myopt("--cover", cover_conf.budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverstages", cover_stages, "Which covering runs there are, a sum: 1 = after simplification, 2 = after the definition passes");
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
     myopt("--coverbigticks", cover_big_ticks, "As --coverticks, for the 2nd covering run of the simplified CNF: before the last, unlimited synthesis strategy, so only if the limited ones did not finish. 0 = no such run");
     myopt("--coverbiglateticks", cover_big_late_ticks, "As --coverbigticks, for the 2nd covering run after the definition passes");
     myopt("--coverorigticks", cover_orig_ticks, "As --coverticks, for the covering run of --2qbf on the original clauses");
-    myopt("--coverminim", cover_minim, "How covering shortens a refinement, a sum: 1 = SAT calls for a model of the same input whose existentials satisfy more clauses, 2 = flipping existentials no clause needs, 4 = dropping what another part of it implies");
+    myopt("--coverminim", cover_conf.minim, "How covering shortens a refinement, a sum: 1 = SAT calls for a model of the same input whose existentials satisfy more clauses, 2 = flipping existentials no clause needs, 4 = dropping what another part of it implies");
     myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit. The 1st runs are short, see --coverbigticks");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthpuura", do_synth_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
@@ -520,8 +519,12 @@ bool has_defined(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::L
 void try_cover(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const bool need_funs,
         const double budget, const double ticks) {
     vector<CMSat::lbool> cex;
-    auto ret = arjun->standalone_cover(cnf, cls, budget, (uint64_t)(ticks * 1e6), qbf2,
-            need_funs, cover_minim, cex);
+    auto my_conf = cover_conf;
+    my_conf.budget = budget;
+    my_conf.max_ticks = ticks * 1e6;
+    my_conf.stop_at_cex = qbf2;
+    my_conf.need_funs = need_funs;
+    auto ret = arjun->standalone_cover(cnf, cls, my_conf, cex);
     if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
     if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
     // the functions are in place, and get written out by do_synth_2qbf()
@@ -649,13 +652,13 @@ void do_synth_2qbf() {
     if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
     // Before Puura only for 2QBF, while the refinements are short: an X with
     // no Y is found here. Synthesis covers the same files after Puura.
-    if (qbf2) try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_budget, 50.0),
+    if (qbf2) try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_conf.budget, 50.0),
             qbf2pre ? cover_ticks : cover_orig_ticks);
 
     auto qbf2_cls = cnf.get_orig_clauses();
     const bool bce = qbf2 && !need_funs;
     if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
-    if ((cover_stages & 1) && !cnf.synth_done()) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_ticks);
+    if ((cover_stages & 1) && !cnf.synth_done()) try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_ticks);
     // for the 2nd, long covering run: without the functions of the passes below
     ArjunNS::SimplifiedCNF simplified_cnf(fg);
     const bool big_cover = !qbf2pre && (cover_stages & 1) && cover_ticks != 0 && cover_big_ticks > cover_ticks;
@@ -703,7 +706,7 @@ void do_synth_2qbf() {
     }
 
     // covering follows the functions found since its last run
-    if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_late_ticks);
+    if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_late_ticks);
 
     if (qbf2pre && !cnf.synth_done()) {
         auto try_mconf = mconf;
@@ -738,12 +741,12 @@ void do_synth_2qbf() {
         synth_runner.run_cegr_strategies(cnf, mconf, strategies, [&] {
             if (qbf2pre) return;
             if (big_cover) {
-                try_cover(simplified_cnf, qbf2_cls, need_funs, cover_budget, cover_big_ticks);
+                try_cover(simplified_cnf, qbf2_cls, need_funs, cover_conf.budget, cover_big_ticks);
                 if (cover_done) cnf = std::move(simplified_cnf);
             }
             if (!cover_done && (cover_stages & 2) && cover_late_ticks != 0 && cover_big_late_ticks > cover_late_ticks
                     && has_defined(cnf, qbf2_cls))
-                try_cover(cnf, qbf2_cls, need_funs, cover_budget, cover_big_late_ticks);
+                try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_big_late_ticks);
         });
 
         release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");

@@ -2126,6 +2126,22 @@ public:
         }
     };
 
+    // Model covering, see cover.h
+    struct CoverConf {
+        double budget = 100000; // a refinement naming fraction f of the helpers costs f^2: next to nothing while it converges
+        uint64_t max_ticks = 0; // of SAT solver work, 0 = no limit
+        bool stop_at_cex = false; // return the first X with no Y, instead of skipping its cube
+        bool need_funs = true; // false: l_True comes with no Skolem functions, only the verdict
+        // How a refinement is shortened, a sum. 1: by asking for a model, of the same X, whose
+        // existentials satisfy more of the clauses. 2: by flipping the existentials no clause
+        // needs. 4: by dropping what another part of it implies
+        uint32_t minim = 1;
+        uint32_t max_minim_calls = 50; // per round, for minim 1
+        uint32_t max_minim_wait = 7; // a helper that a core kept out of the model sits out 1, 3, 7.. of its next tries
+        int64_t subs_work = 20LL*1000*1000; // for minim 4: finding which helper implies which
+        uint32_t stats_every = 1000; // rounds
+    };
+
     struct IndepInfo {
         std::vector<std::pair<CMSat::Lit, CMSat::Lit>> eq_lits;
         std::vector<CMSat::Lit> backbone;
@@ -2152,10 +2168,8 @@ public:
     SimplifiedCNF standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& cegr_conf);
     SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
-    // Model covering, see cover.h
     CMSat::lbool standalone_cover(SimplifiedCNF& cnf, const std::vector<std::vector<CMSat::Lit>>& cls,
-            const double budget, const uint64_t max_ticks, const bool stop_at_cex, const bool need_funs,
-            const uint32_t minim, std::vector<CMSat::lbool>& cex);
+            const CoverConf& cover_conf, std::vector<CMSat::lbool>& cex);
 
     //Set config
     void set_verb(uint32_t verb);
