@@ -294,7 +294,7 @@ lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double
         }
     }
     // a helper that a core kept out of the model sits out 1, 3, 7.. of its next tries
-    const uint32_t max_wait = 7;
+    const uint32_t max_wait = 7, max_minim_calls = 50;
     vector<uint32_t> wait(num_helpers, 0), skip(num_helpers, 0);
     vector<char> is_false(num_helpers), in_core(num_helpers);
 
@@ -472,7 +472,9 @@ lbool cover_one(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, const double
             if (skip[hidx(h)]) skip[hidx(h)]--;
             else cand.push_back(hidx(h));
         }
-        while (!cand.empty()) {
+        // Capped: with every core a single helper, it is a call per helper
+        for (uint32_t calls = 0; !cand.empty() && calls < max_minim_calls
+                && (max_ticks == 0 || ticks() < max_ticks); calls++) {
             assumps.resize(base);
             for (const auto& i : cand) assumps.push_back(sel(i));
             minim_calls++;
