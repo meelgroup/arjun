@@ -2013,7 +2013,7 @@ private:
     std::map<uint32_t, Weight> weights;
     std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
                                                     // does NOT map to vars NOT in the CNF
-    uint32_t n_no_touch = 0;
+    uint32_t n_no_touch = 0; // 'c p no-touch': ORIG vars 0..n_no_touch-1 keep their numbers in the CNF
     std::string quant_prefix;
     std::set<uint32_t> quant_vars;
     AIGManager aig_mng; // only for const true/false
