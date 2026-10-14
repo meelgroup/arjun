@@ -29,6 +29,7 @@
 #include "config.h"
 #include "metasolver.h"
 #include "aig_to_cnf.h"
+#include "cnf_vars.h"
 #include "time_mem.h"
 #include <limits>
 #include <map>
@@ -37,41 +38,13 @@
 
 namespace ArjunInt {
 
-// The vars cover works on, as Cegr does: those of the CNF, numbered as there,
-// then the orig vars that the defs reach and that are not in it. The defs
-// are translated to them once, the functions back to orig vars at the end
-struct CoverVars {
-    std::vector<CMSat::Lit> orig; // value(v) = value(orig[v].var()) ^ orig[v].sign()
-    std::vector<CMSat::Lit> of_orig; // the other way, lit_Undef if not reached
-    std::vector<ArjunNS::aig_lit> def;
-    std::vector<char> univ;
-
-    explicit CoverVars(const ArjunNS::SimplifiedCNF& cnf);
-    uint32_t size() const { return orig.size(); }
-    bool defined(const uint32_t v) const { return def[v] != nullptr; }
-    void to_orig(std::vector<ArjunNS::aig_lit>& funs) const;
-
-private:
-    // One cache for all the AIGs: they share most of their nodes, and
-    // translating them one by one copies those into each
-    using Cache = std::map<ArjunNS::aig_lit, ArjunNS::aig_lit>;
-    template<class F> static ArjunNS::aig_lit translate(const ArjunNS::aig_lit& a, Cache& cache, F&& lit_of_var) {
-        return ArjunNS::AIG::transform<ArjunNS::aig_lit>(a,
-            [&](const ArjunNS::AIGT type, const uint32_t var, const ArjunNS::aig_lit* l, const ArjunNS::aig_lit* r) {
-                if (type == ArjunNS::AIGT::t_const) return ArjunNS::AIG::new_const(true);
-                if (type == ArjunNS::AIGT::t_lit) return ArjunNS::AIG::new_lit(lit_of_var(var));
-                return ArjunNS::AIG::new_and(*l, *r);
-            }, cache);
-    }
-};
-
 // An AIG with its leaves replaced: a var with a `leaf` by that, any other
 // defined var by its def, rewritten the same way, the rest by their `val`.
 // What does not depend on a `val` is built once, the rest once per round.
 struct Subst {
     struct Res { ArjunNS::aig_lit a; bool fixed; };
     struct NidHash { size_t operator()(const ArjunNS::AIG* n) const { return std::hash<uint64_t>()(n->nid); } };
-    const CoverVars& vs;
+    const CnfVars& vs;
     std::vector<ArjunNS::aig_lit> leaf;
     std::vector<CMSat::lbool> val;
     std::unordered_map<const ArjunNS::AIG*, Res, NidHash> fixed_nodes, round_nodes;
@@ -79,7 +52,7 @@ struct Subst {
     std::vector<uint64_t> var_round;
     uint64_t round = 1, work = 0;
 
-    explicit Subst(const CoverVars& _vs) : vs(_vs), leaf(_vs.size(), ArjunNS::aig_lit(nullptr)),
+    explicit Subst(const CnfVars& _vs) : vs(_vs), leaf(_vs.size(), ArjunNS::aig_lit(nullptr)),
         val(_vs.size(), CMSat::l_Undef), var_res(_vs.size()), var_round(_vs.size(), 0) {}
 
     void new_round() { round_nodes.clear(); round++; }
@@ -122,7 +95,7 @@ struct Subst {
 // settles yet, f gives a model of the clauses for it
 class CoverComp {
 public:
-    CoverComp(const CoverVars& _vs, const ArjunNS::AIGManager& _aig_mng, const std::vector<std::vector<CMSat::Lit>>& _cls,
+    CoverComp(const CnfVars& _vs, const ArjunNS::AIGManager& _aig_mng, const std::vector<std::vector<CMSat::Lit>>& _cls,
             const ArjunNS::Arjun::CoverConf& _mconf, const uint64_t _max_ticks, const uint32_t _verb) :
         vs(_vs), aig_mng(_aig_mng), cls(_cls), mconf(_mconf), max_ticks(_max_ticks), verb(_verb),
         num_vars(_vs.size()), sat_minim(_mconf.minim & 1), flip_minim(_mconf.minim & 2), subs_minim(_mconf.minim & 4),
@@ -135,7 +108,7 @@ public:
 
     // The vars of cls that already have a function, in `defined`. state 1: a
     // function of the universals only, 2: not
-    static void classify(const CoverVars& vs, const std::vector<std::vector<CMSat::Lit>>& cls,
+    static void classify(const CnfVars& vs, const std::vector<std::vector<CMSat::Lit>>& cls,
             std::vector<char>& state, std::vector<uint32_t>& defined, std::vector<uint32_t>& free_leaves);
     static constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
 
@@ -178,7 +151,7 @@ private:
     void print_stats(const char* what);
     CMSat::lbool finish(const CMSat::lbool ret);
 
-    const CoverVars& vs;
+    const CnfVars& vs;
     const ArjunNS::AIGManager& aig_mng;
     const std::vector<std::vector<CMSat::Lit>>& cls;
     const ArjunNS::Arjun::CoverConf& mconf;
@@ -258,7 +231,7 @@ private:
 class Cover {
 public:
     Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _mconf, ArjunNS::SimplifiedCNF& _cnf) :
-        conf(_conf), mconf(_mconf), cnf(_cnf), vs(_cnf), cls(_cnf.get_clauses()) {}
+        conf(_conf), mconf(_mconf), cnf(_cnf), vs(_cnf) {}
     CMSat::lbool run(std::vector<CMSat::lbool>& cex);
 
 private:
@@ -271,8 +244,7 @@ private:
     const Config& conf;
     const ArjunNS::Arjun::CoverConf& mconf;
     ArjunNS::SimplifiedCNF& cnf;
-    const CoverVars vs;
-    const std::vector<std::vector<CMSat::Lit>>& cls;
+    const CnfVars vs;
 
     std::vector<std::vector<std::vector<CMSat::Lit>>> comps;
     std::vector<std::vector<CMSat::Lit>> outer_only;

@@ -447,14 +447,22 @@ void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
-void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf,
-        const vector<vector<CMSat::Lit>>& cls) {
-    for(const auto& cl: cls) {
+// the orig lit of each var of the CNF
+vector<CMSat::Lit> new_to_orig(const ArjunNS::SimplifiedCNF& cnf) {
+    vector<CMSat::Lit> ret(cnf.nVars(), CMSat::lit_Undef);
+    for (const auto& [n, o] : cnf.get_new_to_orig_var()) ret[n] = o;
+    return ret;
+}
+
+void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf) {
+    const auto to_orig = new_to_orig(cnf);
+    for(const auto& cl: cnf.get_clauses()) {
         vector<CMSat::lbool> cex(cnf.num_defs(), CMSat::l_Undef);
         bool all_univ = true;
         for(const auto& l: cl) {
-            all_univ &= cnf.get_orig_sampl_vars().count(l.var());
-            cex[l.var()] = CMSat::boolToLBool(l.sign());
+            const CMSat::Lit o = to_orig[l.var()] ^ l.sign();
+            all_univ &= cnf.get_orig_sampl_vars().count(o.var());
+            cex[o.var()] = CMSat::boolToLBool(o.sign());
         }
         if (!all_univ) continue;
         SLOW_DEBUG_DO(assert(cnf.is_2qbf_cex(cex)));
@@ -496,15 +504,19 @@ size_t num_lits(const vector<vector<CMSat::Lit>>& cls) {
     return ret;
 }
 
-bool has_univ(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls) {
-    for(const auto& cl: cls) for(const auto& l: cl)
-        if (cnf.get_orig_sampl_vars().count(l.var())) return true;
+bool has_univ(const ArjunNS::SimplifiedCNF& cnf) {
+    const auto to_orig = new_to_orig(cnf);
+    for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl)
+        if (cnf.get_orig_sampl_vars().count(to_orig[l.var()].var())) return true;
     return false;
 }
 
 bool has_defined(const ArjunNS::SimplifiedCNF& cnf) {
-    for(const auto& cl: cnf.get_2qbf_cls()) for(const auto& l: cl)
-        if (!cnf.get_orig_sampl_vars().count(l.var()) && cnf.defined(l.var())) return true;
+    const auto to_orig = new_to_orig(cnf);
+    for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl) {
+        const uint32_t o = to_orig[l.var()].var();
+        if (!cnf.get_orig_sampl_vars().count(o) && cnf.defined(o)) return true;
+    }
     return false;
 }
 
@@ -545,8 +557,8 @@ ArjunNS::SimpConf puura_round_conf(const int round) {
     return ret;
 }
 
-// Round 0 simplifies cnf, a later one the 2QBF of cls as a new problem. cls: the result's
-void puura_round(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls, const int round,
+// Round 0 simplifies cnf, a later one the 2QBF of cls, over orig vars, as a new problem
+void puura_round(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const int round,
         const bool need_funs) {
     cnf = arjun->standalone_get_simplified_cnf(
             round == 0 ? cnf : cnf_of_2qbf_cls(cnf, cls), puura_round_conf(round));
@@ -557,9 +569,8 @@ void puura_round(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls, c
             qbf2_result(cnf, false, cex);
         }
     }
-    cls = cnf.get_2qbf_cls();
-    if (qbf2) check_2qbf_univ_clause(cnf, cls);
-    if (!need_funs && !has_univ(cnf, cls)) {
+    if (qbf2) check_2qbf_univ_clause(cnf);
+    if (!need_funs && !has_univ(cnf)) {
         verb_print(1, "[arjun] no universal left, and the CNF is satisfiable");
         qbf2_result(cnf, true);
     }
@@ -577,19 +588,22 @@ void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) 
         puura_round(cnf, cls, round, need_funs);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "simplified_cnf"));
-        const bool smaller = round == 0 || num_lits(cls) < prev_lits;
-        verb_print(1, "[2qbf-puura] round: " << round << " cls: " << cls.size() << " lits: " << num_lits(cls)
+        const size_t lits = num_lits(cnf.get_clauses());
+        const bool smaller = round == 0 || lits < prev_lits;
+        verb_print(1, "[2qbf-puura] round: " << round << " cls: " << cnf.get_clauses().size() << " lits: " << lits
                 << (smaller ? "" : " -- not smaller, dropped") << " T: " << (cpuTime() - start_time));
         if (!smaller) {
             cnf = std::move(prev_cnf);
             return;
         }
-        prev_lits = num_lits(cls);
+        prev_lits = lits;
         if (!bce || cnf.synth_done() || round >= qbf2_puura_rounds - 1) return;
 
-        const auto removed = cnf.bce_2qbf(cls);
+        auto left = cnf.get_clauses();
+        const auto removed = cnf.bce_2qbf(left);
         verb_print(1, "[2qbf-puura] blocked cls removed: " << removed);
-        if (cls.empty()) qbf2_result(cnf, true);
+        if (left.empty()) qbf2_result(cnf, true);
+        cls = cnf.to_orig_cls(left);
         if (round == 0 && removed == 0) round++;
         if (round >= qbf2_puura_rounds - 1) return;
     }
@@ -637,7 +651,7 @@ void do_synth_2qbf() {
     check_cnf_sat(cnf);
     if (qbf2) {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
-        check_2qbf_univ_clause(cnf, cnf.get_clauses());
+        check_2qbf_univ_clause(cnf);
     }
     const bool need_funs = !qbf2 || !output_file.empty();
     if (!need_funs && !conf.debug_synth.empty()) {

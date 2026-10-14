@@ -37,43 +37,7 @@ using std::vector;
 using std::map;
 using std::set;
 
-CoverVars::CoverVars(const SimplifiedCNF& cnf) {
-    of_orig.assign(cnf.num_defs(), lit_Undef);
-    const auto new_to_orig = cnf.get_new_to_orig_var();
-    for (uint32_t v = 0; v < cnf.nVars(); v++) {
-        const auto it = new_to_orig.find(v);
-        release_assert(it != new_to_orig.end() && "every var of the CNF must have an orig var");
-        orig.push_back(it->second);
-        of_orig[it->second.var()] = Lit(v, it->second.sign());
-    }
-    for (uint32_t v = 0; v < orig.size(); v++) {
-        const uint32_t o = orig[v].var();
-        if (!cnf.defined(o)) continue;
-        set<uint32_t> deps;
-        AIG::get_dependent_vars(cnf.get_def(o), deps, o);
-        for (const auto& d : deps) if (of_orig[d] == lit_Undef) {
-            of_orig[d] = Lit(orig.size(), false);
-            orig.emplace_back(d, false);
-        }
-    }
-    def.resize(orig.size());
-    univ.resize(orig.size());
-    Cache cache;
-    for (uint32_t v = 0; v < orig.size(); v++) {
-        const uint32_t o = orig[v].var();
-        univ[v] = cnf.get_orig_sampl_vars().count(o);
-        if (!cnf.defined(o)) continue;
-        const aig_lit d = translate(cnf.get_def(o), cache, [&](const uint32_t u) { return of_orig[u]; });
-        def[v] = orig[v].sign() ? ~d : d;
-    }
-}
-
-void CoverVars::to_orig(vector<aig_lit>& funs) const {
-    Cache cache;
-    for (auto& fun : funs) fun = translate(fun, cache, [&](const uint32_t v) { return orig[v]; });
-}
-
-void CoverComp::classify(const CoverVars& vs, const vector<vector<Lit>>& cls, vector<char>& state,
+void CoverComp::classify(const CnfVars& vs, const vector<vector<Lit>>& cls, vector<char>& state,
         vector<uint32_t>& defined, vector<uint32_t>& free_leaves) {
     vector<char> in_cls(vs.size(), 0);
     state.assign(vs.size(), 0);
@@ -548,7 +512,7 @@ void Cover::split_components() {
     const uint32_t num_vars = vs.size();
     vector<char> state;
     vector<uint32_t> defined, free_leaves;
-    CoverComp::classify(vs, cls, state, defined, free_leaves);
+    CoverComp::classify(vs, cnf.get_clauses(), state, defined, free_leaves);
     vector<char> is_outer(num_vars, 0);
     for (uint32_t v = 0; v < num_vars; v++) if (vs.univ[v] || state[v] == 1) is_outer[v] = 1;
 
@@ -562,7 +526,7 @@ void Cover::split_components() {
         for (const auto& l : cl) if (!is_outer[l.var()]) return l.var();
         return CoverComp::none;
     };
-    for (const auto& cl : cls) {
+    for (const auto& cl : cnf.get_clauses()) {
         const uint32_t first = first_inner(cl);
         for (const auto& l : cl) if (!is_outer[l.var()]) par[find(l.var())] = find(first);
     }
@@ -572,7 +536,7 @@ void Cover::split_components() {
         for (const auto& d : deps) if (!is_outer[d]) par[find(d)] = find(v);
     }
     vector<uint32_t> comp_of(num_vars, CoverComp::none);
-    for (const auto& cl : cls) {
+    for (const auto& cl : cnf.get_clauses()) {
         const uint32_t first = first_inner(cl);
         if (first == CoverComp::none) { outer_only.push_back(cl); continue; }
         uint32_t& c = comp_of[find(first)];
@@ -596,7 +560,7 @@ lbool Cover::cover_components(vector<lbool>& cex) {
     std::stable_sort(comps.begin(), comps.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
     comps.back().insert(comps.back().end(), outer_only.begin(), outer_only.end());
     if (verb) std::cout << "c o [cover] components: " << comps.size() << " clauses of the largest: "
-        << comps.back().size() << " of " << cls.size() << std::endl;
+        << comps.back().size() << " of " << cnf.get_clauses().size() << std::endl;
     lbool ret = l_True;
     for (uint32_t i = 0; i < comps.size() && ret == l_True; i++) {
         if (mconf.max_ticks && used_ticks >= mconf.max_ticks) return l_Undef;
@@ -624,14 +588,8 @@ void Cover::set_funs() {
 lbool Cover::run(vector<lbool>& cex) {
     split_components();
     vector<lbool> vs_cex;
-    const lbool ret = comps.size() <= 1 ? cover_one(cls, conf.verb, vs_cex) : cover_components(vs_cex);
+    const lbool ret = comps.size() <= 1 ? cover_one(cnf.get_clauses(), conf.verb, vs_cex) : cover_components(vs_cex);
     if (ret == l_True && mconf.need_funs) set_funs();
-    if (ret == l_False) {
-        cex.assign(cnf.num_defs(), l_Undef);
-        for (const auto& o : cnf.get_orig_sampl_vars()) {
-            const Lit l = vs.of_orig[o];
-            cex[o] = l == lit_Undef ? l_False : vs_cex[l.var()] ^ l.sign();
-        }
-    }
+    if (ret == l_False) cex = vs.univ_to_orig(cnf, vs_cex);
     return ret;
 }

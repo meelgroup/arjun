@@ -1835,7 +1835,8 @@ public:
     void write_simpcnf(const std::string& fname, bool red = true) const;
     // Removes the clauses that are blocked on an existential literal: every
     // resolvent on it is a tautology. Keeps the 2QBF's truth and its X with
-    // no Y, but not its Skolem functions. Returns the number removed
+    // no Y, but not its Skolem functions. cls is over the CNF's vars. Returns
+    // the number removed
     uint32_t bce_2qbf(std::vector<std::vector<CMSat::Lit>>& cls) const;
 
     [[nodiscard]] bool weight_set(uint32_t v) const {
@@ -1913,16 +1914,17 @@ public:
     // def is wrong. Expensive; intended for debugging BVE/synthesis issues.
     [[nodiscard]] int check_synth_funs_sat() const;
 
-    // An X with ~F(X, defs(X)) for the clauses of get_2qbf_cls(), or empty
+    // An X with ~F(X, defs(X)) for the clauses, or empty. Over orig vars
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex() const;
     // No Y extends X to a model of the orig clauses. For debugging
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
-    // The clauses over ORIG vars. With no orig sampl var defined, they are the
-    // 2QBF, and the orig sampl vars that are not in them are free
-    [[nodiscard]] std::vector<std::vector<CMSat::Lit>> get_2qbf_cls() const;
+    // cls, over the CNF's vars, over ORIG vars instead
+    [[nodiscard]] std::vector<std::vector<CMSat::Lit>> to_orig_cls(
+            const std::vector<std::vector<CMSat::Lit>>& cls) const;
     // Simplification defines an orig sampl var only by what F implies: a unit,
     // or an equivalence with another one. An X that breaks that def has no Y.
-    // Empty if no orig sampl var is defined
+    // Empty if no orig sampl var is defined: then the clauses are the 2QBF,
+    // and the orig sampl vars not in them are free
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_def_cex() const;
 
     void set_backbone_done(const bool bb_done) {

@@ -815,25 +815,15 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
 
 DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
     assert(need_aig && synth_done());
-    const auto cls = get_2qbf_cls();
+    const CnfVars vs(*this);
     MetaSolver s;
-    s.new_vars(defs.size());
+    s.new_vars(vs.size());
 
-    // y <-> def(y) for every non-input var the clauses depend on
     vector<uint32_t> ys;
-    vector<char> seen(defs.size(), 0);
-    auto add = [&](const uint32_t v) {
-        if (seen[v] || defs[v] == nullptr || orig_sampl_vars.count(v)) return;
-        seen[v] = 1;
-        ys.push_back(v);
-    };
-    for (const auto& cl : cls) for (const auto& l : cl) add(l.var());
     vector<aig_lit> roots;
-    for (size_t i = 0; i < ys.size(); i++) {
-        roots.push_back(defs[ys[i]]);
-        set<uint32_t> deps;
-        AIG::get_dependent_vars(defs[ys[i]], deps, ys[i]);
-        for (const auto& v : deps) add(v);
+    for (uint32_t v = 0; v < vs.size(); v++) if (vs.defined(v) && !vs.univ[v]) {
+        ys.push_back(v);
+        roots.push_back(vs.def[v]);
     }
     AIGToCNF<MetaSolver> enc(s);
     const auto outs = enc.encode_batch(roots);
@@ -844,7 +834,7 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
     }
 
     vector<Lit> some_false;
-    for (const auto& cl : cls) {
+    for (const auto& cl : clauses) {
         s.new_var();
         const Lit f(s.nVars()-1, false);
         for (const auto& l : cl) s.add_clause({~f, ~l});
@@ -855,9 +845,7 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
     const auto ret = s.solve();
     release_assert(ret != l_Undef);
     if (ret != l_True) return {};
-    vector<lbool> cex(defs.size(), l_Undef);
-    for (const auto& v : orig_sampl_vars) cex[v] = s.get_model()[v];
-    return cex;
+    return vs.univ_to_orig(*this, s.get_model());
 }
 
 DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {
@@ -869,27 +857,20 @@ DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {
     return s.solve(&assumps) == l_False;
 }
 
-DLL_PUBLIC vector<vector<Lit>> SimplifiedCNF::get_2qbf_cls() const {
+DLL_PUBLIC vector<vector<Lit>> SimplifiedCNF::to_orig_cls(const vector<vector<Lit>>& cls) const {
     vector<Lit> to_orig(nVars(), lit_Undef);
     for (const auto& [orig, l] : orig_to_new_var) {
         if (to_orig[l.var()] != lit_Undef && !orig_sampl_vars.count(orig)) continue;
         to_orig[l.var()] = Lit(orig, l.sign());
     }
     vector<vector<Lit>> ret;
-    for (const auto& cl : clauses) {
+    for (const auto& cl : cls) {
         ret.emplace_back();
         for (const auto& l : cl) {
             release_assert(to_orig[l.var()] != lit_Undef);
             ret.back().push_back(to_orig[l.var()] ^ l.sign());
         }
     }
-    SLOW_DEBUG_DO(if (get_2qbf_def_cex().empty()) {
-        auto mult = fg->one();
-        auto two = fg->one();
-        *two += *fg->one();
-        for (const auto& v : orig_sampl_vars) if (!orig_to_new_var.count(v)) *mult *= *two;
-        assert(*mult == *multiplier_weight && "an orig sampl var gone with no def must be free");
-    });
     return ret;
 }
 
@@ -905,6 +886,13 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_def_cex() const {
         SLOW_DEBUG_DO(assert(is_2qbf_cex(cex)));
         return cex;
     }
+    SLOW_DEBUG_DO({
+        auto mult = fg->one();
+        auto two = fg->one();
+        *two += *fg->one();
+        for (const auto& v : orig_sampl_vars) if (!orig_to_new_var.count(v)) *mult *= *two;
+        assert(*mult == *multiplier_weight && "an orig sampl var gone with no def must be free");
+    });
     return {};
 }
 
@@ -1845,9 +1833,11 @@ DLL_PUBLIC void SimplifiedCNF::renumber_vars(const vector<uint32_t>& map_here_to
 }
 
 DLL_PUBLIC uint32_t SimplifiedCNF::bce_2qbf(vector<vector<Lit>>& cls) const {
-    vector<vector<uint32_t>> occ(2*defs.size());
+    vector<char> univ(nVars(), 0);
+    for (const auto& [o, l] : orig_to_new_var) if (orig_sampl_vars.count(o)) univ[l.var()] = 1;
+    vector<vector<uint32_t>> occ(2*nVars());
     for (uint32_t i = 0; i < cls.size(); i++) for (const auto& l : cls[i]) occ[l.toInt()].push_back(i);
-    vector<char> removed(cls.size(), 0), queued(cls.size(), 1), in_cl(2*defs.size(), 0);
+    vector<char> removed(cls.size(), 0), queued(cls.size(), 1), in_cl(2*nVars(), 0);
     vector<uint32_t> todo(cls.size());
     std::iota(todo.rbegin(), todo.rend(), 0);
 
@@ -1868,7 +1858,7 @@ DLL_PUBLIC uint32_t SimplifiedCNF::bce_2qbf(vector<vector<Lit>>& cls) const {
         for (const auto& l : cls[at]) in_cl[l.toInt()] = 1;
         bool blocked = false;
         for (const auto& l : cls[at]) {
-            if (orig_sampl_vars.count(l.var())) continue;
+            if (univ[l.var()]) continue;
             blocked = true;
             for (const auto& other : occ[(~l).toInt()]) if (!removed[other] && !taut_resolvent(other, ~l)) {
                 blocked = false;
