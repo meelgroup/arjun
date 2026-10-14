@@ -685,9 +685,6 @@ void do_synth_2qbf() {
     const bool rewrite = (!cover_done || cnf.num_def_nodes() < 10000);
     if (rewrite) cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
-        // Brute-force: enumerate consistent X assignments, build per-y
-        // decision trees. Declines (CNF unchanged) if the enum set is too
-        // large; Cegr below then finishes the job.
         verb_print(1, "[arjun] Synthesis: brute-force decision trees");
         cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
