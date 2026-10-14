@@ -217,7 +217,8 @@ private:
     double abs_time = 0, f_time = 0, refine_time = 0, deep_time = 0, funs_time = 0;
 };
 
-// Covers the X space with models of `cls`, over ORIG vars: a model settles
+// Covers the X space with models of cnf's clauses, over ORIG vars (`cls`,
+// from get_2qbf_cls()): a model settles
 // every X that satisfies the universal parts of the clauses its Y leaves
 // unsatisfied. This is the CEGAR of the 2QBF literature. l_True: the
 // vars with no def yet got their Skolem functions, l_Undef: gave up. An X
@@ -230,9 +231,8 @@ private:
 // clauses hold with the defined vars following their defs.
 class Cover {
 public:
-    Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _mconf, ArjunNS::SimplifiedCNF& _cnf,
-            const std::vector<std::vector<CMSat::Lit>>& _cls) :
-        conf(_conf), mconf(_mconf), cnf(_cnf), cls(_cls) {}
+    Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _mconf, ArjunNS::SimplifiedCNF& _cnf) :
+        conf(_conf), mconf(_mconf), cnf(_cnf), cls(_cnf.get_2qbf_cls()) {}
     CMSat::lbool run(std::vector<CMSat::lbool>& cex);
 
 private:
@@ -245,7 +245,7 @@ private:
     const Config& conf;
     const ArjunNS::Arjun::CoverConf& mconf;
     ArjunNS::SimplifiedCNF& cnf;
-    const std::vector<std::vector<CMSat::Lit>>& cls;
+    const std::vector<std::vector<CMSat::Lit>> cls;
 
     std::vector<std::vector<std::vector<CMSat::Lit>>> comps;
     std::vector<std::vector<CMSat::Lit>> outer_only;

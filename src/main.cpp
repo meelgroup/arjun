@@ -457,7 +457,9 @@ void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf,
             all_univ &= cnf.get_orig_sampl_vars().count(l.var());
             cex[l.var()] = CMSat::boolToLBool(l.sign());
         }
-        if (all_univ && cnf.is_2qbf_cex(cex)) qbf2_result(cnf, false, cex);
+        if (!all_univ) continue;
+        SLOW_DEBUG_DO(assert(cnf.is_2qbf_cex(cex)));
+        qbf2_result(cnf, false, cex);
     }
 }
 
@@ -501,22 +503,21 @@ bool has_univ(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>
     return false;
 }
 
-bool has_defined(const ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls) {
-    for(const auto& cl: cls) for(const auto& l: cl)
+bool has_defined(const ArjunNS::SimplifiedCNF& cnf) {
+    for(const auto& cl: cnf.get_2qbf_cls()) for(const auto& l: cl)
         if (!cnf.get_orig_sampl_vars().count(l.var()) && cnf.defined(l.var())) return true;
     return false;
 }
 
-void try_cover(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const bool need_funs,
-        const double budget, const double ticks) {
+void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double budget, const double ticks) {
     vector<CMSat::lbool> cex;
     auto my_conf = cover_conf;
     my_conf.budget = budget;
     my_conf.max_ticks = ticks * 1e6;
     my_conf.stop_at_cex = qbf2;
     my_conf.need_funs = need_funs;
-    auto ret = arjun->standalone_cover(cnf, cls, my_conf, cex);
-    if (ret == CMSat::l_False && !cnf.is_2qbf_cex(cex)) ret = CMSat::l_Undef;
+    const auto ret = arjun->standalone_cover(cnf, my_conf, cex);
+    SLOW_DEBUG_DO(if (ret == CMSat::l_False) assert(cnf.is_2qbf_cex(cex)));
     if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
     // the functions are in place, and get written out by do_synth_2qbf()
     cover_done = ret == CMSat::l_True;
@@ -545,16 +546,19 @@ ArjunNS::SimpConf puura_round_conf(const int round) {
     return ret;
 }
 
-// Round 0 simplifies cnf, a later one the 2QBF of cls as a new problem
+// Round 0 simplifies cnf, a later one the 2QBF of cls as a new problem. cls: the result's
 void puura_round(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls, const int round,
         const bool need_funs) {
     cnf = arjun->standalone_get_simplified_cnf(
             round == 0 ? cnf : cnf_of_2qbf_cls(cnf, cls), puura_round_conf(round));
-    if (!cnf.get_2qbf_cls(cls)) {
-        verb_print(1, "[arjun] the simplified CNF cannot stand in for the orig one");
-        return;
+    if (qbf2) {
+        const auto cex = cnf.get_2qbf_def_cex();
+        if (!cex.empty()) {
+            verb_print(1, "[arjun] simplification defined a universal: false");
+            qbf2_result(cnf, false, cex);
+        }
     }
-    verb_print(1, "[arjun] the simplified CNF stands in for the orig one");
+    cls = cnf.get_2qbf_cls();
     if (qbf2) check_2qbf_univ_clause(cnf, cls);
     if (!need_funs && !has_univ(cnf, cls)) {
         verb_print(1, "[arjun] no universal left, and the CNF is satisfiable");
@@ -562,29 +566,31 @@ void puura_round(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls, c
     }
 }
 
-// Puura rounds with blocked clause elimination in between. cls: the 2QBF over the orig vars
-void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::Lit>>& cls,
-        const bool need_funs) {
+// Puura rounds with blocked clause elimination in between: the last one is a
+// Puura round, so cnf is the 2QBF
+void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) {
     const bool bce = qbf2 && !need_funs && pre_bce;
+    vector<vector<CMSat::Lit>> cls;
+    size_t prev_lits = 0;
     for (int round = 0;; round++) {
         ArjunNS::SimplifiedCNF prev_cnf(fg);
         if (round > 0) prev_cnf = cnf;
-        const auto prev_cls = cls;
         puura_round(cnf, cls, round, need_funs);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "simplified_cnf"));
-        if (!bce || cnf.synth_done()) return;
-
-        const auto removed = cnf.bce_2qbf(cls);
-        if (cls.empty()) qbf2_result(cnf, true);
-        const bool smaller = round == 0 || num_lits(cls) < num_lits(prev_cls);
-        verb_print(1, "[2qbf-puura] round: " << round << " blocked cls removed: " << removed
-                << " cls: " << cls.size() << " lits: " << num_lits(cls)
+        const bool smaller = round == 0 || num_lits(cls) < prev_lits;
+        verb_print(1, "[2qbf-puura] round: " << round << " cls: " << cls.size() << " lits: " << num_lits(cls)
                 << (smaller ? "" : " -- not smaller, dropped") << " T: " << (cpuTime() - start_time));
         if (!smaller) {
-            cnf = prev_cnf;
-            cls = prev_cls;
+            cnf = std::move(prev_cnf);
+            return;
         }
+        prev_lits = num_lits(cls);
+        if (!bce || cnf.synth_done() || round >= qbf2_puura_rounds - 1) return;
+
+        const auto removed = cnf.bce_2qbf(cls);
+        verb_print(1, "[2qbf-puura] blocked cls removed: " << removed);
+        if (cls.empty()) qbf2_result(cnf, true);
         if (round == 0 && removed == 0) round++;
         if (round >= qbf2_puura_rounds - 1) return;
     }
@@ -632,7 +638,7 @@ void do_synth_2qbf() {
     check_cnf_sat(cnf);
     if (qbf2) {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
-        check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
+        check_2qbf_univ_clause(cnf, cnf.get_clauses());
     }
     const bool need_funs = !qbf2 || !output_file.empty();
     if (!need_funs && !conf.debug_synth.empty()) {
@@ -642,11 +648,10 @@ void do_synth_2qbf() {
     if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
     // Before Puura only for 2QBF, while the refinements are short: an X with
     // no Y is found here. Synthesis covers the same files after Puura.
-    if (qbf2) try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
+    if (qbf2) try_cover(cnf, need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
 
-    auto qbf2_cls = cnf.get_orig_clauses();
-    if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
-    if ((cover_stages & 1) && !cnf.synth_done()) try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_ticks);
+    if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, need_funs);
+    if ((cover_stages & 1) && !cnf.synth_done()) try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
     // for the 2nd, long covering run: without the functions of the passes below
     ArjunNS::SimplifiedCNF simplified_cnf(fg);
     const bool big_cover = (cover_stages & 1) && cover_ticks != 0 && cover_big_ticks > cover_ticks;
@@ -679,7 +684,7 @@ void do_synth_2qbf() {
     }
 
     // covering follows the functions found since its last run
-    if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_late_ticks);
+    if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf)) try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
 
     cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
@@ -695,12 +700,12 @@ void do_synth_2qbf() {
         // The long ones only come once synthesis has not been quick either
         synth_runner.run_cegr_strategies(cnf, mconf, strategies, [&] {
             if (big_cover) {
-                try_cover(simplified_cnf, qbf2_cls, need_funs, cover_conf.budget, cover_big_ticks);
+                try_cover(simplified_cnf, need_funs, cover_conf.budget, cover_big_ticks);
                 if (cover_done) cnf = std::move(simplified_cnf);
             }
             if (!cover_done && (cover_stages & 2) && cover_late_ticks != 0 && cover_big_late_ticks > cover_late_ticks
-                    && has_defined(cnf, qbf2_cls))
-                try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_big_late_ticks);
+                    && has_defined(cnf))
+                try_cover(cnf, need_funs, cover_conf.budget, cover_big_late_ticks);
         });
 
         release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
@@ -728,12 +733,8 @@ void do_synth_2qbf() {
     }
     if (qbf2 && cover_done) qbf2_result(cnf, true);
     if (qbf2) {
-        auto cex = cnf.get_2qbf_cex(qbf2_cls);
-        if (!cex.empty() && !cnf.is_2qbf_cex(cex)) {
-            verb_print(1, "[2qbf] spurious counterexample, checking on the orig CNF");
-            cex = cnf.get_2qbf_cex(cnf.get_orig_clauses());
-        }
-        SLOW_DEBUG_DO(assert(cex.empty() == cnf.get_2qbf_cex(cnf.get_orig_clauses()).empty()));
+        const auto cex = cnf.get_2qbf_cex();
+        SLOW_DEBUG_DO(if (!cex.empty()) assert(cnf.is_2qbf_cex(cex)));
         qbf2_result(cnf, cex.empty(), cex);
     }
 }

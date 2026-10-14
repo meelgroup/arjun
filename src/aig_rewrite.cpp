@@ -37,7 +37,7 @@ inline void slow_assert_equiv(const aig_lit& a, const aig_lit& b) {
     constexpr size_t kMaxVars = 16;
     if (vars.empty() || vars.size() > kMaxVars) return;
     const uint32_t maxv = *vars.rbegin();
-    std::vector<aig_lit> defs(maxv + 1, nullptr);
+    std::vector<aig_lit> defs(maxv + 1, aig_lit(nullptr));
     std::vector<uint32_t> vlist(vars.begin(), vars.end());
     for (uint32_t mask = 0; mask < (1u << vlist.size()); mask++) {
         std::vector<CMSat::lbool> vals(maxv + 1, CMSat::l_False);

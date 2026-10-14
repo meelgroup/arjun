@@ -105,10 +105,16 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
    ticks and time per solver) at the end and every 1000 rounds.
 2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
    X that have a Y, so:
-3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)). It runs on the
-   simplified CNF (`get_2qbf_cls()`), which is sound because simplification
-   keeps the projected solution count. A counterexample is confirmed on the
-   orig clauses with `is_2qbf_cex()`.
+3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)), on `cnf`'s
+   clauses over the orig vars (`get_2qbf_cls()`).
+
+Everything works from `cnf`, never from the orig clauses (`orig_clauses` is
+for debugging, e.g. `is_2qbf_cex()`). That is sound because simplification
+defines a universal only by what F implies: a unit (`get_fixed_values()`) or
+an equivalence with another universal. Right after each Puura run,
+`get_2qbf_def_cex()` turns such a def into an X that breaks it: false, no SAT
+call. With no universal defined, `cnf`'s clauses are the 2QBF and the
+universals gone from them are free.
 
 Testing: `fuzz_synth_2qbf.py` runs `--2qbf` on half of its iterations. A true
 verdict is checked with `test-synth -u -q` (the final AIG must be a total
@@ -132,11 +138,12 @@ ones). All of these but the first are `.qdimacs.gz`.
 When no functions are asked for, `simplify_for_synth_2qbf()` removes the
 clauses blocked on an existential literal after Puura (`bce_2qbf()`,
 bloqqer's QBCE; `--prebce 0` turns it off). That keeps the truth and the X
-with no Y, but not the Skolem functions, so it cannot go into Puura or
-`cnf`: the clauses left are `qbf2_cls`, over the orig vars. Puura then runs
-again on them as a new problem (`cnf_of_2qbf_cls()`), twice in all by
-default; `--2qbfpuurarounds N` (up to 4) adds runs where BVE may grow the
-CNF. A further run is dropped unless it ends with fewer literals.
+with no Y, but not the Skolem functions, so it cannot go into Puura. It
+runs only BETWEEN Puura runs: the clauses it leaves become a new problem
+(`cnf_of_2qbf_cls()`) for the next one, so the last step is always Puura
+and `cnf` is the 2QBF. Puura runs twice by default; `--2qbfpuurarounds N`
+(up to 4) adds runs where BVE may grow the CNF. A further run is dropped
+unless it ends with fewer literals.
 
 The `ctrl` family needs it: 14 of 29 solved in 200 s, 0 without. It is the
 BCE that does it: with a 2nd Puura run but no BCE, 0 of those 14 are done,

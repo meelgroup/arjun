@@ -1,0 +1,11 @@
+c 1 and 2 are equivalent through the existentials: simplification defines one by the other
+c RUN: %arjun --2qbf --cover 0 %s > %t.log; test $? -eq 20
+c RUN: grep -q "simplification defined a universal" %t.log
+c RUN: grep "^[sV]" %t.log | tr "\n" " " | grep -q "^s cnf 0 4 4 V -1 0 V 2 0 $"
+p cnf 4 4
+a 1 2 0
+e 3 4 0
+-1 3 0
+-3 2 0
+-2 4 0
+-4 1 0

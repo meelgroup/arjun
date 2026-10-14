@@ -137,9 +137,8 @@ DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF&
     return common.run_minimize_info(cnf, all_indep);
 }
 
-DLL_PUBLIC lbool Arjun::standalone_cover(SimplifiedCNF& cnf, const vector<vector<Lit>>& cls,
-        const CoverConf& cover_conf, vector<lbool>& cex) {
-    Cover cover(arjdata->conf, cover_conf, cnf, cls);
+DLL_PUBLIC lbool Arjun::standalone_cover(SimplifiedCNF& cnf, const CoverConf& cover_conf, vector<lbool>& cex) {
+    Cover cover(arjdata->conf, cover_conf, cnf);
     return cover.run(cex);
 }
 
@@ -413,6 +412,9 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
                 cout << "c o [bve-aig] replacing var: " << orig_replaced << " with aig of " << orig_replacing << endl;
             const auto aig = scnf.defs[orig_replacing.var()];
             if (orig_sampl_vars.count(orig_replaced.var()) && orig_sampl_vars.count(orig_replacing.var())) {
+                // an X that breaks it has no Y: a 2QBF is then false
+                if (scnf.defs[orig_replaced.var()] == nullptr)
+                    scnf.defs[orig_replaced.var()] = AIG::new_lit(orig_replacing ^ orig_replaced.sign());
                 continue;
             }
             if (aig == nullptr) {
@@ -570,10 +572,8 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         samp_s.add_clause(cl);
         s.add_clause(cl);
     }
-    if (samp_s.solve() == l_False) {
-        cout << "ERROR: c o [synth-debug] unsat cnf in random_check_synth_funs" << endl;
-        exit(EXIT_FAILURE);
-    }
+    // no model: the defs promise nothing
+    if (samp_s.solve() == l_False) return;
 
     uint32_t filled_defs = 0;
     uint32_t undefs = 0;
@@ -587,6 +587,16 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         vector<CMSat::lbool> orig_vals(defs.size(), l_Undef);
         for(const auto& l: orig_sampl_vars) orig_vals[l] = model[l];
         auto vals = orig_vals;
+
+        // a def of an orig sampl var is implied by the clauses: every model has it
+        for(const auto& v: orig_sampl_vars) {
+            if (defs[v] == nullptr) continue;
+            vector<CMSat::lbool> others = orig_vals;
+            others[v] = l_Undef;
+            map<aig_lit, CMSat::lbool> c;
+            release_assert(AIG::evaluate(others, defs[v], defs, c) == model[v]
+                && "a def of an orig sampl var must hold in every model");
+        }
 
         map<aig_lit, CMSat::lbool> cache;
         for(uint32_t v = 0; v < defs.size(); ++v) {
@@ -803,8 +813,9 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     return -1;
 }
 
-DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& cls) const {
+DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
     assert(need_aig && synth_done());
+    const auto cls = get_2qbf_cls();
     MetaSolver s;
     s.new_vars(defs.size());
 
@@ -858,14 +869,7 @@ DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {
     return s.solve(&assumps) == l_False;
 }
 
-DLL_PUBLIC bool SimplifiedCNF::get_2qbf_cls(vector<vector<Lit>>& cls) const {
-    // a universal that left the CNF must be a free one: each doubles the count
-    auto mult = fg->one();
-    auto two = fg->one();
-    *two += *fg->one();
-    for (const auto& v : orig_sampl_vars) if (!orig_to_new_var.count(v)) *mult *= *two;
-    if (!(*mult == *multiplier_weight)) return false;
-
+DLL_PUBLIC vector<vector<Lit>> SimplifiedCNF::get_2qbf_cls() const {
     vector<Lit> to_orig(nVars(), lit_Undef);
     for (const auto& [orig, l] : orig_to_new_var) {
         if (to_orig[l.var()] != lit_Undef && !orig_sampl_vars.count(orig)) continue;
@@ -875,12 +879,33 @@ DLL_PUBLIC bool SimplifiedCNF::get_2qbf_cls(vector<vector<Lit>>& cls) const {
     for (const auto& cl : clauses) {
         ret.emplace_back();
         for (const auto& l : cl) {
-            if (to_orig[l.var()] == lit_Undef) return false;
+            release_assert(to_orig[l.var()] != lit_Undef);
             ret.back().push_back(to_orig[l.var()] ^ l.sign());
         }
     }
-    cls = std::move(ret);
-    return true;
+    SLOW_DEBUG_DO(if (get_2qbf_def_cex().empty()) {
+        auto mult = fg->one();
+        auto two = fg->one();
+        *two += *fg->one();
+        for (const auto& v : orig_sampl_vars) if (!orig_to_new_var.count(v)) *mult *= *two;
+        assert(*mult == *multiplier_weight && "an orig sampl var gone with no def must be free");
+    });
+    return ret;
+}
+
+DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_def_cex() const {
+    for (const auto& v : orig_sampl_vars) {
+        if (defs[v] == nullptr) continue;
+        vector<lbool> cex(defs.size(), l_Undef);
+        for (const auto& u : orig_sampl_vars) if (u != v) cex[u] = l_False;
+        std::map<aig_lit, lbool> cache;
+        const lbool val = AIG::evaluate(cex, defs[v], defs, cache);
+        release_assert(val != l_Undef && "a def of an orig sampl var must be over orig sampl vars");
+        cex[v] = val ^ true;
+        SLOW_DEBUG_DO(assert(is_2qbf_cex(cex)));
+        return cex;
+    }
+    return {};
 }
 
 DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(

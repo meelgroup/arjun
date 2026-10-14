@@ -169,7 +169,7 @@ void CegrLearn::verify_aig_matches_tree(mlpack::tree::DecisionTree<>* r,
 
     uint32_t max_var = m.cnf.nVars();
     for (const auto& [y, y_hat] : m.y_to_y_hat) max_var = std::max(max_var, y_hat + 1);
-    const vector<aig_lit> defs(max_var, nullptr);
+    const vector<aig_lit> defs(max_var, aig_lit(nullptr));
 
     // The AIG reads inputs by their own var, and to_define vars via y_hat, so
     // seed both slots from the same bit.
