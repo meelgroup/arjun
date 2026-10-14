@@ -3,8 +3,8 @@
 Why: the `AR-fixpoint` family of the 2QBF cluster run `out-2qbf-2544900`.
 10 files, all false, 10k universals, 52k-770k vars. CADET alone solves all
 10 in 1-13 s. No arjun run solves any: covering needs refinements of half
-the helpers (20009 of 40018), Puura takes over 100 s, `--2qbfpre` ran out
-of memory in the interpolation.
+the helpers (20009 of 40018), Puura takes over 100 s, the interpolation of
+extend/backward ran out of memory.
 
 A first try is on the branch `determinize-wip` (`src/determinize.{h,cpp}`,
 `--determinize`). It is NOT merged: it does not solve them. What it showed
@@ -98,7 +98,7 @@ backward then go faster, and on which families it determines anything.
 
 ## Not this: `ci`
 
-The 4 false `ci` files are not this problem. `--2qbfpre` already gives
+The 4 false `ci` files are not this problem. Puura with BCE already gives
 what bloqqer gives without expansion (800 clauses, 63 existentials, 42
 universals). Covering ran 335000 rounds on one with no X found; RAReQS
 finds it in 130 s, in 8 s after bloqqer expands 2 universals. Helpers

@@ -94,8 +94,8 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
    CNF as it was after Puura, then `--coverbiglateticks`, 600, on the one
    with the functions of the passes) come before the last, unlimited
    strategy of `--mstrategy`: only once the repair-limited ones did not
-   finish either. NEVER make the 1st runs long instead. Only `--2qbf` and
-   `--2qbfpre` also run it on the orig clauses first, while the refinements
+   finish either. NEVER make the 1st runs long instead. Only `--2qbf` also
+   runs it on the orig clauses first, while the refinements
    are short: that is where an X with no Y is found
    (`--coverorigticks`, 2000: sortnetsort10.008 takes 1800M there).
    NEVER add that run to `--synth`: all it covered
@@ -113,74 +113,35 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
 Testing: `fuzz_synth_2qbf.py` runs `--2qbf` on half of its iterations. A true
 verdict is checked with `test-synth -u -q` (the final AIG must be a total
 Skolem function), a false one by checking the CNF is UNSAT under the `V`
-lines. `tests/2qbf/*.qdimacs` are `lit` tests (ctest `test-2qbf`, or `lit .`
+lines. It then runs `--2qbf` with no output file (the blocked clause path
+below) and compares the verdicts. `tests/2qbf/*.qdimacs` are `lit` tests (ctest `test-2qbf`, or `lit .`
 in `build/tests/2qbf`): tiny files with their `RUN:` lines in comments.
 `scripts/bench_2qbf.py` compares against `../cadet/cadet`; benchmarks
 are in `~/media/qbf/2qbf/qbfeval16` (QBFEVAL'16 2QBF track).
 
-## 2QBF preprocessing (`--2qbfpre`)
+More 2QBF benchmarks: `~/media/qbf/2qbf/2010-comp`,
+`~/media/qbf/2qbf_combo` (the `ctrl` family is there),
+`~/media/qbf/abdst-paper/robots2d`, `~/media/qbf/qbflib/<family>/` (one
+directory per QBFLIB family), `~/media/qbf/qbfeval17/2QBF` and
+`~/media/qbf/qbfeval20/PCNF` (mixed prefixes there:
+`~/media/qbf/qbflib/qbf_prefix.py` prints `KEEP ae` for the forall-exists
+ones). All of these but the first are `.qdimacs.gz`.
 
-`arjun --2qbfpre in.qdimacs out.qdimacs` is a 2QBF preprocessor in the place
-of `../bloqqer`, with its conventions: the variable numbers are kept, a
-solved instance is written as `p cnf N 0` (true) or with the empty clause
-(false), and the exit code is then 10 or 20; otherwise it is 0. It is the
-`--2qbf` pipeline that stops early, in `do_synth_2qbf()`:
+### Blocked clauses: `--2qbf` with no output file
 
-1. `cover()` on the orig clauses, at most `--coverticks` million CaDiCaL
-   ticks (20 here, 200 otherwise). No long runs here.
-2. Puura, exactly as for counting and synthesis: NEVER trim or budget it
-   for this mode. `get_2qbf_cls()` gives its clauses over the orig vars.
-3. `bce_2qbf()` removes the clauses blocked on an existential literal
-   (bloqqer's QBCE; `--prebce 0` turns it off). That keeps the truth and
-   the X with no Y, but not the solution count, so it cannot be a Puura
-   step. `--2qbf` does this too when no functions are asked for.
-   Puura runs TWICE by default. `--2qbfpuurarounds N` (up to 4) runs it
-   again on what step 3 left, as a new problem (`cnf_of_2qbf_cls()`): the
-   2nd run as the 1st, the 3rd and 4th with BVE that may grow the CNF
-   (bloqqer's variable elimination). The 2nd run is what the `ctrl`
-   family needs: with the blocked clauses gone it eliminates most of the
-   existentials left (5310 clauses -> 1119 on one), and `cover()` then
-   finishes. `--2qbf` with 1 run: 0 of 29 done, with 2: 14 in 200 s. It is the BCE
-   that does it: with a 2nd run but no BCE, 0 of those 14 are done, as the
-   2nd run then changes nothing (3308 -> 3308 clauses, against 3154 -> 765
-   after BCE). NEVER drop BCE to simplify the code. A further run is dropped unless it
-   ends up with fewer literals. `cover()` runs once more after all of
-   this.
-4. A try at solving it, on a copy: autarky, extend, backward, unate_def
-   and the late `cover()`, as in `--2qbf`, then the `bve` cegr strategy
-   for `--prerepairs` repairs. If that finishes, `get_2qbf_cex()` gets
-   `--preconfl` conflicts to give the verdict. The definition passes are
-   what solves most of what bloqqer solves on arjun's output.
-5. Whatever gave up: `write_qdimacs()` writes the clauses of step 3, none
-   of step 4 is in the output.
+When no functions are asked for, `simplify_for_synth_2qbf()` removes the
+clauses blocked on an existential literal after Puura (`bce_2qbf()`,
+bloqqer's QBCE; `--prebce 0` turns it off). That keeps the truth and the X
+with no Y, but not the Skolem functions, so it cannot go into Puura or
+`cnf`: the clauses left are `qbf2_cls`, over the orig vars. Puura then runs
+again on them as a new problem (`cnf_of_2qbf_cls()`), twice in all by
+default; `--2qbfpuurarounds N` (up to 4) adds runs where BVE may grow the
+CNF. A further run is dropped unless it ends with fewer literals.
 
-What to lift from bloqqer next is found by running it on arjun's output
-with one technique off at a time (`--no-bce`, `--no-ve`, `--no-exp`, ...)
-and seeing which one the downstream solver cannot do without. Both parts
-of step 3 came from that. With `--2qbfpuurarounds 4`, 6 more of a 64-file
-sample were solved by preprocessing alone, for 2-3x the preprocessing time
-on the files it did not help.
-
-`--prewitness f.aig` writes the functions it has at that point: the
-existentials gone from the output, over the variables left in it (check
-with `test-synth in.qdimacs f.aig`; `-u -q` if it was solved true). It
-switches step 3 off: blocked clause elimination does not keep them.
-
-`fuzz_synth_2qbf.py` runs `--2qbfpre` on every 2QBF iteration, solves the
-output with `--2qbf` and compares the verdicts. `scripts/bench_2qbfpre.py`
-compares no preprocessing, bloqqer and arjun, each followed by
-`../cadet/cadet` and `../rareqs-1.1/rareqs` (built with
-`CFLAGS=-fpermissive`, minisat's `libr` first).
-`scripts/qbf2pre_bench/` is the staged one with a result cache: `bench.py`
-(preprocessors, then solvers on their outputs, then `report`), `chain.py`
-(a 2nd preprocessor on the outputs of a 1st), `solve_all.sh` (the 4 solvers
-of `qbf_solvers/`), on the 114 files of `sample.tsv`. Its limits are
-wall-clock: nothing else may run on the machine. More benchmarks:
-`~/media/qbf/2qbf/2010-comp`, `~/media/qbf/abdst-paper/robots2d`,
-`~/media/qbf/qbflib/<family>/` (one directory per QBFLIB family),
-`~/media/qbf/qbfeval17/2QBF` and `~/media/qbf/qbfeval20/PCNF` (mixed
-prefixes there: `~/media/qbf/qbflib/qbf_prefix.py` prints `KEEP ae` for the
-forall-exists ones). All of these but the first are `.qdimacs.gz`.
+The `ctrl` family needs it: 14 of 29 solved in 200 s, 0 without. It is the
+BCE that does it: with a 2nd Puura run but no BCE, 0 of those 14 are done,
+as the 2nd run then changes nothing (3308 -> 3308 clauses, against 3154 ->
+765 after BCE). NEVER drop BCE to simplify the code.
 
 ## Other QBF solvers and preprocessors: `qbf_solvers/`
 

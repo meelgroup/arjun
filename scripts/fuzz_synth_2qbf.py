@@ -340,39 +340,18 @@ def check_qbf2_cex(fname, proj, cex):
     os.unlink(cex_fname)
     return ok
 
-# --2qbfpre must keep the verdict: its output file is solved with --2qbf,
-# and has to agree with its exit code if that claims a verdict
-def qbf2_pre_verdict(fname, seed):
-    pre_fname = fname + "-pre.qdimacs"
-    witness = fname + "-pre.aig"
-    cmd = "./arjun --2qbfpre --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
+# With no functions asked for, --2qbf removes blocked clauses: the verdict must stay
+def qbf2_nofuns_verdict(fname):
+    cmd = "./arjun --2qbf --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
     cmd += " --synthpuura %d" % random.choice([0, 1, 1, 1])
     cmd += " --coverticks %s" % random.choice([0, 0.01, 20])
     cmd += " --coverminim %d" % random.randint(0, 7)
-    cmd += " --prerepairs %d --preconfl %d" % (random.choice([0, 5, 400]), random.choice([0, 10, 10000]))
     cmd += " --prebce %d --2qbfpuurarounds %d" % (random.choice([0, 1, 1]), random.randint(1, 4))
     cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
-    print(col("Running 2QBF preprocessing: ", CYAN) + cmd)
-    # the witness is only good for an output with its blocked clauses still in
-    if random.choice([True, False]):
-        cmd += " --prewitness " + witness
-    _, _, pre_code = run(cmd.split() + [fname, pre_fname])
-    # the functions it has: partial if unsolved, total Skolem functions if true
-    if os.path.exists(witness):
-        if pre_code == 0:
-            run_check(("./test-synth -v -s %d %s %s" % (seed, fname, witness)).split(), False, seed)
-        if pre_code == 10:
-            run_check(("./test-synth -u -q -v -s %d %s %s" % (seed, fname, witness)).split(), True, seed)
-        os.unlink(witness)
-    _, _, code = run(["./arjun", "--2qbf", "--verb", "0", pre_fname])
-    # with no functions asked for, --2qbf removes blocked clauses too
-    _, _, direct_code = run(["./arjun", "--2qbf", "--verb", "0", fname])
-    if direct_code != code:
-        print("ERROR: --2qbf exited with %s, on the --2qbfpre output with %s" % (direct_code, code))
-        return None
-    os.unlink(pre_fname)
-    if pre_code not in (0, 10, 20) or code not in (10, 20) or pre_code not in (0, code):
-        print("ERROR: --2qbfpre exited with %s, --2qbf on its output with %s" % (pre_code, code))
+    print(col("Running 2QBF with no functions: ", CYAN) + cmd)
+    _, _, code = run(cmd.split() + [fname])
+    if code not in (10, 20):
+        print("ERROR: --2qbf with no functions exited with %s" % code)
         return None
     return code == 10
 
@@ -703,9 +682,9 @@ if __name__ == "__main__":
                 print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
                 print(col("=" * 60, RED))
                 exit(-1)
-            if qbf2_pre_verdict(fname, seed) != qbf2_true:
+            if qbf2_nofuns_verdict(fname) != qbf2_true:
                 print(col("=" * 60, RED))
-                print(col("BUG: --2qbfpre changed the 2QBF verdict, it is %s" % qbf2_true, RED))
+                print(col("BUG: --2qbf with no functions gave another verdict, it is %s" % qbf2_true, RED))
                 print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
                 print(col("=" * 60, RED))
                 exit(-1)

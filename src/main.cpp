@@ -72,14 +72,10 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 
 int synthesis = false;
 int qbf2 = false;
-int qbf2pre = false;
 size_t qbf2_num_cls = 0;
-int pre_repairs = 400;
-string pre_witness;
 int pre_bce = 1;
 int qbf2_puura_rounds = 2;
 int debug_verilog = 0;
-int64_t pre_confl = 10000;
 ArjunNS::Arjun::CoverConf cover_conf;
 double cover_ticks = 200;
 double cover_late_ticks = 100;
@@ -179,12 +175,8 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
-    myflag("--2qbfpre", qbf2pre, "Preprocess the 2QBF instead of solving it: the output file gets an equivalent forall-exists QDIMACS over the same variables. If it gets solved on the way, the output is 'p cnf N 0' (true) or has an empty clause (false), and the exit code is 10 or 20, like bloqqer");
-    myopt("--prewitness", pre_witness, "--2qbfpre: write the functions found so far to this .aig file. They define the existentials that are gone from the output file, over the variables that are left in it, so with Skolem functions for those they are Skolem functions for the input");
-    myopt("--prebce", pre_bce, "2QBF with no functions asked for: remove the clauses blocked on an existential literal after Puura, as bloqqer does. The Skolem functions of what is left are not ones of the input, so --prewitness turns it off too");
+    myopt("--prebce", pre_bce, "2QBF with no functions asked for: remove the clauses blocked on an existential literal after Puura, as bloqqer does. The Skolem functions of what is left are not ones of the input, so an output file turns it off");
     myopt("--2qbfpuurarounds", qbf2_puura_rounds, "2QBF with --prebce: how many times Puura runs, 1 to 4. Each further run is on the clauses left by the one before, less the blocked ones, and is kept only if it ends with fewer literals. The 2nd is like the 1st, the 3rd lets BVE grow the CNF (--iter1grow 16 --iter2grow 100), the 4th more so (100, 1000, and no resolvent size limit)");
-    myopt("--prerepairs", pre_repairs, "--2qbfpre tries to solve the simplified CNF with the bve synthesis strategy, for at most this many repairs. 0 = don't try");
-    myopt("--preconfl", pre_confl, "--2qbfpre: if that try finishes, the conflict limit of the SAT call that checks its functions on every X");
     myopt("--cover", cover_conf.budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverstages", cover_stages, "Which covering runs there are, a sum: 1 = after simplification, 2 = after the definition passes");
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
@@ -438,7 +430,6 @@ void set_config(ArjunNS::Arjun* arj) {
         const bool val = v < cex.size() && cex[v] == CMSat::l_True;
         cout << "V " << (val ? "" : "-") << v+1 << " 0" << endl;
     }
-    if (qbf2pre) cnf.write_qdimacs(output_file, is_true ? vector<vector<CMSat::Lit>>{} : vector<vector<CMSat::Lit>>{{}});
     exit(is_true ? 10 : 20);
 }
 
@@ -587,7 +578,7 @@ void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, vector<vector<CMSat::L
         const auto removed = cnf.bce_2qbf(cls);
         if (cls.empty()) qbf2_result(cnf, true);
         const bool smaller = round == 0 || num_lits(cls) < num_lits(prev_cls);
-        verb_print(1, "[2qbf-pre] round: " << round << " blocked cls removed: " << removed
+        verb_print(1, "[2qbf-puura] round: " << round << " blocked cls removed: " << removed
                 << " cls: " << cls.size() << " lits: " << num_lits(cls)
                 << (smaller ? "" : " -- not smaller, dropped") << " T: " << (cpuTime() - start_time));
         if (!smaller) {
@@ -643,41 +634,23 @@ void do_synth_2qbf() {
         if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
         check_2qbf_univ_clause(cnf, cnf.get_orig_clauses());
     }
-    const bool need_funs = !qbf2 || !pre_witness.empty() || (!qbf2pre && !output_file.empty()) ;
+    const bool need_funs = !qbf2 || !output_file.empty();
     if (!need_funs && !conf.debug_synth.empty()) {
-        cout << "ERROR: --debugsynth needs the functions to be kept: give "
-            << (qbf2pre ? "--prewitness" : "an output file for them") << endl;
+        cout << "ERROR: --debugsynth needs the functions to be kept: give an output file for them" << endl;
         exit(EXIT_FAILURE);
     }
     if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
     // Before Puura only for 2QBF, while the refinements are short: an X with
     // no Y is found here. Synthesis covers the same files after Puura.
-    if (qbf2) try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_conf.budget, 50.0),
-            qbf2pre ? cover_ticks : cover_orig_ticks);
+    if (qbf2) try_cover(cnf, cnf.get_orig_clauses(), need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
 
     auto qbf2_cls = cnf.get_orig_clauses();
-    const bool bce = qbf2 && !need_funs;
     if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, qbf2_cls, need_funs);
     if ((cover_stages & 1) && !cnf.synth_done()) try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_ticks);
     // for the 2nd, long covering run: without the functions of the passes below
     ArjunNS::SimplifiedCNF simplified_cnf(fg);
-    const bool big_cover = !qbf2pre && (cover_stages & 1) && cover_ticks != 0 && cover_big_ticks > cover_ticks;
+    const bool big_cover = (cover_stages & 1) && cover_ticks != 0 && cover_big_ticks > cover_ticks;
     if (big_cover && !cnf.synth_done()) simplified_cnf = cnf;
-
-    auto write_2qbfpre = [&] {
-        if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
-        if (bce && pre_bce) {
-            const auto removed = cnf.bce_2qbf(qbf2_cls);
-            verb_print(1, "[2qbf-bce] at the end, removed: " << removed << " left: " << qbf2_cls.size());
-            if (qbf2_cls.empty()) qbf2_result(cnf, true);
-        }
-        cnf.write_qdimacs(output_file, qbf2_cls);
-        cout << "c o [arjun] dumped preprocessed 2QBF to '" << output_file << "'" << endl;
-    };
-    // --2qbfpre: what follows is a try, the output is of the CNF as it is here
-    ArjunNS::SimplifiedCNF pre_cnf(fg);
-    if (qbf2pre) pre_cnf = cnf;
-    if (qbf2pre && pre_repairs == 0 && !cnf.synth_done()) return write_2qbfpre();
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
@@ -708,21 +681,8 @@ void do_synth_2qbf() {
     // covering follows the functions found since its last run
     if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_late_ticks);
 
-    if (qbf2pre && !cnf.synth_done()) {
-        auto try_mconf = mconf;
-        try_mconf.cegr_base = 2;
-        try_mconf.max_repairs = pre_repairs;
-        auto tried = arjun->standalone_cegr(ArjunNS::SimplifiedCNF(cnf), try_mconf);
-        if (!tried.synth_done()) {
-            cnf = std::move(pre_cnf);
-            return write_2qbfpre();
-        }
-        verb_print(1, "[arjun] the synthesis try finished");
-        cnf = std::move(tried);
-    }
-
     // the rewriter takes minutes on the long ITE chains of covering, and grows them
-    const bool rewrite = !qbf2pre && (!cover_done || cnf.num_def_nodes() < 10000);
+    const bool rewrite = (!cover_done || cnf.num_def_nodes() < 10000);
     if (rewrite) cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force: enumerate consistent X assignments, build per-y
@@ -739,7 +699,6 @@ void do_synth_2qbf() {
         // Covering is quick when it works, so the runs so far were short.
         // The long ones only come once synthesis has not been quick either
         synth_runner.run_cegr_strategies(cnf, mconf, strategies, [&] {
-            if (qbf2pre) return;
             if (big_cover) {
                 try_cover(simplified_cnf, qbf2_cls, need_funs, cover_conf.budget, cover_big_ticks);
                 if (cover_done) cnf = std::move(simplified_cnf);
@@ -753,12 +712,13 @@ void do_synth_2qbf() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cegr.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "cegr"));
     }
+
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
     if (rewrite && (!cover_done || cnf.num_def_nodes() < 10000)) cnf.rewrite_aigs(conf.verb, true);
     auto final_cnf = cnf;
     final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
-    if (!output_file.empty() && !qbf2pre) {
+    if (!output_file.empty()) {
         if (!output_file.ends_with(".v")) final_cnf.write_aig_defs_to_file(output_file);
         else final_cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to '" << output_file << "'" << endl;
@@ -771,20 +731,14 @@ void do_synth_2qbf() {
         cout << "./test-synth -u -v 1 " << input_file << " " << final_fname << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
-    if (qbf2 && cover_done) {
-        if (!pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
-        qbf2_result(cnf, true);
-    }
+    if (qbf2 && cover_done) qbf2_result(cnf, true);
     if (qbf2) {
-        bool gave_up = false;
-        auto cex = cnf.get_2qbf_cex(qbf2_cls, qbf2pre ? pre_confl : -1, &gave_up);
-        if (gave_up) return write_2qbfpre();
+        auto cex = cnf.get_2qbf_cex(qbf2_cls);
         if (!cex.empty() && !cnf.is_2qbf_cex(cex)) {
             verb_print(1, "[2qbf] spurious counterexample, checking on the orig CNF");
             cex = cnf.get_2qbf_cex(cnf.get_orig_clauses());
         }
         SLOW_DEBUG_DO(assert(cex.empty() == cnf.get_2qbf_cex(cnf.get_orig_clauses()).empty()));
-        if (cex.empty() && !pre_witness.empty()) cnf.write_aig_defs_to_file(pre_witness);
         qbf2_result(cnf, cex.empty(), cex);
     }
 }
@@ -942,24 +896,15 @@ int main(int argc, char** argv) {
     cout << "c o [arjun] Input file: " << input_file << endl;
     if (!output_file.empty())
         cout << "c o [arjun] Output file: " << output_file << endl;
-    if (qbf2pre) {
-        qbf2 = true;
-        if (output_file.empty()) {
-            cout << "ERROR: --2qbfpre needs an output file" << endl;
-            exit(EXIT_FAILURE);
-        }
-    }
     if (synthesis && !qbf2 && output_file.empty()) {
         cout << "ERROR: --synth needs an output file for the functions, ending in .aig or .v, or /dev/null" << endl;
         exit(EXIT_FAILURE);
     }
-    if ((synthesis || qbf2) && !qbf2pre && !output_file.empty() && output_file != "/dev/null"
+    if ((synthesis || qbf2) && !output_file.empty() && output_file != "/dev/null"
             && !output_file.ends_with(".aig") && !output_file.ends_with(".v")) {
         cout << "ERROR: the output file for the functions must end in .aig or .v, or be /dev/null" << endl;
         exit(EXIT_FAILURE);
     }
-    if (qbf2pre && !program.is_used("--coverticks")) cover_ticks = 20;
-    if (qbf2pre && !program.is_used("--coverlateticks")) cover_late_ticks = cover_ticks;
     if (qbf2_puura_rounds < 1 || qbf2_puura_rounds > 4) {
         cout << "ERROR: --2qbfpuurarounds must be between 1 and 4" << endl;
         exit(EXIT_FAILURE);

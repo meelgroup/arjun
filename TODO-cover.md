@@ -32,7 +32,7 @@ arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
   refinement and one minimization call per helper, each a core of one. No
   tick check inside `minimize()`, and `--2qbf` has no tick limit there.
   Cap the calls of a round, and check the ticks in it. Even then Puura is
-  too slow on them, and `--2qbfpre` ran out of memory in the interpolation.
+  too slow on them, and the interpolation of extend/backward ran out of memory.
 - `small-pipeline-fixpoint` (7): the orig run takes 5867M ticks and 67 s for
   201 rounds, refinements of 4656. bloqqer + CADET: 5 s.
 - `ctrl` (10): DONE, `--2qbfpuurarounds 2` is the default. bloqqer needs
@@ -67,7 +67,7 @@ arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
      `bloqqer.c:3270`; QRATPre+ `qratpreplus/qbce_qrat_plus.c:142`.
    - QBCE with functions, by reconstruction in reverse removal order,
      `l := l or ~(rest of C)`: DepQBF `qdpll.c:16924`. Would let
-     `bce_2qbf()` run for `--synth` and with `--prewitness`.
+     `bce_2qbf()` run for `--synth` and `--2qbf` with an output file.
    - blocked universal literal elimination: bloqqer `block_lit()`
      `bloqqer.c:2812`, QRATPre+ `qbce_qrat_plus.c:263`. Does not keep the
      set of X that have a Y: `--2qbf` verdict only.

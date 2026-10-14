@@ -1832,9 +1832,6 @@ public:
     // resolvent on it is a tautology. Keeps the 2QBF's truth and its X with
     // no Y, but not its Skolem functions. Returns the number removed
     uint32_t bce_2qbf(std::vector<std::vector<CMSat::Lit>>& cls) const;
-    // cls is over the orig vars: forall the orig sampl vars, exists the rest
-    void write_qdimacs(const std::string& fname,
-            const std::vector<std::vector<CMSat::Lit>>& cls) const;
 
     [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);
@@ -1913,8 +1910,7 @@ public:
 
     // An X with ~cls(X, defs(X)), or empty if forall X exists Y. cls holds
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex(
-            const std::vector<std::vector<CMSat::Lit>>& cls,
-            const int64_t max_confl = -1, bool* gave_up = nullptr) const;
+            const std::vector<std::vector<CMSat::Lit>>& cls) const;
     // No Y extends X to a model of the orig clauses
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
     // The clauses over ORIG vars. False if they cannot stand in for the orig

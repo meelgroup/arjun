@@ -803,8 +803,7 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     return -1;
 }
 
-DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& cls,
-        const int64_t max_confl, bool* gave_up) const {
+DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& cls) const {
     assert(need_aig && synth_done());
     MetaSolver s;
     s.new_vars(defs.size());
@@ -842,10 +841,8 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex(const vector<vector<Lit>>& 
     }
     s.add_clause(some_false);
 
-    if (max_confl >= 0) s.set_max_confl(max_confl);
     const auto ret = s.solve();
-    release_assert(ret != l_Undef || gave_up);
-    if (gave_up) *gave_up = ret == l_Undef;
+    release_assert(ret != l_Undef);
     if (ret != l_True) return {};
     vector<lbool> cex(defs.size(), l_Undef);
     for (const auto& v : orig_sampl_vars) cex[v] = s.get_model()[v];
@@ -1874,27 +1871,6 @@ DLL_PUBLIC uint32_t SimplifiedCNF::bce_2qbf(vector<vector<Lit>>& cls) const {
     }
     cls.resize(j);
     return num_removed;
-}
-
-DLL_PUBLIC void SimplifiedCNF::write_qdimacs(const string& fname,
-        const vector<vector<Lit>>& cls) const {
-    set<uint32_t> univ, exist;
-    for(const auto& cl: cls) for(const auto& l: cl)
-        (orig_sampl_vars.count(l.var()) ? univ : exist).insert(l.var());
-    ofstream outf(fname);
-    outf << "p cnf " << get_orig_num_vars() << " " << cls.size() << "\n";
-    auto block = [&](const char type, const set<uint32_t>& vars) {
-        if (vars.empty()) return;
-        outf << type;
-        for(const auto& v: vars) outf << " " << v+1;
-        outf << " 0\n";
-    };
-    block('a', univ);
-    block('e', exist);
-    for(const auto& cl: cls) {
-        for(const auto& l: cl) outf << l << " ";
-        outf << "0\n";
-    }
 }
 
 DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) const {

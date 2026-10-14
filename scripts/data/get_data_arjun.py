@@ -251,7 +251,7 @@ def clean_cmd(cmd):
 
 
 # What gave arjun's verdict: the Nth covering run, CEGR's functions, or
-# neither (simplification, or the try of --2qbfpre)
+# neither (simplification)
 def arjun_decided_by(fname):
     with open(fname, "r", errors="replace") as f:
         txt = f.read()
