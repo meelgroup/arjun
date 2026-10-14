@@ -1519,7 +1519,9 @@ public:
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
         n_no_touch = other.n_no_touch;
-        quant_prefix = other.quant_prefix;
+        num_quant_blocks = other.num_quant_blocks;
+        exists_block_seen = other.exists_block_seen;
+        bad_quant_block = other.bad_quant_block;
         quant_vars = other.quant_vars;
         if (!other.need_aig) {
             for(const auto& d: other.defs)
@@ -1563,10 +1565,13 @@ public:
 
     // QDIMACS 'a'/'e' blocks, in file order. Called by the DIMACS parser
     void add_quant_block(bool forall, const std::vector<uint32_t>& vars) {
-        quant_prefix += forall ? 'a' : 'e';
+        num_quant_blocks++;
+        if (!forall) exists_block_seen = true;
+        else if (exists_block_seen && bad_quant_block == 0) bad_quant_block = num_quant_blocks;
         quant_vars.insert(vars.begin(), vars.end());
     }
-    [[nodiscard]] const auto& get_quant_prefix() const { return quant_prefix; }
+    [[nodiscard]] uint32_t get_num_quant_blocks() const { return num_quant_blocks; }
+    [[nodiscard]] uint32_t get_bad_quant_block() const { return bad_quant_block; }
     [[nodiscard]] const auto& get_quant_vars() const { return quant_vars; }
     // no-touch set in CNF numbering
     [[nodiscard]] std::set<uint32_t> get_no_touch_cur() const {
@@ -2014,7 +2019,9 @@ private:
     std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
                                                     // does NOT map to vars NOT in the CNF
     uint32_t n_no_touch = 0; // 'c p no-touch': ORIG vars 0..n_no_touch-1 keep their numbers in the CNF
-    std::string quant_prefix;
+    uint32_t num_quant_blocks = 0;
+    bool exists_block_seen = false;
+    uint32_t bad_quant_block = 0; // 1st 'a' block after an 'e' one, counted from 1. 0: forall-exists
     std::set<uint32_t> quant_vars;
     AIGManager aig_mng; // only for const true/false
     std::vector<aig_lit> defs; //Definition of variables in terms of AIG. ORIGINAL number space.

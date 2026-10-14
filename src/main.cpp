@@ -434,13 +434,12 @@ void set_config(ArjunNS::Arjun* arj) {
 }
 
 void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
-    const string& prefix = cnf.get_quant_prefix();
-    if (prefix != "" && prefix != "a" && prefix != "e" && prefix != "ae") {
-        cout << "ERROR: --2qbf needs a forall-exists quantifier prefix, but the "
-            "blocks in the file are: " << prefix << endl;
+    if (cnf.get_bad_quant_block()) {
+        cout << "ERROR: --2qbf needs a forall-exists quantifier prefix, but block "
+            << cnf.get_bad_quant_block() << " of the file is an 'a' block after an 'e' one" << endl;
         exit(EXIT_FAILURE);
     }
-    if (prefix.empty()) return;
+    if (cnf.get_num_quant_blocks() == 0) return;
     for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl) if (!cnf.get_quant_vars().count(l.var())) {
         cout << "ERROR: variable " << l.var()+1 << " is free, i.e. existential "
             "BEFORE the universals, so this is not a forall-exists 2QBF" << endl;
