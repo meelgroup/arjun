@@ -651,7 +651,14 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
     };
 
     // Flatten the OR region rooted at or_edge (a negative AND edge) into
-    // operand edges: literals, constants, and positive AND edges.
+    // operand edges: literals, constants, positive AND edges, and shared ORs.
+    // A shared OR stays one operand, rebuilt once: flattening through it
+    // copies it into every parent, quadratic on cover's chains.
+    count_src_refs(defs);
+    auto shared = [&](const aig_lit& e) {
+        const auto it = src_refs.find(e.get());
+        return it != src_refs.end() && it->second > 1;
+    };
     auto flatten_or = [&](const aig_lit& or_edge, vector<aig_lit>& ops) {
         const uint64_t epoch = AIG::next_visit_epoch();
         std::vector<aig_lit> todo{or_edge};
@@ -660,7 +667,7 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
             const aig_lit n = todo.back();
             todo.pop_back();
             for (const aig_lit& c : {~n->l, ~n->r}) {
-                if (is_or(c)) {
+                if (is_or(c) && !shared(c)) {
                     if (c.get()->visit_epoch != epoch) {
                         c.get()->visit_epoch = epoch;
                         todo.push_back(c);
@@ -704,7 +711,7 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
                     if (!op.node || op->type != AIGT::t_and) continue;
                     tmp.clear();
                     if (peel_cube(op, tmp)) continue;
-                    const aig_lit child_or = ~op;
+                    const aig_lit child_or = is_or(op) ? op : ~op;
                     if (!memo.count(memo_key(child_or))) children.push_back(child_or);
                 }
                 if (!children.empty()) {
@@ -740,9 +747,8 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
                 if (op.node && op->type == AIGT::t_and) {
                     vector<uint32_t> c;
                     if (peel_cube(op, c)) { cubes.push_back(std::move(c)); continue; }
-                    // Rebuilt value of this AND operand.
-                    const aig_lit r = ~memo.at(memo_key(~op));
-                    if (is_or(r)) {
+                    const aig_lit r = memo.at(memo_key(op));
+                    if (is_or(r) && !is_or(op)) {
                         // Same-op result: dissolve its operands into this level.
                         vector<aig_lit> sub;
                         flatten_or(r, sub);
@@ -1128,13 +1134,18 @@ void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb, bool balance) {
     }
     stats.total_passes++;
 
-    // Revert any def that grew.
+    // Revert any def that grew. The old and new defs share nothing, so a mix
+    // of them can be bigger than either: then all of them go back
     for (size_t i = 0; i < defs.size(); i++) {
         if (defs[i] == originals[i]) continue;
         if (AIG::count_aig_nodes_fast(defs[i]) > AIG::count_aig_nodes_fast(originals[i]))
             defs[i] = originals[i];
     }
     stats.nodes_after = AIG::count_aig_nodes_fast(defs);
+    if (stats.nodes_after > stats.nodes_before) {
+        defs = originals;
+        stats.nodes_after = stats.nodes_before;
+    }
     SLOW_DEBUG_DO(for (size_t i = 0; i < defs.size(); i++)
                       slow_assert_equiv(originals[i], defs[i]));
 

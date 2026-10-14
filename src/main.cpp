@@ -681,9 +681,7 @@ void do_synth_2qbf() {
     // covering follows the functions found since its last run
     if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf, qbf2_cls)) try_cover(cnf, qbf2_cls, need_funs, cover_conf.budget, cover_late_ticks);
 
-    // the rewriter takes minutes on the long ITE chains of covering, and grows them
-    const bool rewrite = (!cover_done || cnf.num_def_nodes() < 10000);
-    if (rewrite) cnf.rewrite_aigs(conf.verb);
+    cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
         verb_print(1, "[arjun] Synthesis: brute-force decision trees");
         cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf, iconf);
@@ -712,7 +710,7 @@ void do_synth_2qbf() {
 
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
-    if (rewrite && (!cover_done || cnf.num_def_nodes() < 10000)) cnf.rewrite_aigs(conf.verb, true);
+    cnf.rewrite_aigs(conf.verb, true);
     auto final_cnf = cnf;
     final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
     if (!output_file.empty()) {
