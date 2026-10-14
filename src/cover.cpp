@@ -37,24 +37,58 @@ using std::vector;
 using std::map;
 using std::set;
 
-void CoverComp::classify(const SimplifiedCNF& cnf, const vector<vector<Lit>>& cls, vector<char>& state,
+CoverVars::CoverVars(const SimplifiedCNF& cnf) {
+    of_orig.assign(cnf.num_defs(), lit_Undef);
+    const auto new_to_orig = cnf.get_new_to_orig_var();
+    for (uint32_t v = 0; v < cnf.nVars(); v++) {
+        const auto it = new_to_orig.find(v);
+        release_assert(it != new_to_orig.end() && "every var of the CNF must have an orig var");
+        orig.push_back(it->second);
+        of_orig[it->second.var()] = Lit(v, it->second.sign());
+    }
+    for (uint32_t v = 0; v < orig.size(); v++) {
+        const uint32_t o = orig[v].var();
+        if (!cnf.defined(o)) continue;
+        set<uint32_t> deps;
+        AIG::get_dependent_vars(cnf.get_def(o), deps, o);
+        for (const auto& d : deps) if (of_orig[d] == lit_Undef) {
+            of_orig[d] = Lit(orig.size(), false);
+            orig.emplace_back(d, false);
+        }
+    }
+    def.resize(orig.size());
+    univ.resize(orig.size());
+    Cache cache;
+    for (uint32_t v = 0; v < orig.size(); v++) {
+        const uint32_t o = orig[v].var();
+        univ[v] = cnf.get_orig_sampl_vars().count(o);
+        if (!cnf.defined(o)) continue;
+        const aig_lit d = translate(cnf.get_def(o), cache, [&](const uint32_t u) { return of_orig[u]; });
+        def[v] = orig[v].sign() ? ~d : d;
+    }
+}
+
+void CoverVars::to_orig(vector<aig_lit>& funs) const {
+    Cache cache;
+    for (auto& fun : funs) fun = translate(fun, cache, [&](const uint32_t v) { return orig[v]; });
+}
+
+void CoverComp::classify(const CoverVars& vs, const vector<vector<Lit>>& cls, vector<char>& state,
         vector<uint32_t>& defined, vector<uint32_t>& free_leaves) {
-    const uint32_t num_defs = cnf.num_defs();
-    vector<char> is_univ(num_defs, 0), in_cls(num_defs, 0);
-    state.assign(num_defs, 0);
-    for (const auto& v : cnf.get_orig_sampl_vars()) is_univ[v] = 1;
+    vector<char> in_cls(vs.size(), 0);
+    state.assign(vs.size(), 0);
     for (const auto& cl : cls) for (const auto& l : cl) in_cls[l.var()] = 1;
     std::function<bool(uint32_t)> fun_of_univ = [&](const uint32_t v) {
-        if (is_univ[v]) return true;
+        if (vs.univ[v]) return true;
         if (state[v]) return state[v] == 1;
-        if (!cnf.defined(v)) {
+        if (!vs.defined(v)) {
             // not in cls: nothing constrains it, false is its function
             state[v] = in_cls[v] ? 2 : 1;
             if (!in_cls[v]) free_leaves.push_back(v);
             return state[v] == 1;
         }
         set<uint32_t> deps;
-        AIG::get_dependent_vars(cnf.get_def(v), deps, v);
+        AIG::get_dependent_vars(vs.def[v], deps, v);
         bool ret = true;
         for (const auto& d : deps) ret &= fun_of_univ(d);
         state[v] = ret ? 1 : 2;
@@ -65,14 +99,14 @@ void CoverComp::classify(const SimplifiedCNF& cnf, const vector<vector<Lit>>& cl
 }
 
 void CoverComp::add_vars_and_cls() {
-    classify(cnf, cls, state, defined, free_leaves);
-    outer.assign(orig_sampl_vars.begin(), orig_sampl_vars.end());
+    classify(vs, cls, state, defined, free_leaves);
+    for (uint32_t v = 0; v < num_vars; v++) if (vs.univ[v]) outer.push_back(v);
     num_univ = outer.size();
     for (const auto& v : defined) if (state[v] == 1) outer.push_back(v);
-    is_outer.assign(num_defs, 0);
+    is_outer.assign(num_vars, 0);
     for (const auto& v : outer) is_outer[v] = 1;
 
-    to_f.assign(num_defs, none);
+    to_f.assign(num_vars, none);
     for (const auto& v : outer) {
         new_f_var(v);
         abs.new_var();
@@ -97,14 +131,14 @@ void CoverComp::add_vars_and_cls() {
 
 // f keeps to the functions, so that its models are ones abs can rule out
 void CoverComp::tie_defs() {
-    for (uint32_t v = 0; v < num_defs; v++) if (to_f[v] != none) in_f_vars.leaf[v] = AIG::new_lit(to_f[v]);
+    for (uint32_t v = 0; v < num_vars; v++) if (to_f[v] != none) in_f_vars.leaf[v] = AIG::new_lit(to_f[v]);
     for (const auto& v : outer) {
         in_abs_vars.leaf[v] = AIG::new_lit(to_f[v]);
-        in_orig_vars.leaf[v] = AIG::new_lit(v);
+        in_vars.leaf[v] = AIG::new_lit(v);
     }
-    for (const auto& v : free_leaves) in_abs_vars.leaf[v] = in_orig_vars.leaf[v] = aig_mng.new_const(false);
+    for (const auto& v : free_leaves) in_abs_vars.leaf[v] = in_vars.leaf[v] = aig_mng.new_const(false);
     auto tie = [&](MetaSolver& s, AIGToCNF<MetaSolver>& enc, const uint32_t v) {
-        keep.push_back(in_f_vars.of_aig(cnf.get_def(v)).a);
+        keep.push_back(in_f_vars.of_aig(vs.def[v]).a);
         const Lit out = enc.encode(keep.back());
         const Lit me = Lit(to_f[v], false);
         s.add_clause({~out, me});
@@ -117,7 +151,7 @@ void CoverComp::tie_defs() {
 void CoverComp::add_helpers() {
     helper_at = abs.nVars();
     for (const auto& cl : cls) {
-        if (std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return cnf.defined(l.var()) && !is_outer[l.var()]; })) {
+        if (std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return vs.defined(l.var()) && !is_outer[l.var()]; })) {
             deep.push_back(cl);
             continue;
         }
@@ -200,16 +234,16 @@ void CoverComp::add_selectors() {
 void CoverComp::set_phases() {
     vector<int> pos_occ(f.nVars(), 0);
     for (const auto& [exist, helper] : mixed) for (const auto& l : exist) pos_occ[l.var()] += l.sign() ? -1 : 1;
-    for (const auto& v : ys) if (!cnf.defined(v)) f.set_phase(Lit(to_f[v], pos_occ[to_f[v]] <= 0));
+    for (const auto& v : ys) if (!vs.defined(v)) f.set_phase(Lit(to_f[v], pos_occ[to_f[v]] <= 0));
 }
 
 void CoverComp::init_flip() {
     can_flip.assign(f.nVars(), 0);
-    if (flip_minim) for (const auto& v : ys) if (!cnf.defined(v)) can_flip[to_f[v]] = 1;
+    if (flip_minim) for (const auto& v : ys) if (!vs.defined(v)) can_flip[to_f[v]] = 1;
     for (const auto& cl : deep) for (const auto& l : cl) can_flip[to_f[l.var()]] = 0;
     for (const auto& v : defined) {
         set<uint32_t> deps;
-        AIG::get_dependent_vars(cnf.get_def(v), deps, v);
+        AIG::get_dependent_vars(vs.def[v], deps, v);
         for (const auto& d : deps) if (to_f[d] != none) can_flip[to_f[d]] = 0;
     }
     flip_occ.resize(f.nVars() * 2);
@@ -340,15 +374,15 @@ void CoverComp::build_funs(vector<std::pair<uint32_t, aig_lit>>& new_defs) {
             before_block = AIG::new_or(before_block, in_block);
             in_block = aig_mng.new_const(false);
         }
-        for (uint32_t i = 0; i < ys.size(); i++) in_orig_vars.val[ys[i]] = boolToLBool(ref_ys[r * ys.size() + i]);
-        aig_lit works = deep.empty() ? aig_mng.new_const(true) : deep_true(in_orig_vars);
+        for (uint32_t i = 0; i < ys.size(); i++) in_vars.val[ys[i]] = boolToLBool(ref_ys[r * ys.size() + i]);
+        aig_lit works = deep.empty() ? aig_mng.new_const(true) : deep_true(in_vars);
         for (const auto& h : ref_helpers[r]) works = AIG::new_and(works, univ_true[hidx(h)]);
         first.push_back(AIG::new_and(works, ~AIG::new_or(before_block, in_block)));
         in_block = AIG::new_or(in_block, works);
     }
     vector<aig_lit> ors;
     for (uint32_t i = 0; i < ys.size(); i++) {
-        if (cnf.defined(ys[i])) continue;
+        if (vs.defined(ys[i])) continue;
         uint32_t num_ones = 0;
         for (uint32_t r = 0; r < num_refs; r++) num_ones += ref_ys[r * ys.size() + i];
         const bool val = num_ones * 2 <= num_refs;
@@ -387,8 +421,8 @@ lbool CoverComp::finish(const lbool ret) {
 }
 
 void CoverComp::set_cex(vector<lbool>& cex) {
-    cex.assign(num_defs, l_Undef);
-    for (const auto& v : orig_sampl_vars) cex[v] = abs.get_model()[to_f[v]];
+    cex.assign(num_vars, l_Undef);
+    for (uint32_t i = 0; i < num_univ; i++) cex[outer[i]] = abs.get_model()[to_f[outer[i]]];
 }
 
 // A clause of outer vars only: an X that falsifies it has no Y. As a
@@ -425,7 +459,7 @@ void CoverComp::skip_cube() {
 }
 
 void CoverComp::add_cls_to_abs() {
-    vector<uint32_t> to_abs(num_defs, none);
+    vector<uint32_t> to_abs(num_vars, none);
     for (const auto& v : outer) to_abs[v] = to_f[v];
     for (const auto& v : ys) {
         to_abs[v] = abs.nVars();
@@ -494,7 +528,7 @@ lbool CoverComp::run(vector<lbool>& cex, vector<std::pair<uint32_t, aig_lit>>& n
             return finish(l_True);
         }
         assumps.clear();
-        for (const auto& v : orig_sampl_vars) assumps.emplace_back(to_f[v], abs.get_model()[to_f[v]] != l_True);
+        for (uint32_t i = 0; i < num_univ; i++) assumps.emplace_back(to_f[outer[i]], abs.get_model()[to_f[outer[i]]] != l_True);
         if (timed(f_time, [&] { return f.solve(&assumps); }) == l_False) {
             if (mconf.stop_at_cex) {
                 set_cex(cex);
@@ -511,16 +545,15 @@ lbool CoverComp::run(vector<lbool>& cex, vector<std::pair<uint32_t, aig_lit>>& n
 // Clauses that share no existential, directly or through a function, are
 // covered apart: together they need the product of their models
 void Cover::split_components() {
-    const uint32_t num_defs = cnf.num_defs();
+    const uint32_t num_vars = vs.size();
     vector<char> state;
     vector<uint32_t> defined, free_leaves;
-    CoverComp::classify(cnf, cls, state, defined, free_leaves);
-    vector<char> is_outer(num_defs, 0);
-    for (const auto& v : cnf.get_orig_sampl_vars()) is_outer[v] = 1;
-    for (uint32_t v = 0; v < num_defs; v++) if (state[v] == 1) is_outer[v] = 1;
+    CoverComp::classify(vs, cls, state, defined, free_leaves);
+    vector<char> is_outer(num_vars, 0);
+    for (uint32_t v = 0; v < num_vars; v++) if (vs.univ[v] || state[v] == 1) is_outer[v] = 1;
 
-    vector<uint32_t> par(num_defs);
-    for (uint32_t v = 0; v < num_defs; v++) par[v] = v;
+    vector<uint32_t> par(num_vars);
+    for (uint32_t v = 0; v < num_vars; v++) par[v] = v;
     auto find = [&](uint32_t v) {
         while (par[v] != v) v = par[v] = par[par[v]];
         return v;
@@ -535,10 +568,10 @@ void Cover::split_components() {
     }
     for (const auto& v : defined) if (state[v] == 2) {
         set<uint32_t> deps;
-        AIG::get_dependent_vars(cnf.get_def(v), deps, v);
+        AIG::get_dependent_vars(vs.def[v], deps, v);
         for (const auto& d : deps) if (!is_outer[d]) par[find(d)] = find(v);
     }
-    vector<uint32_t> comp_of(num_defs, CoverComp::none);
+    vector<uint32_t> comp_of(num_vars, CoverComp::none);
     for (const auto& cl : cls) {
         const uint32_t first = first_inner(cl);
         if (first == CoverComp::none) { outer_only.push_back(cl); continue; }
@@ -552,7 +585,7 @@ void Cover::split_components() {
 }
 
 lbool Cover::cover_one(const vector<vector<Lit>>& comp_cls, const uint32_t verb, vector<lbool>& cex) {
-    CoverComp comp(cnf, comp_cls, mconf, mconf.max_ticks ? mconf.max_ticks - used_ticks : 0, verb);
+    CoverComp comp(vs, cnf.get_aig_mng(), comp_cls, mconf, mconf.max_ticks ? mconf.max_ticks - used_ticks : 0, verb);
     const lbool ret = comp.run(cex, new_defs);
     used_ticks += comp.ticks();
     return ret;
@@ -576,7 +609,13 @@ lbool Cover::cover_components(vector<lbool>& cex) {
 }
 
 void Cover::set_funs() {
-    for (const auto& [v, fun] : new_defs) cnf.set_def(v, fun);
+    vector<aig_lit> funs;
+    for (const auto& d : new_defs) funs.push_back(d.second);
+    vs.to_orig(funs);
+    for (uint32_t i = 0; i < funs.size(); i++) {
+        const Lit o = vs.orig[new_defs[i].first];
+        cnf.set_def(o.var(), o.sign() ? ~funs[i] : funs[i]);
+    }
     const auto& sampl = cnf.get_orig_sampl_vars();
     for (uint32_t v = 0; v < cnf.num_defs(); v++)
         if (!sampl.count(v) && !cnf.defined(v)) cnf.set_def(v, cnf.get_aig_mng().new_const(false));
@@ -584,7 +623,15 @@ void Cover::set_funs() {
 
 lbool Cover::run(vector<lbool>& cex) {
     split_components();
-    const lbool ret = comps.size() <= 1 ? cover_one(cls, conf.verb, cex) : cover_components(cex);
+    vector<lbool> vs_cex;
+    const lbool ret = comps.size() <= 1 ? cover_one(cls, conf.verb, vs_cex) : cover_components(vs_cex);
     if (ret == l_True && mconf.need_funs) set_funs();
+    if (ret == l_False) {
+        cex.assign(cnf.num_defs(), l_Undef);
+        for (const auto& o : cnf.get_orig_sampl_vars()) {
+            const Lit l = vs.of_orig[o];
+            cex[o] = l == lit_Undef ? l_False : vs_cex[l.var()] ^ l.sign();
+        }
+    }
     return ret;
 }

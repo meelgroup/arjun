@@ -176,18 +176,25 @@ Extra args are forwarded to `arjun`. The simplified CNF is written to
 workflow: run it on the same CNF before and after a change and diff the
 output lines.
 
-## After every build ALWAYS run the fuzzers, in parallel if possible
+## After every build ALWAYS run the fuzzers, 16 wide
 
-From `build/`:
+From `build/`, on all 16 cores, for a fixed time, NEVER one `--num 400`
+process (that loads one core):
 
 ```
-./fuzz_synth_2qbf.py --num 400
-./fuzz_aig_to_cnf --num 1000
-./fuzz_aig_rewrite --num 1000
+(echo aig_rewrite; echo aig_to_cnf; seq 1 14) | xargs -P16 -I{} bash -c 'ulimit -v 2500000;
+  case {} in aig_*) ./fuzz_{} --num 1000 > fz_{}.log 2>&1;;
+  *) timeout 300 ./fuzz_synth_2qbf.py --num 100000 > fz_{}.log 2>&1;; esac; echo "{} $?"'
 ```
 
-They are independent, so with enough cores run all three at once (e.g. three
-parallel tool calls in the same message) instead of sequentially.
+The synth ones exit 124 when the time is up, anything else is a failure.
+Many `fuzz_synth_2qbf.py` at once in one directory is safe: `unique_file()`
+claims each name with `O_EXCL`, and every other file is named after it.
+The AIG fuzzers write no files and pick a random seed each.
+A killed run leaves its `out/fuzzTest_*` files behind; `unique_file()`
+gives up after 2700 names, so clear `out/` now and then.
+Verification loops (`test-synth` over several files) go through `xargs -P`
+too.
 
 All must pass before reporting a change as complete.
 
