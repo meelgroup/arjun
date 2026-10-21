@@ -1,5 +1,5 @@
 c two 'a' blocks, then two 'e' blocks: the same as one of each
-c RUN: %arjun --2qbf --cover 0 %s > %t.log; test $? -eq 10
+c RUN: %expect_exit 10 %arjun --2qbf --cover 0 %s > %t.log
 p cnf 4 2
 a 1 0
 a 2 0

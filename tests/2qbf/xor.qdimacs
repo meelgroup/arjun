@@ -1,6 +1,6 @@
 c y = x1 xor x2
-c RUN: %arjun --2qbf --cover 0 %s > %t.log; test $? -eq 10
-c RUN: %arjun --2qbf --cover 50 %s > %t.log; test $? -eq 10
+c RUN: %expect_exit 10 %arjun --2qbf --cover 0 %s > %t.log
+c RUN: %expect_exit 10 %arjun --2qbf --cover 50 %s > %t.log
 p cnf 3 4
 a 1 2 0
 e 3 0

@@ -1,5 +1,5 @@
 c all universal, no clauses
-c RUN: %arjun --2qbf --cover 0 %s > %t.log; test $? -eq 10
-c RUN: %arjun --2qbf --cover 50 %s > %t.log; test $? -eq 10
+c RUN: %expect_exit 10 %arjun --2qbf --cover 0 %s > %t.log
+c RUN: %expect_exit 10 %arjun --2qbf --cover 50 %s > %t.log
 p cnf 2 0
 a 1 2 0

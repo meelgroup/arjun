@@ -1,6 +1,6 @@
 c rejected: exists-forall-exists
-c RUN: %arjun --2qbf --cover 0 %s > %t.log; test $? -eq 1
-c RUN: %arjun --2qbf --cover 50 %s > %t.log; test $? -eq 1
+c RUN: %expect_exit 1 %arjun --2qbf --cover 0 %s > %t.log
+c RUN: %expect_exit 1 %arjun --2qbf --cover 50 %s > %t.log
 c RUN: grep -q "block 2 of the file is an 'a' block after an 'e' one" %t.log
 p cnf 3 1
 e 1 0

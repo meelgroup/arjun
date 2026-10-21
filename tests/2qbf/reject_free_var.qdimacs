@@ -1,6 +1,6 @@
 c rejected: free variable
-c RUN: %arjun --2qbf --cover 0 %s > %t.log; test $? -eq 1
-c RUN: %arjun --2qbf --cover 50 %s > %t.log; test $? -eq 1
+c RUN: %expect_exit 1 %arjun --2qbf --cover 0 %s > %t.log
+c RUN: %expect_exit 1 %arjun --2qbf --cover 50 %s > %t.log
 p cnf 3 1
 a 1 0
 e 2 0

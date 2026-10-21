@@ -1,6 +1,6 @@
 c no y when x1 = 0
-c RUN: %arjun --2qbf --cover 0 %s > %t.log; test $? -eq 20
-c RUN: %arjun --2qbf --cover 50 %s > %t.log; test $? -eq 20
+c RUN: %expect_exit 20 %arjun --2qbf --cover 0 %s > %t.log
+c RUN: %expect_exit 20 %arjun --2qbf --cover 50 %s > %t.log
 p cnf 3 3
 a 1 2 0
 e 3 0
