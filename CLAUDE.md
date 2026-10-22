@@ -185,12 +185,19 @@ From `build/`, on all 16 cores, for a fixed time, NEVER one `--num 400`
 process (that loads one core):
 
 ```
-(echo aig_rewrite; echo aig_to_cnf; seq 1 14) | xargs -P16 -I{} bash -c 'ulimit -v 2500000;
+(echo aig_rewrite; echo aig_to_cnf; echo cd1; echo cd2; seq 1 12) | xargs -P16 -I{} bash -c 'ulimit -v 2500000;
   case {} in aig_*) ./fuzz_{} --num 1000 > fz_{}.log 2>&1;;
+  cd*) timeout 300 ./fuzz_cover_drop.py --num 100000 > fz_{}.log 2>&1;;
   *) timeout 300 ./fuzz_synth_2qbf.py --num 100000 > fz_{}.log 2>&1;; esac; echo "{} $?"'
 ```
 
-The synth ones exit 124 when the time is up, anything else is a failure.
+The timed ones exit 124 when the time is up, anything else is a failure.
+`fuzz_cover_drop.py` checks `--coverdrop`: CNFs of a ψ over the sampling
+vars and components over their own ys, made so that some are dropped, some
+replaced by cubes, some kept; the (weighted) projected count, by
+`../../ganak/build/ganak --arjun 0`, must be the same before and after. It
+prints how many components were dropped and replaced: if those stay 0, the
+generator no longer reaches coverdrop.
 Many `fuzz_synth_2qbf.py` at once in one directory is safe: `unique_file()`
 claims each name with `O_EXCL`, and every other file is named after it.
 The AIG fuzzers write no files and pick a random seed each.
