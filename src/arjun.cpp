@@ -142,6 +142,18 @@ DLL_PUBLIC lbool Arjun::standalone_cover(SimplifiedCNF& cnf, const CoverConf& co
     return cover.run(cex);
 }
 
+DLL_PUBLIC int64_t Arjun::standalone_cover_drop(SimplifiedCNF& cnf, const uint64_t max_ticks, const uint32_t max_cubes) {
+    CoverConf mconf;
+    mconf.max_ticks = max_ticks;
+    mconf.stop_at_cex = max_cubes == 0;
+    mconf.keep_cubes = max_cubes != 0;
+    mconf.max_cubes = max_cubes;
+    mconf.assume_outer = true;
+    mconf.need_funs = false;
+    Cover cover(arjdata->conf, mconf, cnf, cnf.get_sampl_vars());
+    return cover.drop_covered();
+}
+
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
     Autarky autarky(arjdata->conf);
     autarky.find_autarkies(cnf);
@@ -261,6 +273,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     cnf.remove_equiv_weights();
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     if (etof_conf.do_autarky) standalone_autarky(cnf);
+    if (etof_conf.cover_drop_mticks > 0) standalone_cover_drop(cnf, etof_conf.cover_drop_mticks * 1e6, etof_conf.cover_drop_max_cubes);
     cnf.remove_equiv_weights();
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;

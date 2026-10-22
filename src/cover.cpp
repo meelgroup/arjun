@@ -64,7 +64,10 @@ void CoverComp::classify(const CnfVars& vs, const vector<vector<Lit>>& cls, vect
 
 void CoverComp::add_vars_and_cls() {
     classify(vs, cls, state, defined, free_leaves);
-    for (uint32_t v = 0; v < num_vars; v++) if (vs.univ[v]) outer.push_back(v);
+    // a component of a counted CNF: the universals of the rest are no matter
+    vector<char> in_cls(num_vars, !mconf.assume_outer);
+    for (const auto& cl : cls) for (const auto& l : cl) in_cls[l.var()] = 1;
+    for (uint32_t v = 0; v < num_vars; v++) if (vs.univ[v] && in_cls[v]) outer.push_back(v);
     num_univ = outer.size();
     for (const auto& v : defined) if (state[v] == 1) outer.push_back(v);
     is_outer.assign(num_vars, 0);
@@ -76,6 +79,10 @@ void CoverComp::add_vars_and_cls() {
         abs.new_var();
     }
     for (const auto& cl : cls) {
+        // only abs gets them: f's cubes are then over the X of the existential
+        // clauses, and do not tie together X the rest of the CNF keeps apart
+        if (mconf.assume_outer && std::all_of(cl.begin(), cl.end(), [&](const Lit l) { return is_outer[l.var()]; }))
+            continue;
         vector<Lit> cl2;
         for (const auto& l : cl) {
             if (to_f[l.var()] == none) {
@@ -417,6 +424,11 @@ void CoverComp::skip_cube() {
     cost += sq_frac(cube.size(), num_univ);
     abs.add_clause(cube);
     cubes++;
+    if (mconf.keep_cubes) {
+        kept_cubes.emplace_back();
+        for (const auto& l : cube) kept_cubes.back().emplace_back(outer[l.var()], l.sign());
+        return;
+    }
     // From here on abs only picks an X that has a Y: cubes say
     // little, the files that have them need 100k+ of them
     if (cubes == 1) add_cls_to_abs();
@@ -483,7 +495,7 @@ lbool CoverComp::run(vector<lbool>& cex, vector<std::pair<uint32_t, aig_lit>>& n
     init_flip();
     setup_time = cpuTime() - start_time;
 
-    if (mconf.stop_at_cex && outer_only_cex(cex)) return finish(l_False);
+    if (mconf.stop_at_cex && !mconf.assume_outer && outer_only_cex(cex)) return finish(l_False);
     for (const auto& cl : outer_only) abs.add_clause(cl);
     for (; cost < mconf.budget && !out_of_ticks(); rounds++) {
         if (rounds && rounds % mconf.stats_every == 0) print_stats("progress");
@@ -499,6 +511,7 @@ lbool CoverComp::run(vector<lbool>& cex, vector<std::pair<uint32_t, aig_lit>>& n
                 return finish(l_False);
             }
             skip_cube();
+            if (mconf.keep_cubes && cubes > mconf.max_cubes) return finish(l_Undef);
             continue;
         }
         refine();
@@ -583,6 +596,115 @@ void Cover::set_funs() {
     const auto& sampl = cnf.get_orig_sampl_vars();
     for (uint32_t v = 0; v < cnf.num_defs(); v++)
         if (!sampl.count(v) && !cnf.defined(v)) cnf.set_def(v, cnf.get_aig_mng().new_const(false));
+}
+
+int64_t Cover::drop_covered() {
+    const double start = cpuTime();
+    const uint32_t num_vars = vs.size();
+    if (std::any_of(cnf.get_clauses().begin(), cnf.get_clauses().end(), [](const auto& cl) { return cl.empty(); }))
+        return 0;
+    split_components();
+    std::stable_sort(comps.begin(), comps.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
+
+    vector<char> fixed_weight(num_vars, 0);
+    if (cnf.get_weighted()) for (uint32_t v = 0; v < num_vars; v++)
+        if (!vs.univ[v] && cnf.weight_set(v)) fixed_weight[v] = 1;
+
+    // A component only needs the part of psi that its X reach: the rest is
+    // satisfiable apart from it, or nothing is counted anyway
+    vector<uint32_t> par(num_vars);
+    for (uint32_t v = 0; v < num_vars; v++) par[v] = v;
+    auto find = [&](uint32_t v) {
+        while (par[v] != v) v = par[v] = par[par[v]];
+        return v;
+    };
+    for (const auto& cl : outer_only) for (const auto& l : cl) par[find(l.var())] = find(cl[0].var());
+    vector<vector<uint32_t>> psi_of(num_vars);
+    for (uint32_t i = 0; i < outer_only.size(); i++) psi_of[find(outer_only[i][0].var())].push_back(i);
+    vector<char> root_seen(num_vars, 0);
+    vector<uint32_t> roots;
+
+    vector<char> gone(num_vars, 0);
+    vector<vector<Lit>> kept = outer_only;
+    vector<lbool> cex;
+    vector<std::pair<uint32_t, aig_lit>> no_defs;
+    uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0;
+    uint64_t cube_cls = 0;
+    // A defined existential is a good var for the counter to branch on: a
+    // component with one is replaced only if its clauses mostly go away
+    vector<char> is_def(num_vars, 0);
+    for (const auto& v : cnf.get_opt_sampl_vars()) if (!vs.univ[v]) is_def[v] = 1;
+    auto drop_conf = mconf;
+    drop_conf.stop_at_cex = true;
+    drop_conf.keep_cubes = false;
+    uint32_t kept_def = 0;
+    for (auto& comp_cls : comps) {
+        lbool ret = l_Undef;
+        const auto any_var = [&](const vector<char>& flag) {
+            return std::any_of(comp_cls.begin(), comp_cls.end(), [&](const auto& cl) {
+                return std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return flag[l.var()]; }); }); };
+        const bool has_weight = any_var(fixed_weight);
+        const bool has_def = mconf.keep_cubes && any_var(is_def);
+        const bool only_drop = has_def && comp_cls.size() < mconf.def_replace_min_cls;
+        weighted += has_weight;
+        std::unique_ptr<CoverComp> comp;
+        if (!has_weight && (!mconf.max_ticks || used_ticks < mconf.max_ticks)) {
+            tried++;
+            const size_t sz = comp_cls.size();
+            for (const auto& cl : comp_cls) for (const auto& l : cl) {
+                if (!vs.univ[l.var()]) continue;
+                const uint32_t r = find(l.var());
+                if (!root_seen[r]) { root_seen[r] = 1; roots.push_back(r); }
+            }
+            for (const auto& r : roots) {
+                root_seen[r] = 0;
+                for (const auto& i : psi_of[r]) comp_cls.push_back(outer_only[i]);
+            }
+            roots.clear();
+            // a quarter of it at most, one hopeless component does not use it all up
+            const uint64_t ticks = mconf.max_ticks ? std::min(mconf.max_ticks - used_ticks, mconf.max_ticks / 4 + 1) : 0;
+            comp = std::make_unique<CoverComp>(vs, cnf.get_aig_mng(), comp_cls, only_drop ? drop_conf : mconf,
+                ticks, conf.verb >= 2 ? conf.verb - 1 : 0);
+            ret = comp->run(cex, no_defs);
+            used_ticks += comp->ticks();
+            comp_cls.resize(sz);
+            no_y += ret == l_False;
+            gave_up += ret == l_Undef;
+        }
+        // an empty cube: no X has a Y, let the rest of Arjun find that out
+        if (ret == l_True && std::any_of(comp->kept_cubes.begin(), comp->kept_cubes.end(),
+                [](const auto& cl) { return cl.empty(); })) ret = l_Undef;
+        if (ret == l_True && has_def && comp->kept_cubes.size() * mconf.def_replace_ratio > comp_cls.size()) {
+            ret = l_Undef;
+            kept_def++;
+        }
+        if (ret != l_True) {
+            for (auto& cl : comp_cls) kept.push_back(std::move(cl));
+            continue;
+        }
+        if (comp->kept_cubes.empty()) dropped++;
+        else replaced++;
+        cube_cls += comp->kept_cubes.size();
+        for (auto& cl : comp->kept_cubes) kept.push_back(std::move(cl));
+        for (const auto& cl : comp_cls) for (const auto& l : cl) if (!vs.univ[l.var()]) gone[l.var()] = 1;
+    }
+
+    const int64_t removed = (int64_t)cnf.get_clauses().size() - (int64_t)kept.size();
+    vector<vector<Lit>> red;
+    for (const auto& cl : cnf.get_red_clauses())
+        if (std::none_of(cl.begin(), cl.end(), [&](const Lit l) { return gone[l.var()]; })) red.push_back(cl);
+    vector<uint32_t> opt_sampl;
+    for (const auto& v : cnf.get_opt_sampl_vars()) if (!gone[v]) opt_sampl.push_back(v);
+    cnf.set_all_clauses(std::move(kept), std::move(red));
+    cnf.set_opt_sampl_vars(opt_sampl);
+
+    if (conf.verb) std::cout << "c o [cover-drop] components: " << comps.size() << " tried: " << tried
+        << " dropped: " << dropped << " replaced: " << replaced << " by cls: " << cube_cls
+        << " no-Y: " << no_y << " gave up: " << gave_up << " weighted: " << weighted << " kept defined: " << kept_def
+        << " cls removed: " << removed << " vars gone: " << std::count(gone.begin(), gone.end(), 1)
+        << " Mticks: " << std::setprecision(1) << std::fixed << used_ticks / 1e6
+        << " T: " << std::setprecision(2) << cpuTime() - start << std::endl;
+    return removed;
 }
 
 lbool Cover::run(vector<lbool>& cex) {

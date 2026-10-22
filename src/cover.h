@@ -111,6 +111,8 @@ public:
     static void classify(const CnfVars& vs, const std::vector<std::vector<CMSat::Lit>>& cls,
             std::vector<char>& state, std::vector<uint32_t>& defined, std::vector<uint32_t>& free_leaves);
     static constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
+    // keep_cubes: per X with no Y, a clause over X that rules out its cube
+    std::vector<std::vector<CMSat::Lit>> kept_cubes;
 
 private:
     void add_vars_and_cls();
@@ -232,7 +234,20 @@ class Cover {
 public:
     Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _mconf, ArjunNS::SimplifiedCNF& _cnf) :
         conf(_conf), mconf(_mconf), cnf(_cnf), vs(_cnf) {}
+    // For counting, no defs: univ_vars are X
+    Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _mconf, ArjunNS::SimplifiedCNF& _cnf,
+            const std::vector<uint32_t>& univ_vars) :
+        conf(_conf), mconf(_mconf), cnf(_cnf), vs(_cnf.nVars(), univ_vars) {}
     CMSat::lbool run(std::vector<CMSat::lbool>& cex);
+
+    // A component C whose existentials Y_C occur nowhere else, with every X
+    // of the clauses of X only, psi, having a Y_C, is removed: ∃Y psi ∧ C ∧
+    // rest = psi ∧ ∃Y rest. With keep_cubes, C is replaced by the clauses
+    // that rule out the cubes of X with no Y_C, if they are few. Each one is
+    // checked against psi only, never against the others, which may go too.
+    // A component with a weighted existential stays, its weights count.
+    // Returns the clauses removed, net
+    int64_t drop_covered();
 
 private:
     void split_components();

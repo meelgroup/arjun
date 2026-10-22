@@ -2065,6 +2065,8 @@ public:
         uint32_t sbva_max_new_vars = 1000;
         bool do_renumber = true;
         bool do_autarky = true;
+        double cover_drop_mticks = 0; // see standalone_cover_drop. 0 = off
+        uint32_t cover_drop_max_cubes = 0;
     };
     struct InterpConf {
         uint32_t interp_rebuild_every = 50;
@@ -2138,6 +2140,15 @@ public:
         double budget = 100000; // a refinement naming fraction f of the helpers costs f^2: next to nothing while it converges
         uint64_t max_ticks = 0; // of SAT solver work, 0 = no limit
         bool stop_at_cex = false; // return the first X with no Y, instead of skipping its cube
+        bool assume_outer = false; // the clauses of X only restrict X, an X that falsifies them is no cex
+        // abs never gets the clauses: the cubes of X with no Y are kept, and l_True comes with
+        // all of them. Gives up after max_cubes
+        bool keep_cubes = false;
+        uint32_t max_cubes = 1000;
+        // cover drop: a component with a var of the opt sampling set, defined, is replaced
+        // only if it has this many clauses, and the cubes are 1/ratio of them at most
+        uint32_t def_replace_min_cls = 1000;
+        uint32_t def_replace_ratio = 50;
         bool need_funs = true; // false: l_True comes with no Skolem functions, only the verdict
         // How a refinement is shortened, a sum. 1: by asking for a model, of the same X, whose
         // existentials satisfy more of the clauses. 2: by flipping the existentials no clause
@@ -2176,6 +2187,11 @@ public:
     SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
     CMSat::lbool standalone_cover(SimplifiedCNF& cnf, const CoverConf& cover_conf, std::vector<CMSat::lbool>& cex);
+    // Projected counting: removes the clauses over non-sampling vars that,
+    // together, have a model for every X the sampling-only clauses allow.
+    // max_cubes != 0: also replaces them by at most this many clauses over X
+    // that rule out the X with no model. Returns the clauses removed, net
+    int64_t standalone_cover_drop(SimplifiedCNF& cnf, uint64_t max_ticks, uint32_t max_cubes);
 
     //Set config
     void set_verb(uint32_t verb);

@@ -41,6 +41,12 @@ struct CnfVars {
     std::vector<char> univ;
 
     explicit CnfVars(const ArjunNS::SimplifiedCNF& cnf);
+    // No defs and the CNF's own numbering, for counting: univ_vars are X
+    CnfVars(const uint32_t nvars, const std::vector<uint32_t>& univ_vars) : def(nvars), univ(nvars, 0) {
+        for (uint32_t v = 0; v < nvars; v++) orig.emplace_back(v, false);
+        of_orig = orig;
+        for (const auto& v : univ_vars) univ[v] = 1;
+    }
     uint32_t size() const { return orig.size(); }
     bool defined(const uint32_t v) const { return def[v] != nullptr; }
     void to_orig(std::vector<ArjunNS::aig_lit>& funs) const;
