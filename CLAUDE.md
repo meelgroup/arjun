@@ -211,7 +211,8 @@ All must pass before reporting a change as complete.
 - `cegr.{h,cpp}`, `cegr_learn.{h,cpp}` — counterexample-guided
   synthesis / repair loop. Hot path for large benchmarks.
 - `cover.{h,cpp}` — model covering (see "2QBF"). `Cover` splits the clauses
-  into components, `CoverComp` covers one. Config:
+  into components by the ys they share, `CoverComponent` covers one:
+  `x_solver` picks an X, `y_solver` finds a Y for it. Config:
   `Arjun::CoverConf` in `arjun.h`, like `CegrConf`.
 - `verilog.{h,cpp}` — `write_verilog()` / `read_verilog()` of AIG defs as
   one module of single-bit nets (port `xN` is var N-1). Behind
