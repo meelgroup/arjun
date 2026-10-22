@@ -199,6 +199,13 @@ gives up after 2700 names, so clear `out/` now and then.
 Verification loops (`test-synth` over several files) go through `xargs -P`
 too.
 
+For changes to the counting side (Puura for counting, `--coverdrop`), also
+run `../count_fuzzer/fuzz.py`, 16 wide the same way, from `../count_fuzzer`
+(`--proj` for projected counting, which `--coverdrop` needs). It counts
+with several counters, through `../arjun/build/arjun` and
+`../ganak/build/ganak` with random `--coverdrop` options, and compares. About
+half of its brummayer CNFs give coverdrop components to drop or replace.
+
 All must pass before reporting a change as complete.
 
 ## Source layout (`src/`)
