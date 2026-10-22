@@ -203,6 +203,9 @@ void add_arjun_options() {
           "L in t = L. Inputs are still tried first; non-inputs only after the "
           "input list is exhausted. 0 = inputs only");
     myopt("--autarky", etof_conf.do_autarky,"Perform autarky analysis");
+    myopt("--coverdrop", etof_conf.cover_drop_mticks, "After Puura, remove the clauses of non-sampling vars that every allowed sampling assignment can satisfy, checked by model covering (2QBF). Its budget in millions of SAT solver ticks, 0 = off");
+    myopt("--coverdropcubes", etof_conf.cover_drop_max_cubes, "With --coverdrop, also replace the clauses by at most this many clauses over the sampling vars that rule out the assignments with no model of them. 0 = only remove");
+    myopt("--coverdropw", etof_conf.cover_drop_weighted_as_x, "With --coverdrop, take the weighted defined vars as sampling ones, so that the parts with them can also be removed or replaced");
     // CNF rewrite via AIG lifting
 
     // repairing on vars

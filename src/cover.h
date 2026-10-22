@@ -105,6 +105,8 @@ public:
     // it in the numbering of `vs`
     CMSat::lbool run(std::vector<CMSat::lbool>& cex, std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>& new_defs);
     uint64_t ticks() { return abs.get_sum_ticks() + f.get_sum_ticks() + in_abs_vars.work * 10; }
+    uint64_t conflicts() const { return abs.get_sum_conflicts() + f.get_sum_conflicts(); }
+    bool out_of_ticks() { return gave_up || (max_ticks != 0 && ticks() >= max_ticks); }
 
     // The vars of cls that already have a function, in `defined`. state 1: a
     // function of the universals only, 2: not
@@ -135,7 +137,7 @@ private:
     ArjunNS::aig_lit deep_true(Subst& s);
     void build_funs(std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>& new_defs);
 
-    bool out_of_ticks() { return max_ticks != 0 && ticks() >= max_ticks; }
+    CMSat::lbool solve(MetaSolver& s, std::vector<CMSat::Lit>* as = nullptr);
     CMSat::Lit in_f(const CMSat::Lit l) const { return CMSat::Lit(to_f[l.var()], l.sign()); }
     uint32_t hidx(const CMSat::Lit h) const { return h.var() - helper_at; }
     CMSat::Lit sel(const uint32_t i) const { return CMSat::Lit(sel_at + i, false); }
@@ -158,6 +160,7 @@ private:
     const std::vector<std::vector<CMSat::Lit>>& cls;
     const ArjunNS::Arjun::CoverConf& mconf;
     const uint64_t max_ticks;
+    bool gave_up = false;
     const uint32_t verb;
     const uint32_t num_vars;
     const bool sat_minim, flip_minim, subs_minim;

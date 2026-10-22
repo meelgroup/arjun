@@ -30,6 +30,8 @@
 #include <memory>
 #include <vector>
 #include <cassert>
+#include <algorithm>
+#include <limits>
 
 namespace ArjunInt {
 
@@ -170,6 +172,12 @@ public:
     void set_max_confl(int64_t max_confl) {
         if (solver_type == SolverType::cms) cms->set_max_confl(max_confl);
         else cadical->limit("conflicts", static_cast<int>(max_confl));
+    }
+
+    // Next solve() only. CMS has no ticks, it is not limited
+    void set_max_ticks(int64_t max_ticks) {
+        if (solver_type == SolverType::cadical)
+            cadical->limit("ticks", static_cast<int>(std::min<int64_t>(max_ticks, std::numeric_limits<int>::max())));
     }
 
 private:
