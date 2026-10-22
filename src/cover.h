@@ -245,7 +245,7 @@ public:
     // rest = psi ∧ ∃Y rest. With keep_cubes, C is replaced by the clauses
     // that rule out the cubes of X with no Y_C, if they are few. Each one is
     // checked against psi only, never against the others, which may go too.
-    // A component with a weighted existential stays, its weights count.
+    // A component with a weighted existential stays: its weights would go.
     // Returns the clauses removed, net
     int64_t drop_covered();
 

@@ -2067,6 +2067,7 @@ public:
         bool do_autarky = true;
         double cover_drop_mticks = 0; // see standalone_cover_drop. 0 = off
         uint32_t cover_drop_max_cubes = 0;
+        bool cover_drop_weighted_as_x = true;
     };
     struct InterpConf {
         uint32_t interp_rebuild_every = 50;
@@ -2145,6 +2146,7 @@ public:
         // all of them. Gives up after max_cubes
         bool keep_cubes = false;
         uint32_t max_cubes = 1000;
+        bool minim_cubes = true; // drop the literals of a kept cube that it does not need
         // cover drop: a component with a var of the opt sampling set, defined, is replaced
         // only if it has this many clauses, and the cubes are 1/ratio of them at most
         uint32_t def_replace_min_cls = 1000;
@@ -2190,8 +2192,9 @@ public:
     // Projected counting: removes the clauses over non-sampling vars that,
     // together, have a model for every X the sampling-only clauses allow.
     // max_cubes != 0: also replaces them by at most this many clauses over X
-    // that rule out the X with no model. Returns the clauses removed, net
-    int64_t standalone_cover_drop(SimplifiedCNF& cnf, uint64_t max_ticks, uint32_t max_cubes);
+    // that rule out the X with no model. weighted_as_x: the weighted opt
+    // sampling vars are taken as sampling ones. Returns the clauses removed, net
+    int64_t standalone_cover_drop(SimplifiedCNF& cnf, uint64_t max_ticks, uint32_t max_cubes, bool weighted_as_x);
 
     //Set config
     void set_verb(uint32_t verb);

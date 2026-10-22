@@ -22,6 +22,36 @@
  THE SOFTWARE.
  */
 
+// Model covering: decides ∀X ∃Y φ(X,Y), φ a CNF, by CEGAR over two solvers.
+// f holds φ and, for an X given as assumptions, finds a Y or proves there is
+// none. abs is over X only and proposes the next X that no Y found so far
+// covers. Split each clause into its X part U and its Y part E: a Y from f
+// works for exactly the X that satisfy U of every clause whose E it leaves
+// false, so abs gets "one of those U is false". A helper var per distinct U
+// (true: all of U is false) keeps these refinements short, and lets one
+// imply another (find_subsumed). The fewer U a Y needs, the more X it covers:
+// minimize() and flip() look for such Y. abs UNSAT: every X has a Y, and the
+// models, first one that works wins, are the Skolem functions. f UNSAT for
+// an X: the cube of its failed assumptions has no Y.
+//
+// This is the abstraction refinement of AReQS [1], generalised to any number
+// of quantifier levels by RAReQS [2], with the clauses' universal parts
+// selected by variables as in QESTO [3] and CAQE [4]. An earlier comparison
+// of 2QBF algorithms, CEGAR among them, is [5].
+//
+// For counting (Cover::drop_covered), X are the sampling vars and the
+// clauses of X only are assumed, not checked. A component whose X all have
+// a Y is removed. With keep_cubes, the X-cubes with no Y are kept, minimized,
+// as clauses: when abs is UNSAT they are ∃Y of the component, which replaces
+// it. That is quantifier elimination by minimal blocking clauses, as in [6].
+//
+// [1] M. Janota, J. Marques-Silva: Abstraction-Based Algorithm for 2QBF. SAT 2011
+// [2] M. Janota, W. Klieber, J. Marques-Silva, E. Clarke: Solving QBF with
+//     Counterexample Guided Refinement. SAT 2012, and AIJ 234, 2016
+// [3] M. Janota, J. Marques-Silva: Solving QBF by Clause Selection. IJCAI 2015
+// [4] M. N. Rabe, L. Tentrup: CAQE: A Certifying QBF Solver. FMCAD 2015
+// [5] D. P. Ranjan, D. Tang, S. Malik: A Comparative Study of 2QBF Algorithms. SAT 2004
+// [6] J. Brauer, A. King, J. Kriener: Existential Quantification as Incremental SAT. CAV 2011
 
 #include "cover.h"
 #include <iomanip>
@@ -420,6 +450,17 @@ bool CoverComp::outer_only_cex(vector<lbool>& cex) {
 // no X in the cube of f's conflict has a Y, so any function will do there
 void CoverComp::skip_cube() {
     auto cube = f.get_conflict();
+    // A kept cube becomes a clause of the counted CNF: the shorter, the more it propagates
+    if (mconf.keep_cubes && mconf.minim_cubes) {
+        vector<Lit> cand = cube, as;
+        for (const auto& l : cand) {
+            if (out_of_ticks()) break;
+            if (std::find(cube.begin(), cube.end(), l) == cube.end()) continue;
+            as.clear();
+            for (const auto& l2 : cube) if (l2 != l) as.push_back(~l2);
+            if (timed(f_time, [&] { return f.solve(&as); }) == l_False) cube = f.get_conflict();
+        }
+    }
     cube_lits += cube.size();
     cost += sq_frac(cube.size(), num_univ);
     abs.add_clause(cube);
@@ -629,11 +670,14 @@ int64_t Cover::drop_covered() {
     vector<lbool> cex;
     vector<std::pair<uint32_t, aig_lit>> no_defs;
     uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0;
-    uint64_t cube_cls = 0;
-    // A defined existential is a good var for the counter to branch on: a
-    // component with one is replaced only if its clauses mostly go away
+    uint64_t cube_cls = 0, cube_lits = 0;
+    // A defined var is a good one for the counter to branch on, and its
+    // defining clauses propagate better than cubes: a component with one is
+    // replaced only if its clauses mostly go away. Also when the var is taken
+    // as a universal, being weighted
     vector<char> is_def(num_vars, 0);
-    for (const auto& v : cnf.get_opt_sampl_vars()) if (!vs.univ[v]) is_def[v] = 1;
+    for (const auto& v : cnf.get_opt_sampl_vars()) is_def[v] = 1;
+    for (const auto& v : cnf.get_sampl_vars()) is_def[v] = 0;
     auto drop_conf = mconf;
     drop_conf.stop_at_cex = true;
     drop_conf.keep_cubes = false;
@@ -685,6 +729,7 @@ int64_t Cover::drop_covered() {
         if (comp->kept_cubes.empty()) dropped++;
         else replaced++;
         cube_cls += comp->kept_cubes.size();
+        for (const auto& cl : comp->kept_cubes) cube_lits += cl.size();
         for (auto& cl : comp->kept_cubes) kept.push_back(std::move(cl));
         for (const auto& cl : comp_cls) for (const auto& l : cl) if (!vs.univ[l.var()]) gone[l.var()] = 1;
     }
@@ -700,6 +745,7 @@ int64_t Cover::drop_covered() {
 
     if (conf.verb) std::cout << "c o [cover-drop] components: " << comps.size() << " tried: " << tried
         << " dropped: " << dropped << " replaced: " << replaced << " by cls: " << cube_cls
+        << " avg sz: " << std::setprecision(1) << std::fixed << (cube_cls ? (double)cube_lits / cube_cls : 0)
         << " no-Y: " << no_y << " gave up: " << gave_up << " weighted: " << weighted << " kept defined: " << kept_def
         << " cls removed: " << removed << " vars gone: " << std::count(gone.begin(), gone.end(), 1)
         << " Mticks: " << std::setprecision(1) << std::fixed << used_ticks / 1e6
