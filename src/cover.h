@@ -38,6 +38,16 @@
 
 namespace ArjunInt {
 
+struct UnionFind {
+    std::vector<uint32_t> par;
+    explicit UnionFind(const uint32_t n) : par(n) { for (uint32_t v = 0; v < n; v++) par[v] = v; }
+    uint32_t find(uint32_t v) {
+        while (par[v] != v) v = par[v] = par[par[v]];
+        return v;
+    }
+    void join(const uint32_t a, const uint32_t b) { par[find(a)] = find(b); }
+};
+
 // An AIG with its leaves replaced: a var with a `leaf` by that, any other
 // defined var by its def, rewritten the same way, the rest by their `val`.
 // What does not depend on a `val` is built once, the rest once per round.
@@ -218,10 +228,12 @@ private:
 
     std::vector<CMSat::Lit> assumps, refinement;
     double budget_used = 0;
-    uint64_t rounds = 0, ref_lits = 0, num_cubes = 0, cube_lits = 0, minim_calls = 0, minim_removed = 0;
-    uint64_t subsumed = 0, flips = 0;
-    double start_time = 0, setup_time = 0;
-    double x_time = 0, y_time = 0, refine_time = 0, y_def_time = 0, funs_time = 0;
+    struct Stats {
+        uint64_t rounds = 0, ref_lits = 0, num_cubes = 0, cube_lits = 0, minim_calls = 0, minim_removed = 0;
+        uint64_t subsumed = 0, flips = 0;
+        double start_time = 0, setup_time = 0;
+        double x_time = 0, y_time = 0, refine_time = 0, y_def_time = 0, funs_time = 0;
+    } stats;
 };
 
 // Covers the X space with models of cnf's clauses: a model settles
