@@ -185,7 +185,8 @@ def run_arjun_checkrepair(fname, seed, timeout):
             m = re.search(r"Error formula count:\s*(\d+)", line)
             if m:
                 counts.append(int(m.group(1)))
-        if "ERROR [cegr-checkrepair] Error count INCREASED" in line:
+        # The count did not strictly decrease, or ganak could not count it
+        if "ERROR [cegr-checkrepair]" in line:
             increased = True
         if "checkrepair] Error count decreased" in line:
             decreased_count += 1
@@ -307,7 +308,7 @@ def main():
             info = result
             counts = info["counts"]
 
-            if len(counts) == 0:
+            if len(counts) == 0 and not info["increased"]:
                 print("OK (no repair iterations, solved immediately) "
                       "(%.1fs)" % elapsed)
                 stats["no_repair"] += 1
