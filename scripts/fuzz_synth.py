@@ -224,9 +224,11 @@ def run_check(command, final, seed):
             print(col("Check output: ", GREEN) + line)
             ok = True
 
-    if not ok and final:
+    # A sample that fails the check (how non-final AIGs are checked) makes
+    # test-synth exit with 1 without printing INCORRECT.
+    if p.returncode != 0 or (not ok and final):
         print(col("=" * 60, RED))
-        print(col("BUG: check process did not report CORRECT", RED))
+        print(col("BUG: check process failed or did not report CORRECT", RED))
         print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
