@@ -29,8 +29,8 @@
 // a Y from y_solver works for exactly the X that satisfy U of every clause
 // whose E it leaves false, so x_solver gets "one of those U is false". A
 // helper var per distinct U (true: all of U is false) keeps these refinements
-// short, and lets one imply another (find_subsumed). The fewer U a Y needs,
-// the more X it covers: minimize_refinement() and flip() look for such Y.
+// short, and lets one imply another (HelperSubsumption). The fewer U a Y
+// needs, the more X it covers: RefinementMinimizer and Flipper look for such Y.
 // x_solver UNSAT: every X has a Y, and the models, first one that works wins,
 // are the Skolem functions. y_solver UNSAT for an X: the cube of its failed
 // assumptions has no Y.
@@ -68,8 +68,11 @@ using std::vector;
 using std::map;
 using std::set;
 
-void CoverComponent::classify_defined(const CnfVars& vars, const vector<vector<Lit>>& cls, vector<VarKind>& state,
-        vector<uint32_t>& defined, vector<uint32_t>& unconstrained) {
+CoverComponent::Classified CoverComponent::classify_defined(const CnfVars& vars, const vector<vector<Lit>>& cls) {
+    Classified ret;
+    auto& state = ret.kind;
+    auto& defined = ret.defined;
+    auto& unconstrained = ret.unconstrained;
     vector<char> in_cls(vars.size(), 0);
     state.assign(vars.size(), VarKind::unseen);
     for (const auto& cl : cls) for (const auto& l : cl) in_cls[l.var()] = 1;
@@ -83,17 +86,21 @@ void CoverComponent::classify_defined(const CnfVars& vars, const vector<vector<L
         }
         set<uint32_t> deps;
         AIG::get_dependent_vars(vars.def[v], deps, v);
-        bool ret = true;
-        for (const auto& d : deps) ret &= fun_of_x(d);
-        state[v] = ret ? VarKind::fun_of_x : VarKind::y;
+        bool all_x = true;
+        for (const auto& d : deps) all_x &= fun_of_x(d);
+        state[v] = all_x ? VarKind::fun_of_x : VarKind::y;
         defined.push_back(v);
-        return ret;
+        return all_x;
     };
     for (const auto& cl : cls) for (const auto& l : cl) fun_of_x(l.var());
+    return ret;
 }
 
 void CoverComponent::add_vars_and_cls() {
-    classify_defined(vars, comp_cls, state, defined, unconstrained);
+    auto classified = classify_defined(vars, comp_cls);
+    state = std::move(classified.kind);
+    defined = std::move(classified.defined);
+    unconstrained = std::move(classified.unconstrained);
     // a component of a counted CNF: the universals of the rest are no matter
     vector<char> in_cls(num_vars, !cconf.assume_outer);
     for (const auto& cl : comp_cls) for (const auto& l : cl) in_cls[l.var()] = 1;
@@ -151,95 +158,90 @@ void CoverComponent::tie_defs() {
 
 void CoverComponent::add_helpers() {
     helper_base = x_solver.nVars();
+    map<vector<Lit>, uint32_t> helper_of;
     for (const auto& cl : comp_cls) {
         if (std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return vars.defined(l.var()) && !on_x_side[l.var()]; })) {
             y_def_cls.push_back(cl);
             continue;
         }
-        vector<Lit> univ, y_part;
+        vector<Lit> x_part, y_part;
         for (const auto& l : cl) {
-            if (on_x_side[l.var()]) univ.push_back(l);
+            if (on_x_side[l.var()]) x_part.push_back(l);
             else y_part.push_back(in_y(l));
         }
-        if (univ.empty()) continue;
+        if (x_part.empty()) continue;
         if (y_part.empty()) {
-            for (auto& l : univ) l = in_y(l);
-            x_cls_solver.push_back(univ);
+            for (auto& l : x_part) l = in_y(l);
+            x_cls_solver.push_back(x_part);
             continue;
         }
-        std::sort(univ.begin(), univ.end());
-        const auto [it, inserted] = helper_of.try_emplace(univ, lit_Undef);
+        std::sort(x_part.begin(), x_part.end());
+        const auto [it, inserted] = helper_of.try_emplace(x_part, helpers.size());
         if (inserted) {
             x_solver.new_var();
-            it->second = Lit(x_solver.nVars()-1, false);
-            x_part_true.push_back(aig_mng.new_const(false));
-            for (const auto& l : univ) {
-                x_solver.add_clause({~it->second, ~in_y(l)});
-                x_part_true.back() = AIG::new_or(x_part_true.back(), AIG::new_lit(l));
+            Helper h{x_part, Lit(x_solver.nVars()-1, false), aig_mng.new_const(false)};
+            for (const auto& l : x_part) {
+                x_solver.add_clause({~h.lit, ~in_y(l)});
+                h.x_part_true = AIG::new_or(h.x_part_true, AIG::new_lit(l));
             }
+            helpers.push_back(std::move(h));
         }
-        split_cls.emplace_back(y_part, it->second);
+        split_cls.push_back({y_part, it->second});
     }
-    num_helpers = helper_of.size();
-    subsumed_by.resize(num_helpers);
-    in_refinement.assign(num_helpers, 0);
 }
 
-void CoverComponent::find_subsumed() {
-    vector<const vector<Lit>*> x_part_of(num_helpers);
-    for (const auto& [univ, h] : helper_of) x_part_of[helper_idx(h)] = &univ;
+HelperSubsumption::HelperSubsumption(const vector<Helper>& helpers, int64_t work) :
+        subsumed_by(helpers.size()), in_refinement(helpers.size(), 0) {
     map<Lit, vector<uint32_t>> occ;
-    for (uint32_t i = 0; i < num_helpers; i++) for (const auto& l : *x_part_of[i]) occ[l].push_back(i);
-    int64_t work = cconf.subs_work;
-    for (uint32_t a = 0; a < num_helpers && work > 0; a++) {
+    for (uint32_t i = 0; i < helpers.size(); i++) for (const auto& l : helpers[i].x_part) occ[l].push_back(i);
+    for (uint32_t a = 0; a < helpers.size() && work > 0; a++) {
+        const auto& xa = helpers[a].x_part;
         const vector<uint32_t>* rarest = nullptr;
-        for (const auto& l : *x_part_of[a]) if (!rarest || occ[l].size() < rarest->size()) rarest = &occ[l];
+        for (const auto& l : xa) if (!rarest || occ[l].size() < rarest->size()) rarest = &occ[l];
         if (!rarest) continue;
         for (const auto& b : *rarest) {
-            if (x_part_of[b]->size() <= x_part_of[a]->size()) continue;
-            work -= x_part_of[b]->size();
-            if (std::includes(x_part_of[b]->begin(), x_part_of[b]->end(), x_part_of[a]->begin(), x_part_of[a]->end()))
-                subsumed_by[b].push_back(a);
+            const auto& xb = helpers[b].x_part;
+            if (xb.size() <= xa.size()) continue;
+            work -= xb.size();
+            if (std::includes(xb.begin(), xb.end(), xa.begin(), xa.end())) subsumed_by[b].push_back(a);
         }
     }
 }
 
-void CoverComponent::drop_subsumed(vector<Lit>& hs) {
-    for (const auto& h : hs) in_refinement[helper_idx(h)] = 1;
-    kept_helpers.clear();
-    for (const auto& h : hs) {
-        const auto& sub = subsumed_by[helper_idx(h)];
-        if (std::none_of(sub.begin(), sub.end(), [&](const uint32_t a) { return in_refinement[a]; })) kept_helpers.push_back(h);
+void HelperSubsumption::drop(vector<Lit>& refinement, const uint32_t helper_base) {
+    for (const auto& h : refinement) in_refinement[h.var() - helper_base] = 1;
+    kept.clear();
+    for (const auto& h : refinement) {
+        const auto& sub = subsumed_by[h.var() - helper_base];
+        if (std::none_of(sub.begin(), sub.end(), [&](const uint32_t a) { return in_refinement[a]; })) kept.push_back(h);
     }
-    for (const auto& h : hs) in_refinement[helper_idx(h)] = 0;
-    stats.subsumed += hs.size() - kept_helpers.size();
-    std::swap(hs, kept_helpers);
+    for (const auto& h : refinement) in_refinement[h.var() - helper_base] = 0;
+    subsumed += refinement.size() - kept.size();
+    std::swap(refinement, kept);
 }
 
-void CoverComponent::add_selectors() {
-    sel_base = y_solver.nVars();
-    backoff.assign(num_helpers, 0);
-    skip_rounds.assign(num_helpers, 0);
-    is_false.assign(num_helpers, 0);
-    in_core.assign(num_helpers, 0);
-    if (!sat_minim) return;
-    for (uint32_t i = 0; i < num_helpers; i++) y_solver.new_var();
-    for (const auto& [y_part, helper] : split_cls) {
-        auto cl = y_part;
-        cl.push_back(~selector(helper_idx(helper)));
-        y_solver.add_clause(cl);
+RefinementMinimizer::RefinementMinimizer(MetaSolver& _y_solver, const vector<SplitClause>& split_cls,
+        const uint32_t num_helpers, const Arjun::CoverConf& cconf) :
+        y_solver(&_y_solver), sel_base(_y_solver.nVars()), max_calls(cconf.max_minim_calls),
+        max_wait(cconf.max_minim_wait), backoff(num_helpers, 0), skip_rounds(num_helpers, 0),
+        is_false(num_helpers, 0), in_core(num_helpers, 0) {
+    for (uint32_t i = 0; i < num_helpers; i++) y_solver->new_var();
+    for (const auto& sc : split_cls) {
+        auto cl = sc.y_part;
+        cl.push_back(~selector(sc.helper));
+        y_solver->add_clause(cl);
     }
 }
 
 // a model that satisfies many existential parts makes a short refinement
 void CoverComponent::set_phases() {
     vector<int> pos_occ(y_solver.nVars(), 0);
-    for (const auto& [y_part, helper] : split_cls) for (const auto& l : y_part) pos_occ[l.var()] += l.sign() ? -1 : 1;
+    for (const auto& sc : split_cls) for (const auto& l : sc.y_part) pos_occ[l.var()] += l.sign() ? -1 : 1;
     for (const auto& v : ys) if (!vars.defined(v)) y_solver.set_phase(Lit(to_y[v], pos_occ[to_y[v]] <= 0));
 }
 
 void CoverComponent::init_flip() {
-    can_flip.assign(y_solver.nVars(), 0);
+    vector<char> can_flip(y_solver.nVars(), 0);
     if (flip_minim) for (const auto& v : ys) if (!vars.defined(v)) can_flip[to_y[v]] = 1;
     for (const auto& cl : y_def_cls) for (const auto& l : cl) can_flip[to_y[l.var()]] = 0;
     for (const auto& v : defined) {
@@ -247,87 +249,93 @@ void CoverComponent::init_flip() {
         AIG::get_dependent_vars(vars.def[v], deps, v);
         for (const auto& d : deps) if (to_y[d] != none) can_flip[to_y[d]] = 0;
     }
-    flip_occ.resize(y_solver.nVars() * 2);
+    vector<vector<Lit>> cls_y;
     for (const auto& cl : comp_cls) {
-        bool has_flip = false, has_outer = false;
-        for (const auto& l : cl) {
-            has_flip |= can_flip[to_y[l.var()]];
-            has_outer |= on_x_side[l.var()];
-        }
-        if (!has_flip) continue;
-        flip_cls.emplace_back();
-        for (const auto& l : cl) {
-            flip_cls.back().push_back(in_y(l));
-            if (can_flip[to_y[l.var()]]) flip_occ[in_y(l).toInt()].push_back(flip_cls.size() - 1);
-        }
-        flip_mixed.push_back(has_outer);
+        cls_y.emplace_back();
+        for (const auto& l : cl) cls_y.back().push_back(in_y(l));
     }
-    for (uint32_t v = 0; v < can_flip.size(); v++) if (can_flip[v]) flip_vars.push_back(v);
-    num_true.resize(flip_cls.size());
-    num_true_ex.resize(flip_cls.size());
+    flipper = Flipper(cls_y, can_flip, x_side.size());
 }
 
-bool CoverComponent::flip(vector<lbool>& model) {
-    for (uint32_t c = 0; c < flip_cls.size(); c++) {
-        num_true[c] = num_true_ex[c] = 0;
-        for (const auto& l : flip_cls[c]) if (model[l.var()] == boolToLBool(!l.sign())) {
+Flipper::Flipper(const vector<vector<Lit>>& all_cls, const vector<char>& can_flip, const uint32_t _num_x_side) :
+        num_x_side(_num_x_side), occ(can_flip.size() * 2) {
+    for (const auto& cl : all_cls) {
+        bool has_flip = false, has_x_side = false;
+        for (const auto& l : cl) {
+            has_flip |= can_flip[l.var()];
+            has_x_side |= l.var() < num_x_side;
+        }
+        if (!has_flip) continue;
+        cls.push_back(cl);
+        for (const auto& l : cl) if (can_flip[l.var()]) occ[l.toInt()].push_back(cls.size() - 1);
+        has_x.push_back(has_x_side);
+    }
+    for (uint32_t v = 0; v < can_flip.size(); v++) if (can_flip[v]) flip_vars.push_back(v);
+    num_true.resize(cls.size());
+    num_true_y.resize(cls.size());
+}
+
+bool Flipper::flip(vector<lbool>& model) {
+    for (uint32_t c = 0; c < cls.size(); c++) {
+        num_true[c] = num_true_y[c] = 0;
+        for (const auto& l : cls[c]) if (model[l.var()] == boolToLBool(!l.sign())) {
             num_true[c]++;
-            num_true_ex[c] += l.var() >= x_side.size();
+            num_true_y[c] += l.var() >= num_x_side;
         }
     }
-    const uint64_t before = stats.flips;
+    const uint64_t before = flips;
     for (bool changed = true; changed;) {
         changed = false;
         for (const auto& v : flip_vars) {
             const Lit t = Lit(v, model[v] != l_True);
-            const auto& loses = flip_occ[t.toInt()];
-            const auto& gains = flip_occ[(~t).toInt()];
+            const auto& loses = occ[t.toInt()];
+            const auto& gains = occ[(~t).toInt()];
             if (std::any_of(loses.begin(), loses.end(), [&](const uint32_t c) { return num_true[c] < 2; })) continue;
             int gain = 0;
-            for (const auto& c : gains) gain += flip_mixed[c] && num_true_ex[c] == 0;
-            for (const auto& c : loses) gain -= flip_mixed[c] && num_true_ex[c] == 1;
+            for (const auto& c : gains) gain += has_x[c] && num_true_y[c] == 0;
+            for (const auto& c : loses) gain -= has_x[c] && num_true_y[c] == 1;
             if (gain <= 0) continue;
             model[v] = t.sign() ? l_True : l_False;
-            for (const auto& c : loses) { num_true[c]--; num_true_ex[c]--; }
-            for (const auto& c : gains) { num_true[c]++; num_true_ex[c]++; }
-            stats.flips++;
+            for (const auto& c : loses) { num_true[c]--; num_true_y[c]--; }
+            for (const auto& c : gains) { num_true[c]++; num_true_y[c]++; }
+            flips++;
             changed = true;
         }
     }
-    return stats.flips != before;
+    return flips != before;
 }
 
-// A model for the X of assumps whose existentials satisfy what those of
-// `model` do, and as many more helpers' clauses as the cores allow
-vector<lbool> CoverComponent::minimize_refinement(vector<lbool> model) {
+vector<lbool> RefinementMinimizer::minimize(vector<lbool> model, vector<Lit>& assumps,
+        const vector<uint32_t>& refinement, const std::function<lbool(vector<Lit>&)>& solve,
+        const std::function<bool()>& out_of_ticks) {
     const size_t num_x = assumps.size();
     std::fill(is_false.begin(), is_false.end(), 0);
-    for (const auto& h : refinement) is_false[helper_idx(h)] = 1;
-    for (uint32_t i = 0; i < num_helpers; i++) if (!is_false[i]) assumps.push_back(selector(i));
+    for (const auto& i : refinement) is_false[i] = 1;
+    for (uint32_t i = 0; i < is_false.size(); i++) if (!is_false[i]) assumps.push_back(selector(i));
     const size_t base = assumps.size();
     vector<uint32_t> cand, cand2;
-    for (const auto& h : refinement) {
-        if (skip_rounds[helper_idx(h)]) skip_rounds[helper_idx(h)]--;
-        else cand.push_back(helper_idx(h));
+    for (const auto& i : refinement) {
+        if (skip_rounds[i]) skip_rounds[i]--;
+        else cand.push_back(i);
     }
     // Capped: with every core a single helper, it is a call per helper
-    for (uint32_t calls = 0; !cand.empty() && calls < cconf.max_minim_calls && !out_of_ticks(); calls++) {
+    for (uint32_t n = 0; !cand.empty() && n < max_calls && !out_of_ticks(); n++) {
         assumps.resize(base);
         for (const auto& i : cand) assumps.push_back(selector(i));
-        stats.minim_calls++;
-        const auto ret = solve(y_solver, &assumps);
+        calls++;
+        const auto ret = solve(assumps);
         if (ret == l_Undef) break;
         if (ret == l_True) {
-            model = y_solver.get_model();
+            model = y_solver->get_model();
             for (const auto& i : cand) backoff[i] = 0;
             break;
         }
-        const auto core = y_solver.get_conflict();
+        const auto core = y_solver->get_conflict();
         for (const auto& l : core) if (l.var() >= sel_base) in_core[l.var() - sel_base] = 1;
         cand2.clear();
         for (const auto& i : cand) {
             if (!in_core[i]) { cand2.push_back(i); continue; }
-            backoff[i] = std::min(backoff[i] * 2 + 1, cconf.max_minim_wait);
+            backoff[i] = std::min(backoff[i] * 2 + 1, max_wait);
             skip_rounds[i] = backoff[i];
         }
         for (const auto& l : core) if (l.var() >= sel_base) in_core[l.var() - sel_base] = 0;
@@ -340,10 +348,10 @@ vector<lbool> CoverComponent::minimize_refinement(vector<lbool> model) {
 
 void CoverComponent::compute_refinement(const vector<lbool>& model) {
     refinement.clear();
-    for (const auto& [y_part, helper] : split_cls) {
-        const bool sat = std::any_of(y_part.begin(), y_part.end(),
+    for (const auto& sc : split_cls) {
+        const bool sat = std::any_of(sc.y_part.begin(), sc.y_part.end(),
                 [&](const Lit l) { return model[l.var()] == boolToLBool(!l.sign()); });
-        if (!sat) refinement.push_back(helper);
+        if (!sat) refinement.push_back(helpers[sc.helper].lit);
     }
     std::sort(refinement.begin(), refinement.end());
     refinement.erase(std::unique(refinement.begin(), refinement.end()), refinement.end());
@@ -366,7 +374,7 @@ aig_lit CoverComponent::y_def_cls_hold(Subst& s) {
 
 // y takes its value from the first model that works for X. Built from
 // the rarer value of y, the other one is the default
-void CoverComponent::build_funs(vector<std::pair<uint32_t, aig_lit>>& found_funs) {
+void CoverComponent::build_funs(Funs& funs) {
     // `before`: an earlier model works. In blocks, a chain would be as deep as the rounds
     const uint32_t num_refs = refinements.size();
     const uint32_t block = std::max<uint32_t>(1, std::sqrt(num_refs));
@@ -379,7 +387,7 @@ void CoverComponent::build_funs(vector<std::pair<uint32_t, aig_lit>>& found_funs
         }
         for (uint32_t i = 0; i < ys.size(); i++) defs_in_vars.val[ys[i]] = boolToLBool(ref_models[r * ys.size() + i]);
         aig_lit works = y_def_cls.empty() ? aig_mng.new_const(true) : y_def_cls_hold(defs_in_vars);
-        for (const auto& h : refinements[r]) works = AIG::new_and(works, x_part_true[helper_idx(h)]);
+        for (const auto& h : refinements[r]) works = AIG::new_and(works, helpers[helper_idx(h)].x_part_true);
         first_works.push_back(AIG::new_and(works, ~AIG::new_or(before_block, in_block)));
         in_block = AIG::new_or(in_block, works);
     }
@@ -394,7 +402,7 @@ void CoverComponent::build_funs(vector<std::pair<uint32_t, aig_lit>>& found_funs
         for (uint32_t step = 1; step < ors.size(); step *= 2)
             for (uint32_t j = 0; j + step < ors.size(); j += 2 * step) ors[j] = AIG::new_or(ors[j], ors[j + step]);
         const aig_lit fun = ors.empty() ? aig_mng.new_const(false) : ors[0];
-        found_funs.emplace_back(ys[i], val ? fun : ~fun);
+        funs.emplace_back(ys[i], val ? fun : ~fun);
     }
 }
 
@@ -404,11 +412,11 @@ void CoverComponent::print_stats(const char* what) {
     std::cout << "c o [cover] " << what << " rounds: " << stats.rounds << " no-Y cubes: " << stats.num_cubes
         << " outer defs: " << x_side.size() - num_xs << " deep cls: " << y_def_cls.size()
         << " outer cls: " << x_cls_solver.size()
-        << " helpers: " << num_helpers << std::fixed
+        << " helpers: " << helpers.size() << std::fixed
         << " avg refinement: " << std::setprecision(1) << (refs ? (double)stats.ref_lits / refs : 0)
         << " avg cube: " << (stats.num_cubes ? (double)stats.cube_lits / stats.num_cubes : 0)
-        << " minim calls: " << stats.minim_calls << " removed: " << stats.minim_removed
-        << " flips: " << stats.flips << " subsumed: " << stats.subsumed
+        << " minim calls: " << minimizer.calls << " removed: " << stats.minim_removed
+        << " flips: " << flipper.flips << " subsumed: " << subsumption.subsumed
         << " cost: " << std::setprecision(2) << budget_used << " of " << cconf.budget
         << " ticks(M) abs: " << x_solver.get_sum_ticks() / 1e6 << " f: " << y_solver.get_sum_ticks() / 1e6
         << " deep: " << defs_in_x.work * 10 / 1e6
@@ -512,16 +520,19 @@ void CoverComponent::refine() {
     const double refine_start = cpuTime();
     auto model = y_solver.get_model();
     compute_refinement(model);
-    if (flip_minim && refinement.size() > 1 && flip(model)) compute_refinement(model);
+    if (flip_minim && refinement.size() > 1 && flipper.flip(model)) compute_refinement(model);
     if (sat_minim && refinement.size() > 1) {
         const size_t before = refinement.size();
-        model = minimize_refinement(model);
+        vector<uint32_t> ref_idx;
+        for (const auto& h : refinement) ref_idx.push_back(helper_idx(h));
+        model = minimizer.minimize(model, assumps, ref_idx,
+                [&](vector<Lit>& as) { return solve(y_solver, &as); }, [&] { return out_of_ticks(); });
         compute_refinement(model);
         assert(refinement.size() <= before);
         stats.minim_removed += before - refinement.size();
     }
-    budget_used += sq_frac(refinement.size(), num_helpers);
-    if (subs_minim) drop_subsumed(refinement);
+    budget_used += sq_frac(refinement.size(), helpers.size());
+    if (subs_minim) subsumption.drop(refinement, helper_base);
     stats.ref_lits += refinement.size();
     if (cconf.need_funs) {
         refinements.push_back(refinement);
@@ -539,7 +550,12 @@ void CoverComponent::refine() {
     x_solver.add_clause(refinement);
 }
 
-lbool CoverComponent::run(vector<lbool>& cex, vector<std::pair<uint32_t, aig_lit>>& found_funs) {
+CoverComponent::Result CoverComponent::run() {
+    Result r;
+    auto done = [&](const lbool ret) {
+        r.ret = finish(ret);
+        return std::move(r);
+    };
     stats.start_time = cpuTime();
     x_solver.set_no_lucky();
     y_solver.set_no_lucky();
@@ -547,21 +563,21 @@ lbool CoverComponent::run(vector<lbool>& cex, vector<std::pair<uint32_t, aig_lit
     add_vars_and_cls();
     tie_defs();
     add_helpers();
-    if (subs_minim) find_subsumed();
-    add_selectors();
+    if (subs_minim) subsumption = HelperSubsumption(helpers, cconf.subs_work);
+    if (sat_minim) minimizer = RefinementMinimizer(y_solver, split_cls, helpers.size(), cconf);
     set_phases();
     init_flip();
     stats.setup_time = cpuTime() - stats.start_time;
 
-    if (cconf.stop_at_cex && !cconf.assume_outer && x_cls_cex(cex)) return finish(l_False);
+    if (cconf.stop_at_cex && !cconf.assume_outer && x_cls_cex(r.cex)) return done(l_False);
     for (const auto& cl : x_cls_solver) x_solver.add_clause(cl);
     for (; budget_used < cconf.budget && !out_of_ticks(); stats.rounds++) {
         if (stats.rounds && stats.rounds % cconf.stats_every == 0) print_stats("progress");
         const auto x_ret = timed(stats.x_time, [&] { return solve(x_solver); });
         if (x_ret == l_Undef) break;
         if (x_ret == l_False) {
-            if (cconf.need_funs) timed(stats.funs_time, [&] { build_funs(found_funs); return 0; });
-            return finish(l_True);
+            if (cconf.need_funs) timed(stats.funs_time, [&] { build_funs(r.funs); return 0; });
+            return done(l_True);
         }
         assumps.clear();
         for (uint32_t i = 0; i < num_xs; i++) assumps.emplace_back(to_y[x_side[i]], x_solver.get_model()[to_y[x_side[i]]] != l_True);
@@ -569,25 +585,23 @@ lbool CoverComponent::run(vector<lbool>& cex, vector<std::pair<uint32_t, aig_lit
         if (y_ret == l_Undef) break;
         if (y_ret == l_False) {
             if (cconf.stop_at_cex) {
-                cex_from_x_solver(cex);
-                return finish(l_False);
+                cex_from_x_solver(r.cex);
+                return done(l_False);
             }
             block_no_y_cube();
-            if (cconf.keep_cubes && stats.num_cubes > cconf.max_cubes) return finish(l_Undef);
+            if (cconf.keep_cubes && stats.num_cubes > cconf.max_cubes) return done(l_Undef);
             continue;
         }
         refine();
     }
-    return finish(l_Undef);
+    return done(l_Undef);
 }
 
 // Clauses that share no y, directly or through a function, are
 // covered apart: together they need the product of their models
 void Cover::split_by_ys() {
     const uint32_t num_vars = vars.size();
-    vector<CoverComponent::VarKind> state;
-    vector<uint32_t> defined, unconstrained;
-    CoverComponent::classify_defined(vars, cnf.get_clauses(), state, defined, unconstrained);
+    const auto [state, defined, unconstrained] = CoverComponent::classify_defined(vars, cnf.get_clauses());
     vector<char> on_x_side(num_vars, 0);
     for (uint32_t v = 0; v < num_vars; v++) if (vars.univ[v] || state[v] == CoverComponent::VarKind::fun_of_x) on_x_side[v] = 1;
 
@@ -620,9 +634,11 @@ void Cover::split_by_ys() {
 
 lbool Cover::cover_one(const vector<vector<Lit>>& comp_cls, const uint32_t verb, vector<lbool>& cex) {
     CoverComponent comp(vars, cnf.get_aig_mng(), comp_cls, cconf, cconf.max_ticks ? cconf.max_ticks - used_ticks : 0, verb);
-    const lbool ret = comp.run(cex, found_funs);
+    auto r = comp.run();
     used_ticks += comp.ticks();
-    return ret;
+    if (r.ret == l_False) cex = std::move(r.cex);
+    found_funs.insert(found_funs.end(), r.funs.begin(), r.funs.end());
+    return r.ret;
 }
 
 lbool Cover::cover_components(vector<lbool>& cex) {
@@ -687,8 +703,6 @@ int64_t Cover::drop_covered() {
 
     vector<char> gone(num_vars, 0);
     vector<vector<Lit>> kept = x_cls;
-    vector<lbool> cex;
-    vector<std::pair<uint32_t, aig_lit>> no_defs;
     struct {
         uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0, kept_def = 0;
         uint64_t cube_cls = 0, cube_lits = 0;
@@ -734,7 +748,7 @@ int64_t Cover::drop_covered() {
             comp = std::make_unique<CoverComponent>(vars, cnf.get_aig_mng(), comp_cls, only_drop ? drop_conf : cconf,
                 ticks, conf.verb >= 2 ? conf.verb - 1 : 0);
             const double comp_start = cpuTime();
-            ret = comp->run(cex, no_defs);
+            ret = comp->run().ret;
             ds.max_comp_t = std::max(ds.max_comp_t, cpuTime() - comp_start);
             const uint64_t t = comp->ticks();
             used_ticks += t;

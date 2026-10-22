@@ -34,6 +34,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <functional>
 #include <unordered_map>
 
 namespace ArjunInt {
@@ -101,6 +102,76 @@ struct Subst {
     }
 };
 
+// The x part of a clause with ys gets a helper var in x_solver, true: all
+// of the x part is false. Clauses with the same x part share it
+struct Helper {
+    std::vector<CMSat::Lit> x_part; // sorted, over `vars`
+    CMSat::Lit lit;
+    ArjunNS::aig_lit x_part_true;
+};
+struct SplitClause {
+    std::vector<CMSat::Lit> y_part; // in y_solver
+    uint32_t helper;
+};
+
+// Flips a y that no clause needs, at this X, if the other value satisfies the
+// y part of more clauses with an x side. No SAT call
+class Flipper {
+public:
+    Flipper() = default;
+    // cls in y_solver's numbering, its x side the vars below num_x_side
+    Flipper(const std::vector<std::vector<CMSat::Lit>>& cls, const std::vector<char>& can_flip, uint32_t num_x_side);
+    // true if it flipped something
+    bool flip(std::vector<CMSat::lbool>& model);
+    uint64_t flips = 0;
+
+private:
+    uint32_t num_x_side = 0;
+    std::vector<std::vector<CMSat::Lit>> cls; // the ones with a var to flip
+    std::vector<char> has_x;
+    std::vector<std::vector<uint32_t>> occ; // per literal, its clauses
+    std::vector<uint32_t> flip_vars, num_true, num_true_y;
+};
+
+// A model for the same X whose ys satisfy the y parts that the given one
+// does, and as many more as the cores allow: a selector per helper in
+// y_solver, true: all of its clauses' y parts hold. A helper in a core
+// waits longer and longer before it is tried again
+class RefinementMinimizer {
+public:
+    RefinementMinimizer() = default;
+    // adds the selectors and their clauses to y_solver
+    RefinementMinimizer(MetaSolver& y_solver, const std::vector<SplitClause>& split_cls, uint32_t num_helpers,
+            const ArjunNS::Arjun::CoverConf& cconf);
+    // assumps: the X; refinement: the helpers whose y parts `model` leaves false
+    std::vector<CMSat::lbool> minimize(std::vector<CMSat::lbool> model, std::vector<CMSat::Lit>& assumps,
+            const std::vector<uint32_t>& refinement, const std::function<CMSat::lbool(std::vector<CMSat::Lit>&)>& solve,
+            const std::function<bool()>& out_of_ticks);
+    uint64_t calls = 0;
+
+private:
+    CMSat::Lit selector(const uint32_t i) const { return CMSat::Lit(sel_base + i, false); }
+    MetaSolver* y_solver = nullptr;
+    uint32_t sel_base = 0, max_calls = 0, max_wait = 0;
+    std::vector<uint32_t> backoff, skip_rounds;
+    std::vector<char> is_false, in_core;
+};
+
+// subsumed_by[b]: the helpers whose x part is a subset of b's. With one of
+// them in a refinement, b says nothing more
+class HelperSubsumption {
+public:
+    HelperSubsumption() = default;
+    HelperSubsumption(const std::vector<Helper>& helpers, int64_t work);
+    void drop(std::vector<CMSat::Lit>& refinement, uint32_t helper_base);
+    uint64_t subsumed = 0;
+
+private:
+    std::vector<std::vector<uint32_t>> subsumed_by;
+    std::vector<char> in_refinement;
+    std::vector<CMSat::Lit> kept;
+};
+
 // The covering of clauses that share ys. x_solver picks an X no model
 // settles yet, y_solver gives a model of the clauses for it
 class CoverComponent {
@@ -111,9 +182,14 @@ public:
         num_vars(_vars.size()), sat_minim(_cconf.minim & 1), flip_minim(_cconf.minim & 2), subs_minim(_cconf.minim & 4),
         defs_in_y(_vars), defs_in_x(_vars), defs_in_vars(_vars), enc_y(y_solver), enc_x(x_solver) {}
 
-    // new_defs: the functions found are added, for the caller to set. All of
-    // it in the numbering of `vars`
-    CMSat::lbool run(std::vector<CMSat::lbool>& cex, std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>& found_funs);
+    using Funs = std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>;
+    // All of it in the numbering of `vars`
+    struct Result {
+        CMSat::lbool ret = CMSat::l_Undef;
+        std::vector<CMSat::lbool> cex; // l_False: an X with no Y
+        Funs funs; // l_True and need_funs: the functions found, for the caller to set
+    };
+    Result run();
     uint64_t ticks() { return x_solver.get_sum_ticks() + y_solver.get_sum_ticks() + defs_in_x.work * 10; }
     uint64_t conflicts() const { return x_solver.get_sum_conflicts() + y_solver.get_sum_conflicts(); }
     bool out_of_ticks() { return gave_up || (max_ticks != 0 && ticks() >= max_ticks); }
@@ -121,9 +197,12 @@ public:
     // y: not a function of X only. A var not in cls with no def has the
     // function false, and is also fun_of_x
     enum class VarKind : char { unseen, fun_of_x, y };
-    // The vars of cls that already have a function, in `defined`
-    static void classify_defined(const CnfVars& vars, const std::vector<std::vector<CMSat::Lit>>& cls,
-            std::vector<VarKind>& state, std::vector<uint32_t>& defined, std::vector<uint32_t>& unconstrained);
+    struct Classified {
+        std::vector<VarKind> kind;
+        std::vector<uint32_t> defined; // the vars of cls that already have a function
+        std::vector<uint32_t> unconstrained;
+    };
+    static Classified classify_defined(const CnfVars& vars, const std::vector<std::vector<CMSat::Lit>>& cls);
     static constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
     // keep_cubes: per X with no Y, a clause over X that rules out its cube
     std::vector<std::vector<CMSat::Lit>> kept_cubes;
@@ -132,8 +211,6 @@ private:
     void add_vars_and_cls();
     void tie_defs();
     void add_helpers();
-    void find_subsumed();
-    void add_selectors();
     void set_phases();
     void init_flip();
 
@@ -143,16 +220,12 @@ private:
     void x_solver_gets_cls();
     void refine();
     void compute_refinement(const std::vector<CMSat::lbool>& model);
-    bool flip(std::vector<CMSat::lbool>& model);
-    std::vector<CMSat::lbool> minimize_refinement(std::vector<CMSat::lbool> model);
-    void drop_subsumed(std::vector<CMSat::Lit>& hs);
     ArjunNS::aig_lit y_def_cls_hold(Subst& s);
-    void build_funs(std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>& found_funs);
+    void build_funs(Funs& funs);
 
     CMSat::lbool solve(MetaSolver& s, std::vector<CMSat::Lit>* as = nullptr);
     CMSat::Lit in_y(const CMSat::Lit l) const { return CMSat::Lit(to_y[l.var()], l.sign()); }
     uint32_t helper_idx(const CMSat::Lit h) const { return h.var() - helper_base; }
-    CMSat::Lit selector(const uint32_t i) const { return CMSat::Lit(sel_base + i, false); }
     void new_y_var(const uint32_t v) {
         to_y[v] = y_solver.nVars();
         y_solver.new_var();
@@ -178,6 +251,7 @@ private:
     const bool sat_minim, flip_minim, subs_minim;
     MetaSolver x_solver, y_solver;
 
+    // Fixed after setup.
     // The vars that already have a function. One of X only is on the x side
     // with X: x_solver picks it, tied to its function there. Any other one
     // follows the ys: `y_def_cls`, the clauses they are in, are rewritten for
@@ -196,32 +270,16 @@ private:
     std::vector<ArjunNS::aig_lit> keep; // the encoders cache by node address
     ArjunNS::AIGToCNF<MetaSolver> enc_y, enc_x;
 
-    // per clause with x side vars: its y part, and a helper that implies
-    // all of its x part is false
-    uint32_t helper_base = 0, num_helpers = 0;
-    std::map<std::vector<CMSat::Lit>, CMSat::Lit> helper_of;
-    std::vector<std::pair<std::vector<CMSat::Lit>, CMSat::Lit>> split_cls;
-    std::vector<ArjunNS::aig_lit> x_part_true; // per helper: some literal of its x part is true
+    uint32_t helper_base = 0;
+    std::vector<Helper> helpers;
+    std::vector<SplitClause> split_cls;
     std::vector<std::vector<CMSat::Lit>> y_def_cls, x_cls_solver;
 
-    // subsumed_by[b]: the helpers whose x part is a subset of b's. With one
-    // of them in a refinement, b says nothing more
-    std::vector<std::vector<uint32_t>> subsumed_by;
-    std::vector<char> in_refinement;
-    std::vector<CMSat::Lit> kept_helpers;
+    Flipper flipper;
+    RefinementMinimizer minimizer;
+    HelperSubsumption subsumption;
 
-    // selector of a helper, in y_solver: the ys satisfy all of its clauses
-    uint32_t sel_base = 0;
-    std::vector<uint32_t> backoff, skip_rounds;
-    std::vector<char> is_false, in_core;
-
-    // An existential is flipped if no clause needs its value, at this X, and
-    // the other one satisfies more existential parts. No SAT call
-    std::vector<std::vector<CMSat::Lit>> flip_cls;
-    std::vector<char> flip_mixed, can_flip;
-    std::vector<std::vector<uint32_t>> flip_occ;
-    std::vector<uint32_t> flip_vars, num_true, num_true_ex;
-
+    // Changed every round.
     // per refinement, for the Skolem functions: its helpers, and the model's Y
     std::vector<std::vector<CMSat::Lit>> refinements;
     std::vector<bool> ref_models;
@@ -229,8 +287,7 @@ private:
     std::vector<CMSat::Lit> assumps, refinement;
     double budget_used = 0;
     struct Stats {
-        uint64_t rounds = 0, ref_lits = 0, num_cubes = 0, cube_lits = 0, minim_calls = 0, minim_removed = 0;
-        uint64_t subsumed = 0, flips = 0;
+        uint64_t rounds = 0, ref_lits = 0, num_cubes = 0, cube_lits = 0, minim_removed = 0;
         double start_time = 0, setup_time = 0;
         double x_time = 0, y_time = 0, refine_time = 0, y_def_time = 0, funs_time = 0;
     } stats;
@@ -280,7 +337,7 @@ private:
 
     std::vector<std::vector<std::vector<CMSat::Lit>>> components;
     std::vector<std::vector<CMSat::Lit>> x_cls;
-    std::vector<std::pair<uint32_t, ArjunNS::aig_lit>> found_funs;
+    CoverComponent::Funs found_funs;
     uint64_t used_ticks = 0;
 };
 
