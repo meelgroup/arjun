@@ -688,28 +688,9 @@ int64_t Cover::drop_covered() {
     split_by_ys();
     std::stable_sort(components.begin(), components.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
 
-    vector<char> fixed_weight(num_vars, 0);
+    vector<char> weighted_y(num_vars, 0);
     if (cnf.get_weighted()) for (uint32_t v = 0; v < num_vars; v++)
-        if (!vars.univ[v] && cnf.weight_set(v)) fixed_weight[v] = 1;
-
-    // A component only needs the part of psi that its X reach: the rest is
-    // satisfiable apart from it, or nothing is counted anyway
-    UnionFind uf(num_vars);
-    for (const auto& cl : x_cls) for (const auto& l : cl) uf.join(l.var(), cl[0].var());
-    vector<vector<uint32_t>> psi_of(num_vars);
-    for (uint32_t i = 0; i < x_cls.size(); i++) psi_of[uf.find(x_cls[i][0].var())].push_back(i);
-    vector<char> root_seen(num_vars, 0);
-    vector<uint32_t> roots;
-
-    vector<char> gone(num_vars, 0);
-    vector<vector<Lit>> kept = x_cls;
-    struct {
-        uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0, kept_def = 0;
-        uint64_t cube_cls = 0, cube_lits = 0;
-        uint32_t up_ticks = 0, up_cubes = 0, no_budget = 0;
-        uint64_t done_ticks = 0, max_done_ticks = 0, up_ticks_used = 0, confl = 0;
-        double max_comp_t = 0;
-    } ds;
+        if (!vars.univ[v] && cnf.weight_set(v)) weighted_y[v] = 1;
     // A defined var is a good one for the counter to branch on, and its
     // defining clauses propagate better than cubes: a component with one is
     // replaced only if its clauses mostly go away. Also when the var is taken
@@ -717,93 +698,128 @@ int64_t Cover::drop_covered() {
     vector<char> is_def(num_vars, 0);
     for (const auto& v : cnf.get_opt_sampl_vars()) is_def[v] = 1;
     for (const auto& v : cnf.get_sampl_vars()) is_def[v] = 0;
-    auto drop_conf = cconf;
-    drop_conf.stop_at_cex = true;
-    drop_conf.keep_cubes = false;
+    const auto has_var = [](const Cls& cls, const vector<char>& flag) {
+        return std::any_of(cls.begin(), cls.end(), [&](const auto& cl) {
+            return std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return flag[l.var()]; }); }); };
+
+    PsiReach psi(x_cls, num_vars);
+    DropStats ds;
+    vector<char> gone(num_vars, 0);
+    Cls kept = x_cls;
     for (auto& comp_cls : components) {
-        lbool ret = l_Undef;
-        const auto any_var = [&](const vector<char>& flag) {
-            return std::any_of(comp_cls.begin(), comp_cls.end(), [&](const auto& cl) {
-                return std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return flag[l.var()]; }); }); };
-        const bool has_weight = any_var(fixed_weight);
-        const bool has_def = cconf.keep_cubes && any_var(is_def);
-        const bool only_drop = has_def && comp_cls.size() < cconf.def_replace_min_cls;
+        const bool has_weight = has_var(comp_cls, weighted_y);
+        const bool has_def = cconf.keep_cubes && has_var(comp_cls, is_def);
         ds.weighted += has_weight;
-        std::unique_ptr<CoverComponent> comp;
-        if (!has_weight && (!cconf.max_ticks || used_ticks < cconf.max_ticks)) {
-            ds.tried++;
-            const size_t sz = comp_cls.size();
-            for (const auto& cl : comp_cls) for (const auto& l : cl) {
-                if (!vars.univ[l.var()]) continue;
-                const uint32_t r = uf.find(l.var());
-                if (!root_seen[r]) { root_seen[r] = 1; roots.push_back(r); }
-            }
-            for (const auto& r : roots) {
-                root_seen[r] = 0;
-                for (const auto& i : psi_of[r]) comp_cls.push_back(x_cls[i]);
-            }
-            roots.clear();
-            // a quarter of it at most, one hopeless component does not use it all up
-            const uint64_t ticks = cconf.max_ticks ? std::min(cconf.max_ticks - used_ticks, cconf.max_ticks / 4 + 1) : 0;
-            comp = std::make_unique<CoverComponent>(vars, cnf.get_aig_mng(), comp_cls, only_drop ? drop_conf : cconf,
-                ticks, conf.verb >= 2 ? conf.verb - 1 : 0);
-            const double comp_start = cpuTime();
-            ret = comp->run().ret;
-            ds.max_comp_t = std::max(ds.max_comp_t, cpuTime() - comp_start);
-            const uint64_t t = comp->ticks();
-            used_ticks += t;
-            ds.confl += comp->conflicts();
-            comp_cls.resize(sz);
-            ds.no_y += ret == l_False;
-            if (ret == l_Undef) {
-                ds.gave_up++;
-                ds.up_ticks_used += t;
-                if (comp->out_of_ticks()) ds.up_ticks++;
-                else if (comp->kept_cubes.size() > cconf.max_cubes) ds.up_cubes++;
-            } else {
-                ds.done_ticks += t;
-                ds.max_done_ticks = std::max(ds.max_done_ticks, t);
-            }
-        } else if (!has_weight) ds.no_budget++;
-        // an empty cube: no X has a Y, let the rest of Arjun find that out
-        if (ret == l_True && std::any_of(comp->kept_cubes.begin(), comp->kept_cubes.end(),
-                [](const auto& cl) { return cl.empty(); })) ret = l_Undef;
-        if (ret == l_True && has_def && comp->kept_cubes.size() * cconf.def_replace_ratio > comp_cls.size()) {
-            ret = l_Undef;
-            ds.kept_def++;
-        }
-        if (ret != l_True) {
+        Covered c;
+        if (has_weight) {}
+        else if (cconf.max_ticks && used_ticks >= cconf.max_ticks) ds.no_budget++;
+        else c = cover_for_drop(comp_cls, has_def, psi, ds);
+
+        const Action action = choose_action(c, has_def, comp_cls.size());
+        if (action == Action::keep_def) ds.kept_def++;
+        if (action == Action::keep || action == Action::keep_def) {
             for (auto& cl : comp_cls) kept.push_back(std::move(cl));
             continue;
         }
-        if (comp->kept_cubes.empty()) ds.dropped++;
+        if (action == Action::drop) ds.dropped++;
         else ds.replaced++;
-        ds.cube_cls += comp->kept_cubes.size();
-        for (const auto& cl : comp->kept_cubes) ds.cube_lits += cl.size();
-        for (auto& cl : comp->kept_cubes) kept.push_back(std::move(cl));
+        ds.cube_cls += c.cubes.size();
+        for (const auto& cl : c.cubes) ds.cube_lits += cl.size();
+        for (auto& cl : c.cubes) kept.push_back(std::move(cl));
         for (const auto& cl : comp_cls) for (const auto& l : cl) if (!vars.univ[l.var()]) gone[l.var()] = 1;
     }
+    const int64_t removed = set_kept(std::move(kept), gone);
+    if (conf.verb) ds.print(components.size(), removed, std::count(gone.begin(), gone.end(), 1), used_ticks, start);
+    return removed;
+}
 
+// Covers the component with the part of psi it reaches. With a defined var
+// and few clauses, cubes would not replace it: then it can only be dropped
+Cover::Covered Cover::cover_for_drop(Cls& comp_cls, const bool has_def, PsiReach& psi, DropStats& ds) {
+    ds.tried++;
+    const size_t sz = comp_cls.size();
+    psi.add_reached(vars, comp_cls);
+    auto drop_conf = cconf;
+    drop_conf.stop_at_cex = true;
+    drop_conf.keep_cubes = false;
+    const bool only_drop = has_def && sz < cconf.def_replace_min_cls;
+    // a quarter of it at most, one hopeless component does not use it all up
+    const uint64_t ticks = cconf.max_ticks ? std::min(cconf.max_ticks - used_ticks, cconf.max_ticks / 4 + 1) : 0;
+    CoverComponent comp(vars, cnf.get_aig_mng(), comp_cls, only_drop ? drop_conf : cconf,
+        ticks, conf.verb >= 2 ? conf.verb - 1 : 0);
+    const double comp_start = cpuTime();
+    Covered c;
+    c.ret = comp.run().ret;
+    ds.max_comp_t = std::max(ds.max_comp_t, cpuTime() - comp_start);
+    const uint64_t t = comp.ticks();
+    used_ticks += t;
+    ds.confl += comp.conflicts();
+    comp_cls.resize(sz);
+    ds.no_y += c.ret == l_False;
+    if (c.ret == l_Undef) {
+        ds.gave_up++;
+        ds.up_ticks_used += t;
+        if (comp.out_of_ticks()) ds.up_ticks++;
+        else if (comp.kept_cubes.size() > cconf.max_cubes) ds.up_cubes++;
+    } else {
+        ds.done_ticks += t;
+        ds.max_done_ticks = std::max(ds.max_done_ticks, t);
+    }
+    c.cubes = std::move(comp.kept_cubes);
+    return c;
+}
+
+Cover::Action Cover::choose_action(const Covered& c, const bool has_def, const size_t num_cls) const {
+    if (c.ret != l_True) return Action::keep;
+    // an empty cube: no X has a Y, let the rest of Arjun find that out
+    if (std::any_of(c.cubes.begin(), c.cubes.end(), [](const auto& cl) { return cl.empty(); })) return Action::keep;
+    if (has_def && c.cubes.size() * cconf.def_replace_ratio > num_cls) return Action::keep_def;
+    return c.cubes.empty() ? Action::drop : Action::replace;
+}
+
+int64_t Cover::set_kept(Cls&& kept, const vector<char>& gone) {
     const int64_t removed = (int64_t)cnf.get_clauses().size() - (int64_t)kept.size();
-    vector<vector<Lit>> red;
+    Cls red;
     for (const auto& cl : cnf.get_red_clauses())
         if (std::none_of(cl.begin(), cl.end(), [&](const Lit l) { return gone[l.var()]; })) red.push_back(cl);
     vector<uint32_t> opt_sampl;
     for (const auto& v : cnf.get_opt_sampl_vars()) if (!gone[v]) opt_sampl.push_back(v);
     cnf.set_all_clauses(std::move(kept), std::move(red));
     cnf.set_opt_sampl_vars(opt_sampl);
-
-    if (conf.verb) std::cout << "c o [cover-drop] components: " << components.size() << " tried: " << ds.tried
-        << " dropped: " << ds.dropped << " replaced: " << ds.replaced << " by cls: " << ds.cube_cls
-        << " avg sz: " << std::setprecision(1) << std::fixed << (ds.cube_cls ? (double)ds.cube_lits / ds.cube_cls : 0)
-        << " no-Y: " << ds.no_y << " gave up: " << ds.gave_up << " (ticks: " << ds.up_ticks << " cubes: " << ds.up_cubes
-        << ") no budget: " << ds.no_budget << " weighted: " << ds.weighted << " kept defined: " << ds.kept_def
-        << " cls removed: " << removed << " vars gone: " << std::count(gone.begin(), gone.end(), 1)
-        << " Mticks: " << std::setprecision(1) << std::fixed << used_ticks / 1e6
-        << " (done: " << ds.done_ticks / 1e6 << " max done: " << ds.max_done_ticks / 1e6
-        << " gave up: " << ds.up_ticks_used / 1e6 << ") confl: " << ds.confl
-        << " T: " << std::setprecision(2) << cpuTime() - start << " max comp T: " << ds.max_comp_t << std::endl;
     return removed;
+}
+
+Cover::PsiReach::PsiReach(const Cls& _psi, const uint32_t num_vars) :
+        psi(_psi), uf(num_vars), psi_of(num_vars), root_seen(num_vars, 0) {
+    for (const auto& cl : psi) for (const auto& l : cl) uf.join(l.var(), cl[0].var());
+    for (uint32_t i = 0; i < psi.size(); i++) psi_of[uf.find(psi[i][0].var())].push_back(i);
+}
+
+void Cover::PsiReach::add_reached(const CnfVars& vars, Cls& comp_cls) {
+    for (const auto& cl : comp_cls) for (const auto& l : cl) {
+        if (!vars.univ[l.var()]) continue;
+        const uint32_t r = uf.find(l.var());
+        if (!root_seen[r]) { root_seen[r] = 1; roots.push_back(r); }
+    }
+    for (const auto& r : roots) {
+        root_seen[r] = 0;
+        for (const auto& i : psi_of[r]) comp_cls.push_back(psi[i]);
+    }
+    roots.clear();
+}
+
+void Cover::DropStats::print(const size_t num_comps, const int64_t removed, const size_t vars_gone,
+        const uint64_t used_ticks, const double start) const {
+    std::cout << "c o [cover-drop] components: " << num_comps << " tried: " << tried
+        << " dropped: " << dropped << " replaced: " << replaced << " by cls: " << cube_cls
+        << " avg sz: " << std::setprecision(1) << std::fixed << (cube_cls ? (double)cube_lits / cube_cls : 0)
+        << " no-Y: " << no_y << " gave up: " << gave_up << " (ticks: " << up_ticks << " cubes: " << up_cubes
+        << ") no budget: " << no_budget << " weighted: " << weighted << " kept defined: " << kept_def
+        << " cls removed: " << removed << " vars gone: " << vars_gone
+        << " Mticks: " << std::setprecision(1) << std::fixed << used_ticks / 1e6
+        << " (done: " << done_ticks / 1e6 << " max done: " << max_done_ticks / 1e6
+        << " gave up: " << up_ticks_used / 1e6 << ") confl: " << confl
+        << " T: " << std::setprecision(2) << cpuTime() - start << " max comp T: " << max_comp_t << std::endl;
 }
 
 lbool Cover::run(vector<lbool>& cex) {

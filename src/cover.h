@@ -330,6 +330,42 @@ private:
             std::vector<CMSat::lbool>& cex);
     void set_funs();
 
+    // drop_covered()
+    using Cls = std::vector<std::vector<CMSat::Lit>>;
+    struct DropStats {
+        uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0, kept_def = 0;
+        uint64_t cube_cls = 0, cube_lits = 0;
+        uint32_t up_ticks = 0, up_cubes = 0, no_budget = 0;
+        uint64_t done_ticks = 0, max_done_ticks = 0, up_ticks_used = 0, confl = 0;
+        double max_comp_t = 0;
+        void print(size_t num_comps, int64_t removed, size_t vars_gone, uint64_t used_ticks, double start) const;
+    };
+    // A component only needs the part of psi that its X reach, through the X
+    // psi's clauses share: the rest is satisfiable apart from it, or nothing
+    // is counted anyway
+    class PsiReach {
+    public:
+        PsiReach(const Cls& psi, uint32_t num_vars);
+        // appends to comp_cls the clauses of psi its X reach
+        void add_reached(const CnfVars& vars, Cls& comp_cls);
+    private:
+        const Cls& psi;
+        UnionFind uf;
+        std::vector<std::vector<uint32_t>> psi_of; // per root, its clauses
+        std::vector<char> root_seen;
+        std::vector<uint32_t> roots;
+    };
+    struct Covered {
+        CMSat::lbool ret = CMSat::l_Undef;
+        Cls cubes; // keep_cubes: per X-cube with no Y, a clause that rules it out
+    };
+    // what becomes of a component. keep_def: kept as its defined var beats the cubes
+    enum class Action { keep, keep_def, drop, replace };
+    Covered cover_for_drop(Cls& comp_cls, bool has_def, PsiReach& psi, DropStats& ds);
+    Action choose_action(const Covered& c, bool has_def, size_t num_cls) const;
+    // kept: the clauses left; gone: the ys of the components that went
+    int64_t set_kept(Cls&& kept, const std::vector<char>& gone);
+
     const Config& conf;
     const ArjunNS::Arjun::CoverConf& cconf;
     ArjunNS::SimplifiedCNF& cnf;
