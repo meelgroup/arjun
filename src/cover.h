@@ -144,9 +144,9 @@ public:
     // adds the selectors and their clauses to y_solver
     RefinementMinimizer(MetaSolver& y_solver, const std::vector<SplitClause>& split_cls, uint32_t num_helpers,
             const ArjunNS::Arjun::CoverConf& cconf);
-    // assumps: the X; refinement: the helpers whose y parts `model` leaves false
+    // assumps: the X; false_helpers: the indices of the helpers whose y parts `model` leaves false
     std::vector<CMSat::lbool> minimize(std::vector<CMSat::lbool> model, std::vector<CMSat::Lit>& assumps,
-            const std::vector<uint32_t>& refinement, const std::function<CMSat::lbool(std::vector<CMSat::Lit>&)>& solve,
+            const std::vector<uint32_t>& false_helpers, const std::function<CMSat::lbool(std::vector<CMSat::Lit>&)>& solve,
             const std::function<bool()>& out_of_ticks);
     uint64_t calls = 0;
 
@@ -155,7 +155,7 @@ private:
     MetaSolver* y_solver = nullptr;
     uint32_t sel_base = 0, max_calls = 0, max_wait = 0;
     std::vector<uint32_t> backoff, skip_rounds;
-    std::vector<char> in_refinement, in_core;
+    std::vector<char> is_false_helper, in_core;
 };
 
 // subsumed_by[b]: the helpers whose x part is a subset of b's. With one of

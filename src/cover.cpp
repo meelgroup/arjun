@@ -241,7 +241,7 @@ RefinementMinimizer::RefinementMinimizer(MetaSolver& _y_solver, const vector<Spl
         const uint32_t num_helpers, const Arjun::CoverConf& cconf) :
         y_solver(&_y_solver), sel_base(_y_solver.nVars()), max_calls(cconf.max_minim_calls),
         max_wait(cconf.max_minim_wait), backoff(num_helpers, 0), skip_rounds(num_helpers, 0),
-        in_refinement(num_helpers, 0), in_core(num_helpers, 0) {
+        is_false_helper(num_helpers, 0), in_core(num_helpers, 0) {
     for (uint32_t i = 0; i < num_helpers; i++) y_solver->new_var();
     for (const auto& split : split_cls) {
         auto cl = split.y_part;
@@ -323,15 +323,15 @@ bool Flipper::flip(vector<lbool>& model) {
 }
 
 vector<lbool> RefinementMinimizer::minimize(vector<lbool> model, vector<Lit>& assumps,
-        const vector<uint32_t>& refinement, const std::function<lbool(vector<Lit>&)>& solve,
+        const vector<uint32_t>& false_helpers, const std::function<lbool(vector<Lit>&)>& solve,
         const std::function<bool()>& out_of_ticks) {
     const size_t num_x = assumps.size();
-    std::fill(in_refinement.begin(), in_refinement.end(), 0);
-    for (const auto& i : refinement) in_refinement[i] = 1;
-    for (uint32_t i = 0; i < in_refinement.size(); i++) if (!in_refinement[i]) assumps.push_back(selector(i));
+    std::fill(is_false_helper.begin(), is_false_helper.end(), 0);
+    for (const auto& i : false_helpers) is_false_helper[i] = 1;
+    for (uint32_t i = 0; i < is_false_helper.size(); i++) if (!is_false_helper[i]) assumps.push_back(selector(i));
     const size_t base = assumps.size();
     vector<uint32_t> to_try, still_to_try;
-    for (const auto& i : refinement) {
+    for (const auto& i : false_helpers) {
         if (skip_rounds[i]) skip_rounds[i]--;
         else to_try.push_back(i);
     }
@@ -551,9 +551,9 @@ void CoverComponent::refine() {
     }
     if (sat_minim && refinement.size() > 1) {
         const size_t before = refinement.size();
-        vector<uint32_t> ref_idx;
-        for (const auto& h : refinement) ref_idx.push_back(helper_idx(h));
-        model = minimizer.minimize(model, assumps, ref_idx,
+        vector<uint32_t> false_helper_idxs;
+        for (const auto& h : refinement) false_helper_idxs.push_back(helper_idx(h));
+        model = minimizer.minimize(model, assumps, false_helper_idxs,
                 [&](vector<Lit>& assumptions) { return solve(y_solver, &assumptions); },
                 [&] { return out_of_ticks(); });
         assert(assumps.size() == num_x);
