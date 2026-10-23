@@ -131,7 +131,7 @@ private:
     std::vector<std::vector<CMSat::Lit>> cls; // the ones with a var to flip
     std::vector<char> has_x;
     std::vector<std::vector<uint32_t>> occ; // per literal, its clauses
-    std::vector<uint32_t> flip_vars, num_true, num_true_y;
+    std::vector<uint32_t> flip_vars, num_true, num_y_true;
 };
 
 // A model for the same X whose ys satisfy the y parts that the given one
@@ -155,7 +155,7 @@ private:
     MetaSolver* y_solver = nullptr;
     uint32_t sel_base = 0, max_calls = 0, max_wait = 0;
     std::vector<uint32_t> backoff, skip_rounds;
-    std::vector<char> is_false, in_core;
+    std::vector<char> in_refinement, in_core;
 };
 
 // subsumed_by[b]: the helpers whose x part is a subset of b's. With one of
@@ -225,14 +225,14 @@ private:
     ArjunNS::aig_lit y_def_cls_hold(Subst& s);
     void build_funs(Funs& funs);
 
-    CMSat::lbool solve(MetaSolver& s, std::vector<CMSat::Lit>* as = nullptr);
-    CMSat::Lit in_y(const CMSat::Lit l) const { return CMSat::Lit(to_y[l.var()], l.sign()); }
+    CMSat::lbool solve(MetaSolver& solver, std::vector<CMSat::Lit>* assumptions = nullptr);
+    CMSat::Lit in_solvers(const CMSat::Lit l) const { return CMSat::Lit(solver_var[l.var()], l.sign()); }
     uint32_t helper_idx(const CMSat::Lit h) const { return h.var() - helper_base; }
     void new_y_var(const uint32_t v) {
-        to_y[v] = y_solver.nVars();
+        solver_var[v] = y_solver.nVars();
         y_solver.new_var();
     }
-    static double sq_frac(const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); }
+    static double frac_squared(const double num, const double of) { return num == 0 ? 0 : (num / of) * (num / of); }
     template<class F> static auto timed(double& sum, F&& fun) {
         const double start = cpuTime();
         const auto ret = fun();
@@ -257,19 +257,19 @@ private:
     // The vars that already have a function. One of X only is on the x side
     // with X: x_solver picks it, tied to its function there. Any other one
     // follows the ys: `y_def_cls`, the clauses they are in, are rewritten for
-    // every model. `x_side` is X, the first `num_xs`, then those functions.
+    // every model. `x_side` is X, the first `num_x`, then those functions.
     std::vector<VarKind> state;
     std::vector<uint32_t> defined, unconstrained;
     std::vector<uint32_t> x_side;
-    uint32_t num_xs = 0;
+    uint32_t num_x = 0;
     std::vector<char> on_x_side;
 
     // The solvers only get the vars they have clauses on: the x side, at
     // the same index in both, then for y_solver the rest
-    std::vector<uint32_t> to_y, ys;
+    std::vector<uint32_t> solver_var, y_vars;
 
     Subst defs_in_y, defs_in_x, defs_in_vars;
-    std::vector<ArjunNS::aig_lit> keep; // the encoders cache by node address
+    std::vector<ArjunNS::aig_lit> aig_refs; // the encoders cache by node address
     ArjunNS::AIGToCNF<MetaSolver> enc_y, enc_x;
 
     uint32_t helper_base = 0;
@@ -363,8 +363,8 @@ private:
     };
     // what becomes of a component. keep_def: kept as its defined var beats the cubes
     enum class Action { keep, keep_def, drop, replace };
-    Covered cover_for_drop(Cls& comp_cls, bool has_def, PsiReach& psi, DropStats& ds);
-    Action choose_action(const Covered& c, bool has_def, size_t num_cls) const;
+    Covered cover_for_drop(Cls& comp_cls, bool has_def, PsiReach& psi, DropStats& drop_stats);
+    Action choose_action(const Covered& covered, bool has_def, size_t num_cls) const;
     // gone: the ys of the components that went; cubes: the clauses replacing them
     int64_t set_kept(const std::vector<char>& gone, Cls&& cubes);
 
