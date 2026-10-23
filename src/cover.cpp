@@ -71,6 +71,7 @@ using std::set;
 
 // Per var of cls: X, a function of X only, or a y; and which ones have a def or no clause
 CoverComponent::Classified CoverComponent::classify_defined(const CoverProblem& problem, const vector<vector<Lit>>& cls) {
+    SLOW_DEBUG_DO(for (const auto& cl : cls) for (const auto& l : cl) assert(l.var() < problem.size()));
     Classified ret;
     auto& state = ret.kind;
     auto& defined = ret.defined;
@@ -100,6 +101,8 @@ CoverComponent::Classified CoverComponent::classify_defined(const CoverProblem& 
 
 // The x side and the ys get their solver vars; y_solver gets the clauses
 void CoverComponent::add_vars_and_cls() {
+    assert(x_side.empty() && y_vars.empty() && solver_var.empty());
+    assert(x_solver.nVars() == 0 && y_solver.nVars() == 0);
     auto classified = classify_defined(problem, comp_cls);
     state = std::move(classified.kind);
     defined = std::move(classified.defined);
@@ -145,6 +148,8 @@ void CoverComponent::add_vars_and_cls() {
 
 // the X of the assumptions with the ys of model satisfy what y_solver got of comp_cls
 bool CoverComponent::model_satisfies(const vector<lbool>& model) const {
+    assert(assumps.size() == num_x);
+    assert(model.size() == y_solver.nVars());
     for (uint32_t i = 0; i < assumps.size(); i++)
         if (model[assumps[i].var()] != boolToLBool(!assumps[i].sign())) return false;
     for (const auto& cl : comp_cls) {
@@ -158,6 +163,8 @@ bool CoverComponent::model_satisfies(const vector<lbool>& model) const {
 
 // y_solver keeps to the functions, so that its models are ones x_solver can rule out
 void CoverComponent::tie_defs() {
+    assert(solver_var.size() == num_vars);
+    assert(aig_refs.empty());
     for (uint32_t v = 0; v < num_vars; v++) if (solver_var[v] != none) defs_in_y.leaf[v] = AIG::new_lit(solver_var[v]);
     for (const auto& v : x_side) {
         defs_in_x.leaf[v] = AIG::new_lit(solver_var[v]);
@@ -177,6 +184,8 @@ void CoverComponent::tie_defs() {
 
 // A helper per distinct x part of the clauses with ys, in x_solver, and the clauses split by it
 void CoverComponent::add_helpers() {
+    assert(helpers.empty() && split_cls.empty() && y_def_cls.empty() && x_cls_solver.empty());
+    assert(x_solver.nVars() >= x_side.size());
     helper_base = x_solver.nVars();
     map<vector<Lit>, uint32_t> helper_of;
     for (const auto& cl : comp_cls) {
@@ -213,6 +222,8 @@ void CoverComponent::add_helpers() {
 // Finds, within work, which helpers' x parts are subsets of which others'
 HelperSubsumption::HelperSubsumption(const vector<Helper>& helpers, int64_t work) :
         subsumed_by(helpers.size()), in_refinement(helpers.size(), 0) {
+    // std::includes needs them sorted
+    for (const auto& h : helpers) assert(std::is_sorted(h.x_part.begin(), h.x_part.end()));
     map<Lit, vector<uint32_t>> occ;
     for (uint32_t i = 0; i < helpers.size(); i++) for (const auto& l : helpers[i].x_part) occ[l].push_back(i);
     for (uint32_t sub = 0; sub < helpers.size() && work > 0; sub++) {
@@ -231,6 +242,8 @@ HelperSubsumption::HelperSubsumption(const vector<Helper>& helpers, int64_t work
 
 // Drops the helpers of refinement that another one in it makes redundant
 void HelperSubsumption::drop(vector<Lit>& refinement, const uint32_t helper_base) {
+    for (const auto& h : refinement) assert(h.var() >= helper_base && h.var() - helper_base < subsumed_by.size());
+    SLOW_DEBUG_DO(for (const auto& f : in_refinement) assert(!f));
     for (const auto& h : refinement) in_refinement[h.var() - helper_base] = 1;
     kept.clear();
     for (const auto& h : refinement) {
@@ -248,6 +261,7 @@ RefinementMinimizer::RefinementMinimizer(MetaSolver& _y_solver, const vector<Spl
         y_solver(&_y_solver), sel_base(_y_solver.nVars()), max_calls(cconf.max_minim_calls),
         max_wait(cconf.max_minim_wait), backoff(num_helpers, 0), skip_rounds(num_helpers, 0),
         is_false_helper(num_helpers, 0), in_core(num_helpers, 0) {
+    for (const auto& split : split_cls) assert(split.helper < num_helpers);
     for (uint32_t i = 0; i < num_helpers; i++) y_solver->new_var();
     for (const auto& split : split_cls) {
         auto cl = split.y_part;
@@ -258,6 +272,7 @@ RefinementMinimizer::RefinementMinimizer(MetaSolver& _y_solver, const vector<Spl
 
 // a model that satisfies many existential parts makes a short refinement
 void CoverComponent::set_phases() {
+    for (const auto& v : y_vars) assert(solver_var[v] != none);
     vector<int> pos_occ(y_solver.nVars(), 0);
     for (const auto& split : split_cls) for (const auto& l : split.y_part) pos_occ[l.var()] += l.sign() ? -1 : 1;
     for (const auto& v : y_vars) if (!problem.defined(v)) y_solver.set_phase(Lit(solver_var[v], pos_occ[solver_var[v]] <= 0));
@@ -265,6 +280,8 @@ void CoverComponent::set_phases() {
 
 // Sets up the Flipper over the ys that are in no y_def_cls clause and no def depends on
 void CoverComponent::init_flip() {
+    assert(solver_var.size() == num_vars);
+    assert(flipper.flips == 0);
     vector<char> can_flip(y_solver.nVars(), 0);
     if (flip_minim) for (const auto& v : y_vars) if (!problem.defined(v)) can_flip[solver_var[v]] = 1;
     for (const auto& cl : y_def_cls) for (const auto& l : cl) can_flip[solver_var[l.var()]] = 0;
@@ -284,6 +301,7 @@ void CoverComponent::init_flip() {
 // Keeps the clauses with a var it may flip, and per literal, its clauses
 Flipper::Flipper(const vector<vector<Lit>>& all_cls, const vector<char>& can_flip, const uint32_t _num_x_side) :
         num_x_side(_num_x_side), occ(can_flip.size() * 2) {
+    assert(num_x_side <= can_flip.size());
     for (const auto& cl : all_cls) {
         bool has_flip = false, has_x_side = false;
         for (const auto& l : cl) {
@@ -302,6 +320,7 @@ Flipper::Flipper(const vector<vector<Lit>>& all_cls, const vector<char>& can_fli
 
 // Flips ys while that satisfies the y parts of more clauses with an x side, breaking none
 bool Flipper::flip(vector<lbool>& model) {
+    assert(model.size() * 2 >= occ.size());
     for (uint32_t c = 0; c < cls.size(); c++) {
         num_true[c] = num_y_true[c] = 0;
         for (const auto& l : cls[c]) if (model[l.var()] == boolToLBool(!l.sign())) {
@@ -335,6 +354,11 @@ bool Flipper::flip(vector<lbool>& model) {
 vector<lbool> RefinementMinimizer::minimize(vector<lbool> model, vector<Lit>& assumps,
         const vector<uint32_t>& false_helpers, const std::function<lbool(vector<Lit>&)>& solve,
         const std::function<bool()>& out_of_ticks) {
+    assert(!false_helpers.empty());
+    for (const auto& i : false_helpers) assert(i < is_false_helper.size());
+    for (const auto& a : assumps) assert(a.var() < sel_base);
+    assert(model.size() >= sel_base + is_false_helper.size());
+    SLOW_DEBUG_DO(for (const auto& f : in_core) assert(!f));
     const size_t num_x = assumps.size();
     std::fill(is_false_helper.begin(), is_false_helper.end(), 0);
     for (const auto& i : false_helpers) is_false_helper[i] = 1;
@@ -377,6 +401,7 @@ vector<lbool> RefinementMinimizer::minimize(vector<lbool> model, vector<Lit>& as
 
 // The helpers of the clauses whose y part model leaves false
 void CoverComponent::compute_refinement(const vector<lbool>& model) {
+    assert(model.size() == y_solver.nVars());
     refinement.clear();
     for (const auto& split : split_cls) {
         const bool sat = std::any_of(split.y_part.begin(), split.y_part.end(),
@@ -389,6 +414,7 @@ void CoverComponent::compute_refinement(const vector<lbool>& model) {
 
 // the X that satisfy the y_def_cls, given the ys in s.val
 aig_lit CoverComponent::y_def_cls_hold(Subst& s) {
+    assert(!y_def_cls.empty());
     s.new_round();
     aig_lit ret = aig_mng.new_const(true);
     for (const auto& cl : y_def_cls) {
@@ -405,6 +431,9 @@ aig_lit CoverComponent::y_def_cls_hold(Subst& s) {
 // y takes its value from the first model that works for X. Built from
 // the rarer value of y, the other one is the default
 void CoverComponent::build_funs(Funs& funs) {
+    assert(cconf.need_funs);
+    assert(ref_models.size() == refinements.size() * y_vars.size());
+    assert(funs.empty());
     // `before`: an earlier model works. In blocks, a chain would be as deep as the rounds
     const uint32_t num_refs = refinements.size();
     const uint32_t block_size = std::max<uint32_t>(1, std::sqrt(num_refs));
@@ -459,6 +488,7 @@ void CoverComponent::print_stats(const char* what) {
 
 // A call that would go over max_ticks stops and gives up the component
 lbool CoverComponent::solve(MetaSolver& solver, vector<Lit>* assumptions) {
+    if (assumptions) for (const auto& a : *assumptions) assert(a.var() < solver.nVars());
     if (max_ticks) {
         const uint64_t used = ticks();
         if (used >= max_ticks) gave_up = true;
@@ -478,6 +508,7 @@ lbool CoverComponent::finish(const lbool ret) {
 
 // The X of x_solver's model, in the numbering of problem
 void CoverComponent::cex_from_x_solver(vector<lbool>& cex) {
+    assert(cex.empty());
     cex.assign(num_vars, l_Undef);
     for (uint32_t i = 0; i < num_x; i++) cex[x_side[i]] = x_solver.get_model()[solver_var[x_side[i]]];
 }
@@ -485,6 +516,9 @@ void CoverComponent::cex_from_x_solver(vector<lbool>& cex) {
 // A clause of x side vars only: an X that falsifies it has no Y. As a
 // helper it would be in every refinement
 bool CoverComponent::x_cls_cex(vector<lbool>& cex) {
+    assert(cex.empty());
+    assert(cconf.stop_at_cex && !cconf.assume_outer);
+    assert(stats.rounds == 0);
     if (x_cls_solver.empty()) return false;
     x_solver.new_var();
     vector<Lit> falsified = {Lit(x_solver.nVars()-1, true)};
@@ -507,6 +541,9 @@ bool CoverComponent::x_cls_cex(vector<lbool>& cex) {
 
 // no X in the cube of y_solver's conflict has a Y, so any function will do there
 void CoverComponent::block_no_y_cube() {
+    // y_solver just found no Y for the X in assumps
+    assert(!cconf.stop_at_cex);
+    assert(assumps.size() == num_x);
     auto cube = y_solver.get_conflict();
     // A kept cube becomes a clause of the counted CNF: the shorter, the more it propagates
     if (cconf.keep_cubes && cconf.minim_cubes) {
@@ -541,6 +578,8 @@ void CoverComponent::block_no_y_cube() {
 
 // x_solver gets all of comp_cls, ys included, so it only proposes X that have a Y
 void CoverComponent::x_solver_gets_cls() {
+    assert(!cconf.keep_cubes);
+    assert(stats.num_cubes == 1);
     vector<uint32_t> to_x(num_vars, none);
     for (const auto& v : x_side) to_x[v] = solver_var[v];
     for (const auto& v : y_vars) {
@@ -606,6 +645,7 @@ void CoverComponent::refine() {
 
 // The CEGAR loop: x_solver proposes an X, y_solver finds it a Y or proves there is none
 CoverComponent::Result CoverComponent::run() {
+    assert(stats.rounds == 0);
     Result result;
     auto done = [&](const lbool ret) {
         result.ret = finish(ret);
@@ -658,6 +698,7 @@ CoverComponent::Result CoverComponent::run() {
 // Clauses that share no y, directly or through a function, are
 // covered apart: together they need the product of their models
 void Cover::split_by_ys() {
+    assert(components.empty() && x_cls.empty());
     const uint32_t num_vars = problem.size();
     const auto [state, defined, unconstrained] = CoverComponent::classify_defined(problem, cnf.get_clauses());
     vector<char> on_x_side(num_vars, 0);
@@ -704,6 +745,8 @@ void Cover::split_by_ys() {
 
 // Covers one component with what is left of the ticks
 lbool Cover::cover_one(const vector<vector<Lit>>& comp_cls, const uint32_t verb, vector<lbool>& cex) {
+    assert(cex.empty());
+    if (cconf.max_ticks) assert(used_ticks < cconf.max_ticks);
     CoverComponent comp(problem, cnf.get_aig_mng(), comp_cls, cconf, cconf.max_ticks ? cconf.max_ticks - used_ticks : 0, verb);
     auto r = comp.run();
     used_ticks += comp.ticks();
@@ -714,6 +757,8 @@ lbool Cover::cover_one(const vector<vector<Lit>>& comp_cls, const uint32_t verb,
 
 // Covers the components one by one, smallest first, until one is not covered
 lbool Cover::cover_components(vector<lbool>& cex) {
+    assert(components.size() > 1);
+    assert(cex.empty());
     const uint32_t verb = conf.verb;
     std::stable_sort(components.begin(), components.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
     components.back().insert(components.back().end(), x_cls.begin(), x_cls.end());
@@ -732,6 +777,7 @@ lbool Cover::cover_components(vector<lbool>& cex) {
 
 // The Skolem functions found go to cnf as defs, in the original numbering
 void Cover::set_funs() {
+    assert(cconf.need_funs && trans);
     vector<aig_lit> funs;
     for (const auto& d : found_funs) funs.push_back(d.second);
     trans->funs_to_orig(funs);
@@ -754,6 +800,8 @@ void Cover::set_funs() {
 // - kept: it has a weighted Y (its weight would be lost), or the ticks ran out
 // Each component gets at most a quarter of max_ticks.
 int64_t Cover::drop_covered() {
+    assert(!trans);
+    assert(components.empty() && used_ticks == 0);
     const double start = cpuTime();
     const uint32_t num_vars = problem.size();
     if (std::any_of(cnf.get_clauses().begin(), cnf.get_clauses().end(), [](const auto& cl) { return cl.empty(); }))
@@ -806,6 +854,8 @@ int64_t Cover::drop_covered() {
 // Covers the component with the part of psi it reaches. With a defined var
 // and few clauses, cubes would not replace it: then it can only be dropped
 Cover::Covered Cover::cover_for_drop(Cls& comp_cls, const bool has_def, PsiReach& psi, DropStats& drop_stats) {
+    assert(cconf.assume_outer);
+    if (cconf.max_ticks) assert(used_ticks < cconf.max_ticks);
     drop_stats.tried++;
     const size_t num_comp_cls = comp_cls.size();
     psi.add_reached(problem.is_x, comp_cls);
@@ -855,6 +905,7 @@ Cover::Action Cover::choose_action(const Covered& covered, const bool has_def, c
 // The ys of different components are disjoint: a clause goes iff it has a
 // gone y. The rest keep their order, which the counter is sensitive to
 int64_t Cover::set_kept(const vector<char>& gone, Cls&& cubes) {
+    assert(gone.size() == problem.size());
     for (const auto& v : cnf.get_sampl_vars()) assert(!gone[v]);
     if (cubes.empty() && std::none_of(gone.begin(), gone.end(), [](const char g) { return g; })) return 0;
     const auto has_gone = [&](const vector<Lit>& cl) {
@@ -876,12 +927,15 @@ int64_t Cover::set_kept(const vector<char>& gone, Cls&& cubes) {
 // Groups psi's clauses by the X they share
 Cover::PsiReach::PsiReach(const Cls& _psi, const uint32_t num_vars) :
         psi(_psi), uf(num_vars), psi_of(num_vars), root_seen(num_vars, 0) {
+    for (const auto& cl : psi) assert(!cl.empty());
     for (const auto& cl : psi) for (const auto& l : cl) uf.join(l.var(), cl[0].var());
     for (uint32_t i = 0; i < psi.size(); i++) psi_of[uf.find(psi[i][0].var())].push_back(i);
 }
 
 // Appends to comp_cls the clauses of psi that its X reach
 void Cover::PsiReach::add_reached(const vector<char>& is_x, Cls& comp_cls) {
+    assert(roots.empty());
+    SLOW_DEBUG_DO(for (const auto& s : root_seen) assert(!s));
     for (const auto& cl : comp_cls) for (const auto& l : cl) {
         if (!is_x[l.var()]) continue;
         const uint32_t r = uf.find(l.var());
@@ -911,6 +965,7 @@ void Cover::DropStats::print(const size_t num_comps, const int64_t removed, cons
 
 // Decides ∀X ∃Y of the whole CNF, component by component; sets the defs if asked
 lbool Cover::run(vector<lbool>& cex) {
+    assert(trans);
     assert(cex.empty());
     split_by_ys();
     vector<lbool> cex_internal;
