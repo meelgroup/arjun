@@ -328,7 +328,8 @@ vector<lbool> RefinementMinimizer::minimize(vector<lbool> model, vector<Lit>& as
     const size_t num_x = assumps.size();
     std::fill(is_false_helper.begin(), is_false_helper.end(), 0);
     for (const auto& i : false_helpers) is_false_helper[i] = 1;
-    for (uint32_t i = 0; i < is_false_helper.size(); i++) if (!is_false_helper[i]) assumps.push_back(selector(i));
+    for (uint32_t i = 0; i < is_false_helper.size(); i++)
+      if (!is_false_helper[i]) assumps.push_back(selector(i));
     const size_t base = assumps.size();
     vector<uint32_t> to_try, still_to_try;
     for (const auto& i : false_helpers) {
