@@ -365,8 +365,8 @@ private:
     enum class Action { keep, keep_def, drop, replace };
     Covered cover_for_drop(Cls& comp_cls, bool has_def, PsiReach& psi, DropStats& ds);
     Action choose_action(const Covered& c, bool has_def, size_t num_cls) const;
-    // kept: the clauses left; gone: the ys of the components that went
-    int64_t set_kept(Cls&& kept, const std::vector<char>& gone);
+    // gone: the ys of the components that went; cubes: the clauses replacing them
+    int64_t set_kept(const std::vector<char>& gone, Cls&& cubes);
 
     const Config& conf;
     const ArjunNS::Arjun::CoverConf& cconf;

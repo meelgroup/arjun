@@ -756,7 +756,7 @@ int64_t Cover::drop_covered() {
     PsiReach psi(x_cls, num_vars);
     DropStats ds;
     vector<char> gone(num_vars, 0);
-    Cls kept = x_cls;
+    Cls cubes;
     for (auto& comp_cls : components) {
         const bool has_weight = has_var(comp_cls, weighted_y);
         const bool has_def = cconf.keep_cubes && has_var(comp_cls, is_def);
@@ -768,18 +768,15 @@ int64_t Cover::drop_covered() {
 
         const Action action = choose_action(c, has_def, comp_cls.size());
         if (action == Action::keep_def) ds.kept_def++;
-        if (action == Action::keep || action == Action::keep_def) {
-            for (auto& cl : comp_cls) kept.push_back(std::move(cl));
-            continue;
-        }
+        if (action == Action::keep || action == Action::keep_def) continue;
         if (action == Action::drop) ds.dropped++;
         else ds.replaced++;
         ds.cube_cls += c.cubes.size();
         for (const auto& cl : c.cubes) ds.cube_lits += cl.size();
-        for (auto& cl : c.cubes) kept.push_back(std::move(cl));
+        for (auto& cl : c.cubes) cubes.push_back(std::move(cl));
         for (const auto& cl : comp_cls) for (const auto& l : cl) if (!problem.is_x[l.var()]) gone[l.var()] = 1;
     }
-    const int64_t removed = set_kept(std::move(kept), gone);
+    const int64_t removed = set_kept(gone, std::move(cubes));
     if (conf.verb) ds.print(components.size(), removed, std::count(gone.begin(), gone.end(), 1), used_ticks, start);
     return removed;
 }
@@ -832,13 +829,20 @@ Cover::Action Cover::choose_action(const Covered& c, const bool has_def, const s
     return c.cubes.empty() ? Action::drop : Action::replace;
 }
 
-int64_t Cover::set_kept(Cls&& kept, const vector<char>& gone) {
-    const int64_t removed = (int64_t)cnf.get_clauses().size() - (int64_t)kept.size();
+// The ys of different components are disjoint: a clause goes iff it has a
+// gone y. The rest keep their order, which the counter is sensitive to
+int64_t Cover::set_kept(const vector<char>& gone, Cls&& cubes) {
     for (const auto& v : cnf.get_sampl_vars()) assert(!gone[v]);
+    if (cubes.empty() && std::none_of(gone.begin(), gone.end(), [](const char g) { return g; })) return 0;
+    const auto has_gone = [&](const vector<Lit>& cl) {
+        return std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return gone[l.var()]; }); };
+    Cls kept;
+    for (const auto& cl : cnf.get_clauses()) if (!has_gone(cl)) kept.push_back(cl);
+    for (auto& cl : cubes) kept.push_back(std::move(cl));
+    const int64_t removed = (int64_t)cnf.get_clauses().size() - (int64_t)kept.size();
     SLOW_DEBUG_DO(for (const auto& cl : kept) for (const auto& l : cl) assert(!gone[l.var()]));
     Cls red;
-    for (const auto& cl : cnf.get_red_clauses())
-        if (std::none_of(cl.begin(), cl.end(), [&](const Lit l) { return gone[l.var()]; })) red.push_back(cl);
+    for (const auto& cl : cnf.get_red_clauses()) if (!has_gone(cl)) red.push_back(cl);
     vector<uint32_t> opt_sampl;
     for (const auto& v : cnf.get_opt_sampl_vars()) if (!gone[v]) opt_sampl.push_back(v);
     cnf.set_all_clauses(std::move(kept), std::move(red));
