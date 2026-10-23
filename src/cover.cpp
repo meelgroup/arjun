@@ -263,7 +263,7 @@ void CoverComponent::set_phases() {
     for (const auto& v : y_vars) if (!problem.defined(v)) y_solver.set_phase(Lit(solver_var[v], pos_occ[solver_var[v]] <= 0));
 }
 
-// Sets up the Flipper over the ys that no def and no deep clause depends on
+// Sets up the Flipper over the ys that are in no y_def_cls clause and no def depends on
 void CoverComponent::init_flip() {
     vector<char> can_flip(y_solver.nVars(), 0);
     if (flip_minim) for (const auto& v : y_vars) if (!problem.defined(v)) can_flip[solver_var[v]] = 1;
@@ -441,7 +441,7 @@ void CoverComponent::print_stats(const char* what) {
     if (!verb) return;
     const uint64_t refs = stats.rounds - stats.num_cubes;
     std::cout << "c o [cover] " << what << " rounds: " << stats.rounds << " no-Y cubes: " << stats.num_cubes
-        << " outer defs: " << x_side.size() - num_x << " deep cls: " << y_def_cls.size()
+        << " outer defs: " << x_side.size() - num_x << " y-def cls: " << y_def_cls.size()
         << " outer cls: " << x_cls_solver.size()
         << " helpers: " << helpers.size() << std::fixed
         << " avg refinement: " << std::setprecision(1) << (refs ? (double)stats.ref_lits / refs : 0)
@@ -450,10 +450,10 @@ void CoverComponent::print_stats(const char* what) {
         << " flips: " << flipper.flips << " subsumed: " << subsumption.subsumed
         << " cost: " << std::setprecision(2) << budget_used << " of " << cconf.budget
         << " ticks(M) x: " << x_solver.get_sum_ticks() / 1e6 << " y: " << y_solver.get_sum_ticks() / 1e6
-        << " deep: " << defs_in_x.work * 10 / 1e6
+        << " y-def: " << defs_in_x.work * 10 / 1e6
         << " confl x: " << x_solver.get_sum_conflicts() << " y: " << y_solver.get_sum_conflicts()
         << " T: " << (cpuTime() - stats.start_time) << " (setup: " << stats.setup_time << " x: " << stats.x_time
-        << " y: " << stats.y_time << " refine: " << stats.refine_time << " deep: " << stats.y_def_time
+        << " y: " << stats.y_time << " refine: " << stats.refine_time << " y-def: " << stats.y_def_time
         << " funs: " << stats.funs_time << ")" << std::endl;
 }
 
