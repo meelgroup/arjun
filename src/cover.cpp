@@ -68,24 +68,24 @@ using std::vector;
 using std::map;
 using std::set;
 
-CoverComponent::Classified CoverComponent::classify_defined(const CnfVars& vars, const vector<vector<Lit>>& cls) {
+CoverComponent::Classified CoverComponent::classify_defined(const CoverProblem& problem, const vector<vector<Lit>>& cls) {
     Classified ret;
     auto& state = ret.kind;
     auto& defined = ret.defined;
     auto& unconstrained = ret.unconstrained;
-    vector<char> in_cls(vars.size(), 0);
-    state.assign(vars.size(), VarKind::unseen);
+    vector<char> in_cls(problem.size(), 0);
+    state.assign(problem.size(), VarKind::unseen);
     for (const auto& cl : cls) for (const auto& l : cl) in_cls[l.var()] = 1;
     std::function<bool(uint32_t)> fun_of_x = [&](const uint32_t v) {
-        if (vars.univ[v]) return true;
+        if (problem.is_x[v]) return true;
         if (state[v] != VarKind::unseen) return state[v] == VarKind::fun_of_x;
-        if (!vars.defined(v)) {
+        if (!problem.defined(v)) {
             state[v] = in_cls[v] ? VarKind::y : VarKind::fun_of_x;
             if (!in_cls[v]) unconstrained.push_back(v);
             return state[v] == VarKind::fun_of_x;
         }
         set<uint32_t> deps;
-        AIG::get_dependent_vars(vars.def[v], deps, v);
+        AIG::get_dependent_vars(problem.def[v], deps, v);
         bool all_x = true;
         for (const auto& d : deps) all_x &= fun_of_x(d);
         state[v] = all_x ? VarKind::fun_of_x : VarKind::y;
@@ -97,14 +97,14 @@ CoverComponent::Classified CoverComponent::classify_defined(const CnfVars& vars,
 }
 
 void CoverComponent::add_vars_and_cls() {
-    auto classified = classify_defined(vars, comp_cls);
+    auto classified = classify_defined(problem, comp_cls);
     state = std::move(classified.kind);
     defined = std::move(classified.defined);
     unconstrained = std::move(classified.unconstrained);
     // a component of a counted CNF: the universals of the rest are no matter
     vector<char> in_cls(num_vars, !cconf.assume_outer);
     for (const auto& cl : comp_cls) for (const auto& l : cl) in_cls[l.var()] = 1;
-    for (uint32_t v = 0; v < num_vars; v++) if (vars.univ[v] && in_cls[v]) x_side.push_back(v);
+    for (uint32_t v = 0; v < num_vars; v++) if (problem.is_x[v] && in_cls[v]) x_side.push_back(v);
     num_xs = x_side.size();
     for (const auto& v : defined) if (state[v] == VarKind::fun_of_x) x_side.push_back(v);
     on_x_side.assign(num_vars, 0);
@@ -146,7 +146,7 @@ void CoverComponent::tie_defs() {
     }
     for (const auto& v : unconstrained) defs_in_x.leaf[v] = defs_in_vars.leaf[v] = aig_mng.new_const(false);
     auto tie = [&](MetaSolver& s, AIGToCNF<MetaSolver>& enc, const uint32_t v) {
-        keep.push_back(defs_in_y.of_aig(vars.def[v]).a);
+        keep.push_back(defs_in_y.of_aig(problem.def[v]).a);
         const Lit out = enc.encode(keep.back());
         const Lit me = Lit(to_y[v], false);
         s.add_clause({~out, me});
@@ -160,7 +160,7 @@ void CoverComponent::add_helpers() {
     helper_base = x_solver.nVars();
     map<vector<Lit>, uint32_t> helper_of;
     for (const auto& cl : comp_cls) {
-        if (std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return vars.defined(l.var()) && !on_x_side[l.var()]; })) {
+        if (std::any_of(cl.begin(), cl.end(), [&](const Lit l) { return problem.defined(l.var()) && !on_x_side[l.var()]; })) {
             y_def_cls.push_back(cl);
             continue;
         }
@@ -237,16 +237,16 @@ RefinementMinimizer::RefinementMinimizer(MetaSolver& _y_solver, const vector<Spl
 void CoverComponent::set_phases() {
     vector<int> pos_occ(y_solver.nVars(), 0);
     for (const auto& sc : split_cls) for (const auto& l : sc.y_part) pos_occ[l.var()] += l.sign() ? -1 : 1;
-    for (const auto& v : ys) if (!vars.defined(v)) y_solver.set_phase(Lit(to_y[v], pos_occ[to_y[v]] <= 0));
+    for (const auto& v : ys) if (!problem.defined(v)) y_solver.set_phase(Lit(to_y[v], pos_occ[to_y[v]] <= 0));
 }
 
 void CoverComponent::init_flip() {
     vector<char> can_flip(y_solver.nVars(), 0);
-    if (flip_minim) for (const auto& v : ys) if (!vars.defined(v)) can_flip[to_y[v]] = 1;
+    if (flip_minim) for (const auto& v : ys) if (!problem.defined(v)) can_flip[to_y[v]] = 1;
     for (const auto& cl : y_def_cls) for (const auto& l : cl) can_flip[to_y[l.var()]] = 0;
     for (const auto& v : defined) {
         set<uint32_t> deps;
-        AIG::get_dependent_vars(vars.def[v], deps, v);
+        AIG::get_dependent_vars(problem.def[v], deps, v);
         for (const auto& d : deps) if (to_y[d] != none) can_flip[to_y[d]] = 0;
     }
     vector<vector<Lit>> cls_y;
@@ -393,7 +393,7 @@ void CoverComponent::build_funs(Funs& funs) {
     }
     vector<aig_lit> ors;
     for (uint32_t i = 0; i < ys.size(); i++) {
-        if (vars.defined(ys[i])) continue;
+        if (problem.defined(ys[i])) continue;
         uint32_t num_ones = 0;
         for (uint32_t r = 0; r < num_refs; r++) num_ones += ref_models[r * ys.size() + i];
         const bool val = num_ones * 2 <= num_refs;
@@ -600,10 +600,10 @@ CoverComponent::Result CoverComponent::run() {
 // Clauses that share no y, directly or through a function, are
 // covered apart: together they need the product of their models
 void Cover::split_by_ys() {
-    const uint32_t num_vars = vars.size();
-    const auto [state, defined, unconstrained] = CoverComponent::classify_defined(vars, cnf.get_clauses());
+    const uint32_t num_vars = problem.size();
+    const auto [state, defined, unconstrained] = CoverComponent::classify_defined(problem, cnf.get_clauses());
     vector<char> on_x_side(num_vars, 0);
-    for (uint32_t v = 0; v < num_vars; v++) if (vars.univ[v] || state[v] == CoverComponent::VarKind::fun_of_x) on_x_side[v] = 1;
+    for (uint32_t v = 0; v < num_vars; v++) if (problem.is_x[v] || state[v] == CoverComponent::VarKind::fun_of_x) on_x_side[v] = 1;
 
     UnionFind uf(num_vars);
     auto first_y = [&](const vector<Lit>& cl) {
@@ -616,7 +616,7 @@ void Cover::split_by_ys() {
     }
     for (const auto& v : defined) if (state[v] == CoverComponent::VarKind::y) {
         set<uint32_t> deps;
-        AIG::get_dependent_vars(vars.def[v], deps, v);
+        AIG::get_dependent_vars(problem.def[v], deps, v);
         for (const auto& d : deps) if (!on_x_side[d]) uf.join(d, v);
     }
     vector<uint32_t> comp_of(num_vars, CoverComponent::none);
@@ -633,7 +633,7 @@ void Cover::split_by_ys() {
 }
 
 lbool Cover::cover_one(const vector<vector<Lit>>& comp_cls, const uint32_t verb, vector<lbool>& cex) {
-    CoverComponent comp(vars, cnf.get_aig_mng(), comp_cls, cconf, cconf.max_ticks ? cconf.max_ticks - used_ticks : 0, verb);
+    CoverComponent comp(problem, cnf.get_aig_mng(), comp_cls, cconf, cconf.max_ticks ? cconf.max_ticks - used_ticks : 0, verb);
     auto r = comp.run();
     used_ticks += comp.ticks();
     if (r.ret == l_False) cex = std::move(r.cex);
@@ -661,9 +661,9 @@ lbool Cover::cover_components(vector<lbool>& cex) {
 void Cover::set_funs() {
     vector<aig_lit> funs;
     for (const auto& d : found_funs) funs.push_back(d.second);
-    vars.to_orig(funs);
+    trans->funs_to_orig(funs);
     for (uint32_t i = 0; i < funs.size(); i++) {
-        const Lit o = vars.orig[found_funs[i].first];
+        const Lit o = trans->orig_of(found_funs[i].first);
         cnf.set_def(o.var(), o.sign() ? ~funs[i] : funs[i]);
     }
     const auto& sampl = cnf.get_orig_sampl_vars();
@@ -682,7 +682,7 @@ void Cover::set_funs() {
 // Each component gets at most a quarter of max_ticks.
 int64_t Cover::drop_covered() {
     const double start = cpuTime();
-    const uint32_t num_vars = vars.size();
+    const uint32_t num_vars = problem.size();
     if (std::any_of(cnf.get_clauses().begin(), cnf.get_clauses().end(), [](const auto& cl) { return cl.empty(); }))
         return 0;
     split_by_ys();
@@ -690,7 +690,7 @@ int64_t Cover::drop_covered() {
 
     vector<char> weighted_y(num_vars, 0);
     if (cnf.get_weighted()) for (uint32_t v = 0; v < num_vars; v++)
-        if (!vars.univ[v] && cnf.weight_set(v)) weighted_y[v] = 1;
+        if (!problem.is_x[v] && cnf.weight_set(v)) weighted_y[v] = 1;
     // A defined var is a good one for the counter to branch on, and its
     // defining clauses propagate better than cubes: a component with one is
     // replaced only if its clauses mostly go away. Also when the var is taken
@@ -726,7 +726,7 @@ int64_t Cover::drop_covered() {
         ds.cube_cls += c.cubes.size();
         for (const auto& cl : c.cubes) ds.cube_lits += cl.size();
         for (auto& cl : c.cubes) kept.push_back(std::move(cl));
-        for (const auto& cl : comp_cls) for (const auto& l : cl) if (!vars.univ[l.var()]) gone[l.var()] = 1;
+        for (const auto& cl : comp_cls) for (const auto& l : cl) if (!problem.is_x[l.var()]) gone[l.var()] = 1;
     }
     const int64_t removed = set_kept(std::move(kept), gone);
     if (conf.verb) ds.print(components.size(), removed, std::count(gone.begin(), gone.end(), 1), used_ticks, start);
@@ -738,14 +738,14 @@ int64_t Cover::drop_covered() {
 Cover::Covered Cover::cover_for_drop(Cls& comp_cls, const bool has_def, PsiReach& psi, DropStats& ds) {
     ds.tried++;
     const size_t sz = comp_cls.size();
-    psi.add_reached(vars, comp_cls);
+    psi.add_reached(problem.is_x, comp_cls);
     auto drop_conf = cconf;
     drop_conf.stop_at_cex = true;
     drop_conf.keep_cubes = false;
     const bool only_drop = has_def && sz < cconf.def_replace_min_cls;
     // a quarter of it at most, one hopeless component does not use it all up
     const uint64_t ticks = cconf.max_ticks ? std::min(cconf.max_ticks - used_ticks, cconf.max_ticks / 4 + 1) : 0;
-    CoverComponent comp(vars, cnf.get_aig_mng(), comp_cls, only_drop ? drop_conf : cconf,
+    CoverComponent comp(problem, cnf.get_aig_mng(), comp_cls, only_drop ? drop_conf : cconf,
         ticks, conf.verb >= 2 ? conf.verb - 1 : 0);
     const double comp_start = cpuTime();
     Covered c;
@@ -795,9 +795,9 @@ Cover::PsiReach::PsiReach(const Cls& _psi, const uint32_t num_vars) :
     for (uint32_t i = 0; i < psi.size(); i++) psi_of[uf.find(psi[i][0].var())].push_back(i);
 }
 
-void Cover::PsiReach::add_reached(const CnfVars& vars, Cls& comp_cls) {
+void Cover::PsiReach::add_reached(const vector<char>& is_x, Cls& comp_cls) {
     for (const auto& cl : comp_cls) for (const auto& l : cl) {
-        if (!vars.univ[l.var()]) continue;
+        if (!is_x[l.var()]) continue;
         const uint32_t r = uf.find(l.var());
         if (!root_seen[r]) { root_seen[r] = 1; roots.push_back(r); }
     }
@@ -827,6 +827,6 @@ lbool Cover::run(vector<lbool>& cex) {
     vector<lbool> vars_cex;
     const lbool ret = components.size() <= 1 ? cover_one(cnf.get_clauses(), conf.verb, vars_cex) : cover_components(vars_cex);
     if (ret == l_True && cconf.need_funs) set_funs();
-    if (ret == l_False) cex = vars.univ_to_orig(cnf, vars_cex);
+    if (ret == l_False) cex = trans->x_to_orig(cnf, vars_cex);
     return ret;
 }

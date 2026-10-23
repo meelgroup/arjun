@@ -29,12 +29,13 @@
 #include "config.h"
 #include "metasolver.h"
 #include "aig_to_cnf.h"
-#include "cnf_vars.h"
+#include "cover_problem.h"
 #include "time_mem.h"
 #include <limits>
 #include <map>
 #include <set>
 #include <functional>
+#include <optional>
 #include <unordered_map>
 
 namespace ArjunInt {
@@ -55,7 +56,7 @@ struct UnionFind {
 struct Subst {
     struct Res { ArjunNS::aig_lit a; bool fixed; };
     struct NidHash { size_t operator()(const ArjunNS::AIG* n) const { return std::hash<uint64_t>()(n->nid); } };
-    const CnfVars& vars;
+    const CoverProblem& problem;
     std::vector<ArjunNS::aig_lit> leaf;
     std::vector<CMSat::lbool> val;
     std::unordered_map<const ArjunNS::AIG*, Res, NidHash> fixed_nodes, round_nodes;
@@ -63,19 +64,19 @@ struct Subst {
     std::vector<uint64_t> var_round;
     uint64_t round = 1, work = 0;
 
-    explicit Subst(const CnfVars& _vars) : vars(_vars), leaf(_vars.size(), ArjunNS::aig_lit(nullptr)),
-        val(_vars.size(), CMSat::l_Undef), var_res(_vars.size()), var_round(_vars.size(), 0) {}
+    explicit Subst(const CoverProblem& _problem) : problem(_problem), leaf(_problem.size(), ArjunNS::aig_lit(nullptr)),
+        val(_problem.size(), CMSat::l_Undef), var_res(_problem.size()), var_round(_problem.size(), 0) {}
 
     void new_round() { round_nodes.clear(); round++; }
 
     Res of_var(const uint32_t v) {
         if (leaf[v] != nullptr) return {leaf[v], true};
-        if (!vars.defined(v)) {
+        if (!problem.defined(v)) {
             assert(val[v] != CMSat::l_Undef);
             return {ArjunNS::AIG::new_const(val[v] == CMSat::l_True), false};
         }
         if (var_round[v] == round || var_round[v] == 1) return var_res[v];
-        const Res ret = of_aig(vars.def[v]);
+        const Res ret = of_aig(problem.def[v]);
         var_res[v] = ret;
         var_round[v] = ret.fixed ? 1 : round;
         return ret;
@@ -105,7 +106,7 @@ struct Subst {
 // The x part of a clause with ys gets a helper var in x_solver, true: all
 // of the x part is false. Clauses with the same x part share it
 struct Helper {
-    std::vector<CMSat::Lit> x_part; // sorted, over `vars`
+    std::vector<CMSat::Lit> x_part; // sorted, over `problem`
     CMSat::Lit lit;
     ArjunNS::aig_lit x_part_true;
 };
@@ -176,14 +177,14 @@ private:
 // settles yet, y_solver gives a model of the clauses for it
 class CoverComponent {
 public:
-    CoverComponent(const CnfVars& _vars, const ArjunNS::AIGManager& _aig_mng, const std::vector<std::vector<CMSat::Lit>>& _comp_cls,
+    CoverComponent(const CoverProblem& _problem, const ArjunNS::AIGManager& _aig_mng, const std::vector<std::vector<CMSat::Lit>>& _comp_cls,
             const ArjunNS::Arjun::CoverConf& _cconf, const uint64_t _max_ticks, const uint32_t _verb) :
-        vars(_vars), aig_mng(_aig_mng), comp_cls(_comp_cls), cconf(_cconf), max_ticks(_max_ticks), verb(_verb),
-        num_vars(_vars.size()), sat_minim(_cconf.minim & 1), flip_minim(_cconf.minim & 2), subs_minim(_cconf.minim & 4),
-        defs_in_y(_vars), defs_in_x(_vars), defs_in_vars(_vars), enc_y(y_solver), enc_x(x_solver) {}
+        problem(_problem), aig_mng(_aig_mng), comp_cls(_comp_cls), cconf(_cconf), max_ticks(_max_ticks), verb(_verb),
+        num_vars(_problem.size()), sat_minim(_cconf.minim & 1), flip_minim(_cconf.minim & 2), subs_minim(_cconf.minim & 4),
+        defs_in_y(_problem), defs_in_x(_problem), defs_in_vars(_problem), enc_y(y_solver), enc_x(x_solver) {}
 
     using Funs = std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>;
-    // All of it in the numbering of `vars`
+    // All of it in the numbering of `problem`
     struct Result {
         CMSat::lbool ret = CMSat::l_Undef;
         std::vector<CMSat::lbool> cex; // l_False: an X with no Y
@@ -202,7 +203,7 @@ public:
         std::vector<uint32_t> defined; // the vars of cls that already have a function
         std::vector<uint32_t> unconstrained;
     };
-    static Classified classify_defined(const CnfVars& vars, const std::vector<std::vector<CMSat::Lit>>& cls);
+    static Classified classify_defined(const CoverProblem& problem, const std::vector<std::vector<CMSat::Lit>>& cls);
     static constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
     // keep_cubes: per X with no Y, a clause over X that rules out its cube
     std::vector<std::vector<CMSat::Lit>> kept_cubes;
@@ -240,7 +241,7 @@ private:
     void print_stats(const char* what);
     CMSat::lbool finish(const CMSat::lbool ret);
 
-    const CnfVars& vars;
+    const CoverProblem& problem;
     const ArjunNS::AIGManager& aig_mng;
     const std::vector<std::vector<CMSat::Lit>>& comp_cls;
     const ArjunNS::Arjun::CoverConf& cconf;
@@ -307,11 +308,11 @@ private:
 class Cover {
 public:
     Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _cconf, ArjunNS::SimplifiedCNF& _cnf) :
-        conf(_conf), cconf(_cconf), cnf(_cnf), vars(_cnf) {}
-    // For counting, no defs: univ_vars are X
+        conf(_conf), cconf(_cconf), cnf(_cnf), trans(std::in_place, _cnf), problem(trans->problem(_cnf)) {}
+    // For counting: no defs, the CNF's own numbering, xs are X
     Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _cconf, ArjunNS::SimplifiedCNF& _cnf,
-            const std::vector<uint32_t>& univ_vars) :
-        conf(_conf), cconf(_cconf), cnf(_cnf), vars(_cnf.nVars(), univ_vars) {}
+            const std::vector<uint32_t>& xs) :
+        conf(_conf), cconf(_cconf), cnf(_cnf), problem(_cnf.nVars(), xs) {}
     CMSat::lbool run(std::vector<CMSat::lbool>& cex);
 
     // A component C whose existentials Y_C occur nowhere else, with every X
@@ -347,7 +348,7 @@ private:
     public:
         PsiReach(const Cls& psi, uint32_t num_vars);
         // appends to comp_cls the clauses of psi its X reach
-        void add_reached(const CnfVars& vars, Cls& comp_cls);
+        void add_reached(const std::vector<char>& is_x, Cls& comp_cls);
     private:
         const Cls& psi;
         UnionFind uf;
@@ -369,7 +370,8 @@ private:
     const Config& conf;
     const ArjunNS::Arjun::CoverConf& cconf;
     ArjunNS::SimplifiedCNF& cnf;
-    const CnfVars vars;
+    const std::optional<OrigTranslation> trans; // none for counting
+    const CoverProblem problem;
 
     std::vector<std::vector<std::vector<CMSat::Lit>>> components;
     std::vector<std::vector<CMSat::Lit>> x_cls;

@@ -838,15 +838,16 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
 
 DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
     assert(need_aig && synth_done());
-    const CnfVars vs(*this);
+    const OrigTranslation trans(*this);
+    const CoverProblem problem = trans.problem(*this);
     MetaSolver s;
-    s.new_vars(vs.size());
+    s.new_vars(problem.size());
 
     vector<uint32_t> ys;
     vector<aig_lit> roots;
-    for (uint32_t v = 0; v < vs.size(); v++) if (vs.defined(v) && !vs.univ[v]) {
+    for (uint32_t v = 0; v < problem.size(); v++) if (problem.defined(v) && !problem.is_x[v]) {
         ys.push_back(v);
-        roots.push_back(vs.def[v]);
+        roots.push_back(problem.def[v]);
     }
     AIGToCNF<MetaSolver> enc(s);
     const auto outs = enc.encode_batch(roots);
@@ -868,7 +869,7 @@ DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
     const auto ret = s.solve();
     release_assert(ret != l_Undef);
     if (ret != l_True) return {};
-    return vs.univ_to_orig(*this, s.get_model());
+    return trans.x_to_orig(*this, s.get_model());
 }
 
 DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {

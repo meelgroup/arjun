@@ -106,9 +106,10 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
 2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
    X that have a Y, so:
 3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)), on `cnf`'s
-   clauses. Like cover, it works in the CNF's numbering through `CnfVars`
-   (`cnf_vars.h`): the defs are translated to it once, the X back to orig
-   vars. Only the clauses BCE leaves for the next Puura run are translated
+   clauses. Like cover, it works in the CNF's numbering
+   (`cover_problem.h`): `OrigTranslation` turns the defs into a
+   `CoverProblem` over it once, at the entrance, and the results back to orig
+   vars at the exit. Nothing in between translates. Only the clauses BCE leaves for the next Puura run are translated
    to orig vars (`to_orig_cls()`): that run is a new problem over them.
 
 Everything works from `cnf`, never from the orig clauses (`orig_clauses` is
