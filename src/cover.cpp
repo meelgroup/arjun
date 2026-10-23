@@ -60,6 +60,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <numeric>
 
 using namespace ArjunNS;
 using namespace ArjunInt;
@@ -135,6 +136,22 @@ void CoverComponent::add_vars_and_cls() {
         new_y_var(v);
         y_solver.add_clause({Lit(to_y[v], true)});
     }
+    // the x side has the same index in both solvers, X first
+    assert(num_xs <= x_side.size());
+    for (uint32_t i = 0; i < x_side.size(); i++) assert(to_y[x_side[i]] == i);
+}
+
+// the X of the assumptions with the ys of model satisfy what y_solver got of comp_cls
+bool CoverComponent::model_satisfies(const vector<lbool>& model) const {
+    for (uint32_t i = 0; i < assumps.size(); i++)
+        if (model[assumps[i].var()] != boolToLBool(!assumps[i].sign())) return false;
+    for (const auto& cl : comp_cls) {
+        if (cconf.assume_outer && std::all_of(cl.begin(), cl.end(), [&](const Lit l) { return on_x_side[l.var()]; }))
+            continue;
+        if (std::none_of(cl.begin(), cl.end(), [&](const Lit l) { return model[to_y[l.var()]] == boolToLBool(!l.sign()); }))
+            return false;
+    }
+    return true;
 }
 
 // y_solver keeps to the functions, so that its models are ones x_solver can rule out
@@ -486,6 +503,12 @@ void CoverComponent::block_no_y_cube() {
             if (timed(stats.y_time, [&] { return solve(y_solver, &as); }) == l_False) cube = y_solver.get_conflict();
         }
     }
+    for (const auto& l : cube) assert(l.var() < num_xs);
+    SLOW_DEBUG_DO({
+        vector<Lit> as;
+        for (const auto& l : cube) as.push_back(~l);
+        assert(y_solver.solve(&as) == l_False);
+    });
     stats.cube_lits += cube.size();
     budget_used += sq_frac(cube.size(), num_xs);
     x_solver.add_clause(cube);
@@ -519,20 +542,33 @@ void CoverComponent::x_solver_gets_cls() {
 void CoverComponent::refine() {
     const double refine_start = cpuTime();
     auto model = y_solver.get_model();
+    assert(assumps.size() == num_xs);
+    SLOW_DEBUG_DO(assert(model_satisfies(model)));
     compute_refinement(model);
-    if (flip_minim && refinement.size() > 1 && flipper.flip(model)) compute_refinement(model);
+    if (flip_minim && refinement.size() > 1 && flipper.flip(model)) {
+        SLOW_DEBUG_DO(assert(model_satisfies(model)));
+        compute_refinement(model);
+    }
     if (sat_minim && refinement.size() > 1) {
         const size_t before = refinement.size();
         vector<uint32_t> ref_idx;
         for (const auto& h : refinement) ref_idx.push_back(helper_idx(h));
         model = minimizer.minimize(model, assumps, ref_idx,
                 [&](vector<Lit>& as) { return solve(y_solver, &as); }, [&] { return out_of_ticks(); });
+        assert(assumps.size() == num_xs);
+        SLOW_DEBUG_DO(assert(model_satisfies(model)));
         compute_refinement(model);
         assert(refinement.size() <= before);
         stats.minim_removed += before - refinement.size();
     }
     budget_used += sq_frac(refinement.size(), helpers.size());
     if (subs_minim) subsumption.drop(refinement, helper_base);
+    // progress: the X at hand satisfies every x part named, so it is now ruled out
+    SLOW_DEBUG_DO(for (const auto& h : refinement) {
+        assert(h.var() >= helper_base && helper_idx(h) < helpers.size());
+        const auto& xp = helpers[helper_idx(h)].x_part;
+        assert(std::any_of(xp.begin(), xp.end(), [&](const Lit l) { return model[to_y[l.var()]] == boolToLBool(!l.sign()); }));
+    });
     stats.ref_lits += refinement.size();
     if (cconf.need_funs) {
         refinements.push_back(refinement);
@@ -588,7 +624,10 @@ CoverComponent::Result CoverComponent::run() {
                 cex_from_x_solver(r.cex);
                 return done(l_False);
             }
+            const auto cubes_before = kept_cubes.size();
             block_no_y_cube();
+            if (cconf.keep_cubes) assert(kept_cubes.size() == cubes_before + 1);
+            else assert(kept_cubes.empty());
             if (cconf.keep_cubes && stats.num_cubes > cconf.max_cubes) return done(l_Undef);
             continue;
         }
@@ -630,6 +669,18 @@ void Cover::split_by_ys() {
         }
         components[c].push_back(cl);
     }
+    assert(std::accumulate(components.begin(), components.end(), x_cls.size(),
+        [](const size_t s, const auto& comp) { return s + comp.size(); }) == cnf.get_clauses().size());
+    // x_cls are over the x side only, and no y is in two components
+    SLOW_DEBUG_DO({
+        for (const auto& cl : x_cls) for (const auto& l : cl) assert(on_x_side[l.var()]);
+        vector<uint32_t> comp_of_y(num_vars, CoverComponent::none);
+        for (uint32_t c = 0; c < components.size(); c++) for (const auto& cl : components[c]) for (const auto& l : cl) {
+            if (on_x_side[l.var()]) continue;
+            assert(comp_of_y[l.var()] == CoverComponent::none || comp_of_y[l.var()] == c);
+            comp_of_y[l.var()] = c;
+        }
+    });
 }
 
 lbool Cover::cover_one(const vector<vector<Lit>>& comp_cls, const uint32_t verb, vector<lbool>& cex) {
@@ -754,6 +805,9 @@ Cover::Covered Cover::cover_for_drop(Cls& comp_cls, const bool has_def, PsiReach
     const uint64_t t = comp.ticks();
     used_ticks += t;
     ds.confl += comp.conflicts();
+    assert(comp_cls.size() >= sz);
+    // an X with no Y only ends the run when its cube is not kept
+    if (cconf.keep_cubes && !only_drop) assert(c.ret != l_False);
     comp_cls.resize(sz);
     ds.no_y += c.ret == l_False;
     if (c.ret == l_Undef) {
@@ -770,6 +824,7 @@ Cover::Covered Cover::cover_for_drop(Cls& comp_cls, const bool has_def, PsiReach
 }
 
 Cover::Action Cover::choose_action(const Covered& c, const bool has_def, const size_t num_cls) const {
+    assert(c.cubes.empty() || cconf.keep_cubes);
     if (c.ret != l_True) return Action::keep;
     // an empty cube: no X has a Y, let the rest of Arjun find that out
     if (std::any_of(c.cubes.begin(), c.cubes.end(), [](const auto& cl) { return cl.empty(); })) return Action::keep;
@@ -779,6 +834,8 @@ Cover::Action Cover::choose_action(const Covered& c, const bool has_def, const s
 
 int64_t Cover::set_kept(Cls&& kept, const vector<char>& gone) {
     const int64_t removed = (int64_t)cnf.get_clauses().size() - (int64_t)kept.size();
+    for (const auto& v : cnf.get_sampl_vars()) assert(!gone[v]);
+    SLOW_DEBUG_DO(for (const auto& cl : kept) for (const auto& l : cl) assert(!gone[l.var()]));
     Cls red;
     for (const auto& cl : cnf.get_red_clauses())
         if (std::none_of(cl.begin(), cl.end(), [&](const Lit l) { return gone[l.var()]; })) red.push_back(cl);
@@ -823,9 +880,12 @@ void Cover::DropStats::print(const size_t num_comps, const int64_t removed, cons
 }
 
 lbool Cover::run(vector<lbool>& cex) {
+    assert(cex.empty());
     split_by_ys();
     vector<lbool> vars_cex;
     const lbool ret = components.size() <= 1 ? cover_one(cnf.get_clauses(), conf.verb, vars_cex) : cover_components(vars_cex);
+    if (ret == l_False) assert(!vars_cex.empty());
+    else assert(vars_cex.empty());
     if (ret == l_True && cconf.need_funs) set_funs();
     if (ret == l_False) cex = trans->x_to_orig(cnf, vars_cex);
     return ret;

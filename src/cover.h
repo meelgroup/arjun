@@ -221,6 +221,7 @@ private:
     void x_solver_gets_cls();
     void refine();
     void compute_refinement(const std::vector<CMSat::lbool>& model);
+    bool model_satisfies(const std::vector<CMSat::lbool>& model) const;
     ArjunNS::aig_lit y_def_cls_hold(Subst& s);
     void build_funs(Funs& funs);
 
