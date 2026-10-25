@@ -257,7 +257,7 @@ void add_arjun_options() {
     myopt("--czthreshlow", mconf.cz_threshold_low, "Consecutive cost-zero break count when low cz ratio");
     // synth -- debug
     myopt("--cegrcnf", mconf.write_cegr_cnf, "Write Cegr CNF to this file");
-    myopt("--debugsynth", conf.debug_synth,"Debug synthesis, prefix with this fname");
+    myopt("--debugsynth", conf.debug_synth,"Debug synthesis or 2QBF (with an output file): write each stage's functions to files with this prefix");
     myopt("--debugverilog", debug_verilog, "With --debugsynth: write the final functions as Verilog (-final.v) instead of -final.aig");
     myopt("--interprebuildevery", iconf.interp_rebuild_every,
           "Rebuild the doubled-CNF interpolation solver every N interpolants "
@@ -714,7 +714,7 @@ void do_synth_2qbf() {
             try_cover(cnf, need_funs, cover_conf.budget, ticks);
         });
 
-        release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
+        release_assert(cnf.synth_done() && "All Ys should have functions by now (synthesis or 2QBF), but some do not!");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cegr.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "cegr"));
     }
