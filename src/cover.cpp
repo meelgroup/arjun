@@ -837,9 +837,10 @@ int64_t Cover::drop_covered() {
         Covered covered;
         if (has_weight) {
           // its Y weights are part of the count, so it must stay: ret stays l_Undef, which keeps it
-        } else if (cconf.max_ticks && used_ticks >= cconf.max_ticks) drop_stats.no_budget++;
+        } else if (cconf.max_ticks && used_ticks >= cconf.max_ticks) drop_stats.out_of_budget++;
         else covered = cover_for_drop(comp_cls, has_def, psi, drop_stats);
 
+        // keep the component, drop it (every X has a Y), or replace it by the cubes ruling out the Xs that have none
         const Action action = choose_action(covered, has_def, comp_cls.size());
         if (action == Action::keep_def) drop_stats.kept_def++;
         if (action == Action::keep || action == Action::keep_def) continue;
@@ -959,7 +960,7 @@ void Cover::DropStats::print(const size_t num_comps, const int64_t removed, cons
         << " dropped: " << dropped << " replaced: " << replaced << " by cls: " << cube_cls
         << " avg sz: " << std::setprecision(1) << std::fixed << (cube_cls ? (double)cube_lits / cube_cls : 0)
         << " no-Y: " << no_y << " gave up: " << gave_up << " (ticks: " << up_ticks << " cubes: " << up_cubes
-        << ") no budget: " << no_budget << " weighted: " << weighted << " kept defined: " << kept_def
+        << ") no budget: " << out_of_budget << " weighted: " << weighted << " kept defined: " << kept_def
         << " cls removed: " << removed << " vars gone: " << vars_gone
         << " Mticks: " << std::setprecision(1) << std::fixed << used_ticks / 1e6
         << " (done: " << done_ticks / 1e6 << " max done: " << max_done_ticks / 1e6

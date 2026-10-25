@@ -337,7 +337,7 @@ private:
     struct DropStats {
         uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0, kept_def = 0;
         uint64_t cube_cls = 0, cube_lits = 0;
-        uint32_t up_ticks = 0, up_cubes = 0, no_budget = 0;
+        uint32_t up_ticks = 0, up_cubes = 0, out_of_budget = 0;
         uint64_t done_ticks = 0, max_done_ticks = 0, up_ticks_used = 0, confl = 0;
         double max_comp_t = 0;
         void print(size_t num_comps, int64_t removed, size_t vars_gone, uint64_t used_ticks, double start) const;
