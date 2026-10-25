@@ -82,7 +82,6 @@ double cover_late_ticks = 100;
 double cover_big_ticks = 5000;
 double cover_big_late_ticks = 600;
 double cover_orig_ticks = 2000;
-int cover_stages = 3;
 bool cover_done = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
@@ -178,7 +177,6 @@ void add_arjun_options() {
     myopt("--prebce", pre_bce, "2QBF with no functions asked for: remove the clauses blocked on an existential literal after Puura, as bloqqer does. The Skolem functions of what is left are not ones of the input, so an output file turns it off");
     myopt("--2qbfpuurarounds", qbf2_puura_rounds, "2QBF with --prebce: how many times Puura runs, 1 to 4. Each further run is on the clauses left by the one before, less the blocked ones, and is kept only if it ends with fewer literals. The 2nd is like the 1st, the 3rd lets BVE grow the CNF (--iter1grow 16 --iter2grow 100), the 4th more so (100, 1000, and no resolvent size limit)");
     myopt("--cover", cover_conf.budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
-    myopt("--coverstages", cover_stages, "Which covering runs there are, a sum: 1 = after simplification, 2 = after the definition passes");
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
     myopt("--coverbigticks", cover_big_ticks, "As --coverticks, for the 2nd covering run of the simplified CNF: before the last, unlimited synthesis strategy, so only if the limited ones did not finish. 0 = no such run");
     myopt("--coverbiglateticks", cover_big_late_ticks, "As --coverbigticks, for the 2nd covering run after the definition passes");
@@ -669,10 +667,10 @@ void do_synth_2qbf() {
     if (qbf2) try_cover(cnf, need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
 
     if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, need_funs);
-    if ((cover_stages & 1) && !cnf.synth_done()) try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
+    if (!cnf.synth_done()) try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
     // for the 2nd, long covering run: without the functions of the passes below
     ArjunNS::SimplifiedCNF simplified_cnf(fg);
-    const bool big_cover = (cover_stages & 1) && cover_ticks != 0 && cover_big_ticks > cover_ticks;
+    const bool big_cover = cover_ticks != 0 && cover_big_ticks > cover_ticks;
     if (big_cover && !cnf.synth_done()) simplified_cnf = cnf;
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
@@ -701,8 +699,7 @@ void do_synth_2qbf() {
         SLOW_DEBUG_DO(check_stage(cnf, "unate_def"));
     }
 
-    // covering follows the functions found since its last run
-    if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf)) try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
+    if (!cnf.synth_done() && has_defined(cnf)) try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
 
     cnf.rewrite_aigs(conf.verb);
     SLOW_DEBUG_DO(check_stage(cnf, "rewrite_aigs"));
@@ -712,17 +709,16 @@ void do_synth_2qbf() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "brute_force_synth"));
     }
+
     if (!cnf.synth_done()) {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);
-        // Covering is quick when it works, so the runs so far were short.
-        // The long ones only come once synthesis has not been quick either
         synth_runner.run_cegr_strategies(cnf, mconf, strategies, [&] {
             if (big_cover) {
                 try_cover(simplified_cnf, need_funs, cover_conf.budget, cover_big_ticks);
                 if (cover_done) cnf = std::move(simplified_cnf);
             }
-            if (!cover_done && (cover_stages & 2) && cover_late_ticks != 0 && cover_big_late_ticks > cover_late_ticks
+            if (!cover_done && cover_late_ticks != 0 && cover_big_late_ticks > cover_late_ticks
                     && has_defined(cnf))
                 try_cover(cnf, need_funs, cover_conf.budget, cover_big_late_ticks);
         });

@@ -86,7 +86,7 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
    When it finishes, its models give the Skolem functions. `--synth` skips
    the X that have no Y instead of stopping at the first one. It runs on
    the simplified CNF, and again after extend/backward/unate if they
-   defined something (`--coverstages`, a sum, 1 and 2). That last run
+   defined something. That last run
    takes a handful of rounds when it works, so it has its own, lower limit
    (`--coverlateticks`, 100): a failing one is slow. These runs are SHORT:
    most of what covering solves takes under 100M ticks, and a failing run
