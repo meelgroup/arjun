@@ -546,7 +546,7 @@ void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double b
 }
 
 // bloqqer's variable elimination from round 2 on: resolvents may outnumber the clauses
-ArjunNS::SimpConf puura_round_conf(const int round) {
+ArjunNS::SimpConf synth_2qbf_puura_conf(const int round) {
     auto ret = simp_conf;
     if (round >= 2) {
         ret.bve_grow_iter1 = round == 2 ? 16 : 100;
@@ -558,10 +558,10 @@ ArjunNS::SimpConf puura_round_conf(const int round) {
 }
 
 // Round 0 simplifies cnf, a later one the 2QBF of cls, over orig vars, as a new problem
-void puura_round(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const int round,
+void synth_2qbf_puura_round(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const int round,
         const bool need_funs) {
     cnf = arjun->standalone_get_simplified_cnf(
-            round == 0 ? cnf : cnf_of_2qbf_cls(cnf, cls), puura_round_conf(round));
+            round == 0 ? cnf : cnf_of_2qbf_cls(cnf, cls), synth_2qbf_puura_conf(round));
     if (qbf2) {
         const auto cex = cnf.get_2qbf_def_cex();
         if (!cex.empty()) {
@@ -585,7 +585,7 @@ void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) 
     for (int round = 0;; round++) {
         ArjunNS::SimplifiedCNF prev_cnf(fg);
         if (round > 0) prev_cnf = cnf;
-        puura_round(cnf, cls, round, need_funs);
+        synth_2qbf_puura_round(cnf, cls, round, need_funs);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "simplified_cnf"));
         const size_t lits = num_lits(cnf.get_clauses());
