@@ -201,10 +201,12 @@ def run_arjun_checkrepair(arjun, fname, seed, timeout):
             increased = True
         if "checkrepair] Error count decreased" in line:
             decreased_count += 1
-        if "checkrepair] Error count UNCHANGED" in line:
+        if "checkrepair] Error count unchanged" in line:
             unchanged_count += 1
 
-    if any(b >= a for r in runs for a, b in zip(r, r[1:])):
+    # equal is fine when cegr broke out before fixing the counterexample; arjun
+    # itself asserts the drop when it did fix it
+    if any(b > a for r in runs for a, b in zip(r, r[1:])):
         increased = True
 
     return {
@@ -322,7 +324,7 @@ def main():
             counts = info["counts"]
 
             if info["increased"]:
-                print("BAD - ERROR line, or count did not strictly decrease! counts=%s (%.1fs)"
+                print("BAD - ERROR line, or count grew! counts=%s (%.1fs)"
                       % (counts, elapsed))
                 fail("Bad repair", fname, seed, cmd,
                      "\n".join(l for l in info["output"].split("\n") if "checkrepair" in l or "ERROR" in l))
