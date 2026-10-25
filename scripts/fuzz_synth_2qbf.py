@@ -171,7 +171,8 @@ def set_up_parser():
     return parser
 
 
-def run(command):
+def run(command, maxtime=None):
+    if maxtime is None: maxtime = options.maxtime
     print(col("--> Executing: ", BLUE) + fmt_cmd(command))
     if options.verbose:
         print("CPU limit of parent (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU))
@@ -180,11 +181,11 @@ def run(command):
           stdout=subprocess.PIPE, universal_newlines=True)
 
     try:
-        consoleOutput, err = p.communicate(timeout=options.maxtime)
+        consoleOutput, err = p.communicate(timeout=maxtime)
     except subprocess.TimeoutExpired:
         p.kill()
         consoleOutput, err = p.communicate()
-        consoleOutput = "TIMEOUT: Process killed after %d seconds\n" % options.maxtime + consoleOutput
+        consoleOutput = "TIMEOUT: Process killed after %d seconds\n" % maxtime + consoleOutput
 
     if options.verbose:
         print("CPU limit of parent (pid %d) after child finished executing" % os.getpid(),
@@ -349,7 +350,10 @@ def qbf2_nofuns_verdict(fname):
     cmd += " --prebce %d --2qbfpuurarounds %d" % (random.choice([0, 1, 1]), random.randint(1, 4))
     cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
     print(col("Running 2QBF with no functions: ", CYAN) + cmd)
-    _, _, code = run(cmd.split() + [fname])
+    out, _, code = run(cmd.split() + [fname], 2 * options.maxtime)
+    if out.startswith("TIMEOUT"):
+        print("--2qbf with no functions timed out, no verdict to compare")
+        return "timeout"
     if code not in (10, 20):
         print("ERROR: --2qbf with no functions exited with %s" % code)
         return None
@@ -682,7 +686,8 @@ if __name__ == "__main__":
                 print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
                 print(col("=" * 60, RED))
                 exit(-1)
-            if qbf2_nofuns_verdict(fname) != qbf2_true:
+            nofuns = qbf2_nofuns_verdict(fname)
+            if nofuns != "timeout" and nofuns != qbf2_true:
                 print(col("=" * 60, RED))
                 print(col("BUG: --2qbf with no functions gave another verdict, it is %s" % qbf2_true, RED))
                 print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)

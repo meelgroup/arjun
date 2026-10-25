@@ -2152,6 +2152,9 @@ public:
         uint32_t def_replace_min_cls = 1000;
         uint32_t def_replace_ratio = 50;
         bool need_funs = true; // false: l_True comes with no Skolem functions, only the verdict
+        // with need_funs, when not all components are covered: the ones every X has a Y of
+        // get their functions and leave the CNF, as BVE's vars do
+        bool partial = false;
         // How a refinement is shortened, a sum. 1: by asking for a model, of the same X, whose
         // existentials satisfy more of the clauses. 2: by flipping the existentials no clause
         // needs. 4: by dropping what another part of it implies

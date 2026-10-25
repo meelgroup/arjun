@@ -523,21 +523,6 @@ bool has_defined(const ArjunNS::SimplifiedCNF& cnf) {
     return false;
 }
 
-void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double budget, const double ticks) {
-    vector<CMSat::lbool> cex;
-    auto my_conf = cover_conf;
-    my_conf.budget = budget;
-    my_conf.max_ticks = ticks * 1e6;
-    my_conf.stop_at_cex = qbf2;
-    my_conf.need_funs = need_funs;
-    const auto ret = arjun->standalone_cover(cnf, my_conf, cex);
-    SLOW_DEBUG_DO(if (ret == CMSat::l_False) assert(cnf.is_2qbf_cex(cex)));
-    if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
-    // the functions are in place, and get written out by do_synth_2qbf()
-    cover_done = ret == CMSat::l_True;
-    if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
-}
-
 // SLOW_DEBUG: SAT-check defs after each stage; names the offending pass.
 void check_stage(ArjunNS::SimplifiedCNF& cnf, const std::string& stage) {
     int bad = cnf.check_synth_funs_sat();
@@ -546,6 +531,23 @@ void check_stage(ArjunNS::SimplifiedCNF& cnf, const std::string& stage) {
              << "' for var " << (bad+1) << endl;
         assert(false && "wrong synth def after stage");
     }
+}
+
+void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double budget, const double ticks) {
+    vector<CMSat::lbool> cex;
+    auto my_conf = cover_conf;
+    my_conf.partial = true;
+    my_conf.budget = budget;
+    my_conf.max_ticks = ticks * 1e6;
+    my_conf.stop_at_cex = qbf2;
+    my_conf.need_funs = need_funs;
+    const auto ret = arjun->standalone_cover(cnf, my_conf, cex);
+    SLOW_DEBUG_DO(if (ret == CMSat::l_False) assert(cnf.is_2qbf_cex(cex)));
+    if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
+    SLOW_DEBUG_DO(if (need_funs && ret != CMSat::l_False) check_stage(cnf, "cover"));
+    // the functions are in place, and get written out by do_synth_2qbf()
+    cover_done = ret == CMSat::l_True;
+    if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
 }
 
 // bloqqer's variable elimination from round 2 on: resolvents may outnumber the clauses
@@ -703,6 +705,7 @@ void do_synth_2qbf() {
     if ((cover_stages & 2) && !cnf.synth_done() && has_defined(cnf)) try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
 
     cnf.rewrite_aigs(conf.verb);
+    SLOW_DEBUG_DO(check_stage(cnf, "rewrite_aigs"));
     if (use_brute_force_synth && !cnf.synth_done()) {
         verb_print(1, "[arjun] Synthesis: brute-force decision trees");
         cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf, iconf);

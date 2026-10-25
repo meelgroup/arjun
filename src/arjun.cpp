@@ -422,7 +422,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         new_replaced.emplace_back(elimed, bad_lit.sign());
         var_to_lits_it_replaced[bad_lit.var()] = new_replaced;
-        scnf.defs[elimed] = aig_lit();
+        scnf.defs[orig_replacing.var()] = aig_lit();
         add_elimed.push_back(bad_lit.var());
     }
     for(const auto& v: add_elimed) elimed_vars.push_back(v);
@@ -1823,11 +1823,12 @@ DLL_PUBLIC void SimplifiedCNF::set_all_clauses(vector<vector<CMSat::Lit>>&& cls,
 }
 
 DLL_PUBLIC void SimplifiedCNF::renumber_vars(const vector<uint32_t>& map_here_to_there, uint32_t new_nvars) {
-    assert(!need_aig && "not supported with AIG definitions");
     constexpr uint32_t m = numeric_limits<uint32_t>::max();
     assert(map_here_to_there.size() >= nvars);
     map<uint32_t, CMSat::Lit> upd_vmap;
     for(const auto& [o,n]: orig_to_new_var) {
+        // with AIGs, the defs are over the orig vars and stay: one that leaves the CNF needs one
+        if (need_aig && n != CMSat::lit_Undef && map_here_to_there[n.var()] == m) assert(defined(o));
         if (n == CMSat::lit_Undef || map_here_to_there[n.var()] == m) continue;
         upd_vmap[o] = CMSat::Lit(map_here_to_there[n.var()], n.sign());
     }

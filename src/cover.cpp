@@ -672,6 +672,8 @@ CoverComponent::Result CoverComponent::cegar_run() {
         if (x_ret == l_Undef) break;
         if (x_ret == l_False) {
             if (cconf.need_funs) timed(stats.funs_time, [&] { build_funs(result.funs); return 0; });
+            // a function of X is tied to its def here, which these clauses may be what enforce
+            result.every_x_has_y = stats.num_cubes == 0 && x_side.size() == num_x;
             return done(l_True);
         }
         assumps.clear();
@@ -701,7 +703,7 @@ void Cover::split_into_components() {
     assert(components.empty() && x_cls.empty());
     const uint32_t num_vars = problem.size();
     const auto [state, defined, unconstrained] = CoverComponent::classify_defined(problem, cnf.get_clauses());
-    vector<char> on_x_side(num_vars, 0);
+    on_x_side.assign(num_vars, 0);
     for (uint32_t v = 0; v < num_vars; v++) if (problem.is_x[v] || state[v] == CoverComponent::VarKind::fun_of_x) on_x_side[v] = 1;
 
     UnionFind uf(num_vars);
@@ -743,48 +745,72 @@ void Cover::split_into_components() {
     });
 }
 
-// Covers one component with what is left of the ticks
-lbool Cover::cover_one(const Cls& comp_cls, const uint32_t verb, vector<lbool>& cex) {
-    assert(cex.empty());
+// Covers one component with what is left of the ticks, at most max_comp_ticks if set
+CoverComponent::Result Cover::cover_one(const Cls& comp_cls, const uint32_t verb, const uint64_t max_comp_ticks) {
     if (cconf.max_ticks) assert(used_ticks < cconf.max_ticks);
-    CoverComponent comp(problem, cnf.get_aig_mng(), comp_cls, cconf, cconf.max_ticks ? cconf.max_ticks - used_ticks : 0, verb);
+    uint64_t ticks = cconf.max_ticks ? cconf.max_ticks - used_ticks : 0;
+    if (max_comp_ticks) ticks = std::min(ticks, max_comp_ticks);
+    CoverComponent comp(problem, cnf.get_aig_mng(), comp_cls, cconf, ticks, verb);
     auto r = comp.cegar_run();
     used_ticks += comp.ticks();
-    if (r.ret == l_False) cex = std::move(r.cex);
-    found_funs.insert(found_funs.end(), r.funs.begin(), r.funs.end());
-    return r.ret;
+    return r;
 }
 
-// Covers the components one by one, smallest first, until one is not covered
-lbool Cover::cover_components(vector<lbool>& cex) {
+// Covers the components one by one, smallest first, until an X has no Y.
+// One that gives up does not stop the rest: removable[i] says which every X has a Y of
+lbool Cover::cover_components(vector<lbool>& cex, vector<char>& removable) {
     assert(components.size() > 1);
-    assert(cex.empty());
+    assert(cex.empty() && removable.empty() && found_funs.empty());
     const uint32_t verb = conf.verb;
     std::stable_sort(components.begin(), components.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
     components.back().insert(components.back().end(), x_cls.begin(), x_cls.end());
     if (verb) std::cout << "c o [cover] components: " << components.size() << " clauses of the largest: "
         << components.back().size() << " of " << cnf.get_clauses().size() << std::endl;
+    removable.assign(components.size(), 0);
+    found_funs.resize(components.size());
     lbool ret = l_True;
-    for (uint32_t i = 0; i < components.size() && ret == l_True; i++) {
+    for (uint32_t i = 0; i < components.size(); i++) {
         if (cconf.max_ticks && used_ticks >= cconf.max_ticks) return l_Undef;
         const bool last = i + 1 == components.size();
-        ret = cover_one(components[i], last ? verb : (verb ? verb - 1 : 0), cex);
-        if (verb && !last && ret != l_True) std::cout << "c o [cover] component " << i << " with "
-            << components[i].size() << " clauses: " << (ret == l_False ? "X with no Y" : "gave up") << std::endl;
+        // one hopeless component does not use it all up, the last gets the rest
+        const uint64_t max_comp_ticks = last || !cconf.max_ticks ? 0 : cconf.max_ticks / 4 + 1;
+        auto r = cover_one(components[i], last ? verb : (verb ? verb - 1 : 0), max_comp_ticks);
+        if (verb && !last && r.ret != l_True) std::cout << "c o [cover] component " << i << " with "
+            << components[i].size() << " clauses: " << (r.ret == l_False ? "X with no Y" : "gave up") << std::endl;
+        if (r.ret == l_False) {
+            cex = std::move(r.cex);
+            return l_False;
+        }
+        if (r.ret == l_Undef) ret = l_Undef;
+        removable[i] = r.every_x_has_y;
+        found_funs[i] = std::move(r.funs);
     }
     return ret;
 }
 
-// The Skolem functions found go to cnf as defs, in the original numbering
-void Cover::set_funs() {
+// The Skolem functions found go to cnf as defs, in the original numbering:
+// those of the components in only, or all, and then the vars left undefined are free and get one
+void Cover::set_funs(const vector<char>& only) {
     assert(cconf.need_funs && trans);
+    assert(only.empty() || only.size() == found_funs.size());
+    // A defined leaf becomes its def: the orig def may name a y that this
+    // def does not, the translation having folded it away, and a y whose
+    // function names the leaf would close a cycle
+    Subst over_x(problem);
+    for (uint32_t v = 0; v < problem.size(); v++) if (!problem.defined(v)) over_x.leaf[v] = AIG::new_lit(v);
+    vector<uint32_t> vars;
     vector<aig_lit> funs;
-    for (const auto& d : found_funs) funs.push_back(d.second);
+    for (uint32_t i = 0; i < found_funs.size(); i++) if (only.empty() || only[i])
+        for (const auto& [v, f] : found_funs[i]) {
+            vars.push_back(v);
+            funs.push_back(over_x.of_aig(f).a);
+        }
     trans->funs_to_orig(funs);
     for (uint32_t i = 0; i < funs.size(); i++) {
-        const Lit o = trans->orig_of(found_funs[i].first);
+        const Lit o = trans->orig_of(vars[i]);
         cnf.set_def(o.var(), o.sign() ? ~funs[i] : funs[i]);
     }
+    if (!only.empty()) return;
     const auto& sampl = cnf.get_orig_sampl_vars();
     for (uint32_t v = 0; v < cnf.num_defs(); v++)
         if (!sampl.count(v) && !cnf.defined(v)) cnf.set_def(v, cnf.get_aig_mng().new_const(false));
@@ -977,10 +1003,42 @@ lbool Cover::run(vector<lbool>& cex) {
     assert(cex.empty());
     split_into_components();
     vector<lbool> cex_internal;
-    const lbool ret = components.size() <= 1 ? cover_one(cnf.get_clauses(), conf.verb, cex_internal) : cover_components(cex_internal);
+    vector<char> removable;
+    lbool ret;
+    if (components.size() <= 1) {
+        auto r = cover_one(cnf.get_clauses(), conf.verb);
+        ret = r.ret;
+        cex_internal = std::move(r.cex);
+        found_funs.push_back(std::move(r.funs));
+    } else ret = cover_components(cex_internal, removable);
     if (ret == l_False) assert(!cex_internal.empty());
     else assert(cex_internal.empty());
-    if (ret == l_True && cconf.need_funs) set_funs();
+    if (ret == l_True && cconf.need_funs) set_funs({});
+    if (ret == l_Undef && cconf.need_funs && cconf.partial) keep_covered(removable);
     if (ret == l_False) cex = trans->x_to_orig(cnf, cex_internal);
     return ret;
+}
+
+// A component covered with no X-cube blocked and no function of X has a Y
+// for every X, so its clauses go, and its functions, whatever the ys of the
+// others are, become defs. Any other stays: its clauses may restrict X. The
+// rest is left to the passes after. The clauses of X only stay
+void Cover::keep_covered(const vector<char>& removable) {
+    assert(cconf.need_funs && cconf.partial);
+    assert(removable.empty() || removable.size() == components.size());
+    if (std::none_of(removable.begin(), removable.end(), [](const char c) { return c; })) return;
+    set_funs(removable);
+    vector<char> gone(problem.size(), 0);
+    for (uint32_t i = 0; i < components.size(); i++) if (removable[i])
+        for (const auto& cl : components[i]) for (const auto& l : cl) if (!on_x_side[l.var()]) gone[l.var()] = 1;
+    const int64_t removed = rewrite_cnf_with_cubes(gone, {});
+    // the ys leave the CNF as BVE's do: the passes after take a defined var in it as one its clauses define
+    constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
+    vector<uint32_t> map_here_to_there(cnf.nVars(), m);
+    uint32_t new_nvars = 0;
+    for (uint32_t v = 0; v < cnf.nVars(); v++) if (!gone[v]) map_here_to_there[v] = new_nvars++;
+    cnf.renumber_vars(map_here_to_there, new_nvars);
+    if (conf.verb) std::cout << "c o [cover] removed " << std::count(removable.begin(), removable.end(), 1)
+        << " of " << components.size() << " components, cls removed: " << removed
+        << " vars gone: " << std::count(gone.begin(), gone.end(), 1) << std::endl;
 }

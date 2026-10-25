@@ -73,6 +73,9 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
 
     // Sampling variables should not be part of the autarky
     for(const auto& v: cnf.get_sampl_vars()) s.add_clause({~var_sel[v]});
+    // Nor the defined ones, e.g. by covering: they have their value already
+    if (cnf.get_need_aig()) for (const auto& [v, orig] : cnf.get_new_to_orig_var())
+        if (v < cnf.nVars() && cnf.defined(orig.var())) s.add_clause({~var_sel[v]});
 
     vector<Lit> cl;
     for(uint32_t i = 0; i < cnf.get_clauses().size(); i++) {

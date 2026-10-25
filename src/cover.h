@@ -184,11 +184,12 @@ public:
         defs_in_y(_problem), defs_in_x(_problem), defs_in_vars(_problem), enc_y(y_solver), enc_x(x_solver) {}
 
     using Funs = std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>;
-    // All of it in the numbering of `problem`
     struct Result {
         CMSat::lbool ret = CMSat::l_Undef;
         std::vector<CMSat::lbool> cex; // l_False: an X with no Y
         Funs funs; // l_True and need_funs: the functions found, for the caller to set
+        // l_True with no X-cube blocked and no function of X: the clauses say nothing of X
+        bool every_x_has_y = false;
     };
     Result cegar_run();
     uint64_t ticks() { return x_solver.get_sum_ticks() + y_solver.get_sum_ticks() + defs_in_x.work * 10; }
@@ -328,10 +329,10 @@ public:
 private:
     using Cls = std::vector<std::vector<CMSat::Lit>>;
     void split_into_components();
-    CMSat::lbool cover_components(std::vector<CMSat::lbool>& cex);
-    CMSat::lbool cover_one(const Cls& comp_cls, const uint32_t verb,
-            std::vector<CMSat::lbool>& cex);
-    void set_funs();
+    CMSat::lbool cover_components(std::vector<CMSat::lbool>& cex, std::vector<char>& removable);
+    CoverComponent::Result cover_one(const Cls& comp_cls, const uint32_t verb, uint64_t max_comp_ticks = 0);
+    void set_funs(const std::vector<char>& only);
+    void keep_covered(const std::vector<char>& removable);
 
     // drop_covered()
     struct DropStats {
@@ -376,7 +377,8 @@ private:
 
     std::vector<Cls> components;
     Cls x_cls;
-    CoverComponent::Funs found_funs;
+    std::vector<char> on_x_side; // X, or a function of X only
+    std::vector<CoverComponent::Funs> found_funs; // per component
     uint64_t used_ticks = 0;
 };
 
