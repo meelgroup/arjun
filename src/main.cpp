@@ -663,7 +663,8 @@ void do_synth_2qbf() {
     if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
     // Only 2QBF: an X with no Y ends it early here, synthesis has no such early exit to win
-    if (qbf2) try_cover(cnf, need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
+    if (qbf2 && !cnf.synth_done())
+        try_cover(cnf, need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
 
     if (do_synth_puura && !cnf.synth_done())
         simplify_for_synth_2qbf(cnf, need_funs);
