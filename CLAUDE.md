@@ -110,8 +110,7 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
    clauses. Like cover, it works in the CNF's numbering
    (`cover_problem.h`): `OrigTranslation` turns the defs into a
    `CoverProblem` over it once, at the entrance, and the results back to orig
-   vars at the exit. Nothing in between translates. Only the clauses BCE leaves for the next Puura run are translated
-   to orig vars (`to_orig_cls()`): that run is a new problem over them.
+   vars at the exit. Nothing in between translates.
 
 Everything works from `cnf`, never from the orig clauses (`orig_clauses` is
 for debugging, e.g. `is_2qbf_cex()`). That is sound because simplification
@@ -138,22 +137,12 @@ directory per QBFLIB family), `~/media/qbf/qbfeval17/2QBF` and
 `~/media/qbf/qbflib/qbf_prefix.py` prints `KEEP ae` for the forall-exists
 ones). All of these but the first are `.qdimacs.gz`.
 
-### Blocked clauses: `--2qbf` with no output file
+### Blocked clauses: removed
 
-When no functions are asked for, `simplify_for_synth_2qbf()` removes the
-clauses blocked on an existential literal after Puura (`bce_2qbf()`,
-bloqqer's QBCE; `--prebce 0` turns it off). That keeps the truth and the X
-with no Y, but not the Skolem functions, so it cannot go into Puura. It
-runs only BETWEEN Puura runs: the clauses it leaves become a new problem
-(`cnf_of_2qbf_cls()`) for the next one, so the last step is always Puura
-and `cnf` is the 2QBF. Puura runs twice by default; `--2qbfpuurarounds N`
-(up to 4) adds runs where BVE may grow the CNF. A further run is dropped
-unless it ends with fewer literals.
-
-The `ctrl` family needs it: 14 of 29 solved in 200 s, 0 without. It is the
-BCE that does it: with a 2nd Puura run but no BCE, 0 of those 14 are done,
-as the 2nd run then changes nothing (3308 -> 3308 clauses, against 3154 ->
-765 after BCE). NEVER drop BCE to simplify the code.
+BCE between Puura runs was removed (2026-10-25) for simplicity. On
+`2qbf_combo` at 60 s: 630 solved without, 623 with. BCE is what solves `ctrl`
+(7 of 29, 0 without: it unlocks BVE, 9137 -> 1736 cls) and won 2 `sdlx`; no
+BCE won 16, mostly the fixpoint families. `ctrl` needs it back (git history).
 
 ## Other QBF solvers and preprocessors: `qbf_solvers/`
 

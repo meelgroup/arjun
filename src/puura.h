@@ -42,7 +42,6 @@ public:
     [[nodiscard]] std::unique_ptr<CMSat::SATSolver> fill_solver(const ArjunNS::SimplifiedCNF& cnf) const;
     ArjunNS::SimplifiedCNF get_fully_simplified_renumbered_cnf(
         const ArjunNS::SimplifiedCNF& cnf, const ArjunNS::SimpConf simp_conf);
-    void reverse_bce(ArjunNS::SimplifiedCNF& cnf);
     void run_sbva(ArjunNS::SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak,
         uint32_t sbva_max_new_vars);

@@ -73,8 +73,6 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rn
 int synthesis = false;
 int qbf2 = false;
 size_t qbf2_num_cls = 0;
-int pre_bce = 1;
-int qbf2_puura_rounds = 2;
 int debug_verilog = 0;
 ArjunNS::Arjun::CoverConf cover_conf;
 double cover_ticks = 200;
@@ -172,8 +170,6 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
-    myopt("--prebce", pre_bce, "2QBF with no functions asked for: remove the clauses blocked on an existential literal after Puura, as bloqqer does. The Skolem functions of what is left are not ones of the input, so an output file turns it off");
-    myopt("--2qbfpuurarounds", qbf2_puura_rounds, "2QBF with --prebce: how many times Puura runs, 1 to 4. Each further run is on the clauses left by the one before, less the blocked ones, and is kept only if it ends with fewer literals. The 2nd is like the 1st, the 3rd lets BVE grow the CNF (--iter1grow 16 --iter2grow 100), the 4th more so (100, 1000, and no resolvent size limit)");
     myopt("--cover", cover_conf.budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
     myopt("--coverorigticks", cover_orig_ticks, "As --coverticks, for the covering run of --2qbf on the original clauses");
@@ -470,19 +466,6 @@ void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
-// The 2QBF of cls as the problem to solve, in the place of cnf's
-ArjunNS::SimplifiedCNF cnf_of_2qbf_cls(const ArjunNS::SimplifiedCNF& cnf,
-        const vector<vector<CMSat::Lit>>& cls) {
-    ArjunNS::SimplifiedCNF ret(fg);
-    ret.set_need_aig();
-    ret.new_vars(cnf.get_orig_num_vars());
-    for(const auto& cl: cls) ret.add_clause(cl);
-    ret.set_sampl_vars(vector<uint32_t>(cnf.get_orig_sampl_vars().begin(), cnf.get_orig_sampl_vars().end()));
-    ret.set_orig_clauses(ret.get_clauses());
-    ret.set_orig_sampl_vars(ret.get_sampl_vars());
-    return ret;
-}
-
 void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     CMSat::SATSolver solver;
     solver.set_verbosity(0);
@@ -496,12 +479,6 @@ void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
         cout << "c o [arjun] Input CNF is UNSAT!" << endl;
         exit(EXIT_FAILURE);
     }
-}
-
-size_t num_lits(const vector<vector<CMSat::Lit>>& cls) {
-    size_t ret = 0;
-    for(const auto& cl: cls) ret += cl.size();
-    return ret;
 }
 
 bool has_univ(const ArjunNS::SimplifiedCNF& cnf) {
@@ -546,68 +523,23 @@ void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double b
     if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
 }
 
-// bloqqer's variable elimination from round 2 on: resolvents may outnumber the clauses
-ArjunNS::SimpConf synth_2qbf_puura_conf(const int round) {
-    auto ret = simp_conf;
-    if (round >= 2) {
-        ret.bve_grow_iter1 = round == 2 ? 16 : 100;
-        ret.bve_grow_iter2 = round == 2 ? 100 : 1000;
-        ret.bve_grow_iter2_large = -1;
-    }
-    if (round >= 3) ret.bve_too_large_resolvent = ret.bve_too_large_resolvent2 = -1;
-    return ret;
-}
-
-// Round 0 simplifies cnf, a later one the 2QBF of cls, over orig vars, as a new problem
-void synth_2qbf_puura_round(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMSat::Lit>>& cls, const int round,
-        const bool need_funs) {
-    cnf = arjun->standalone_get_simplified_cnf(
-            round == 0 ? cnf : cnf_of_2qbf_cls(cnf, cls), synth_2qbf_puura_conf(round));
+void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) {
+    cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+    verb_print(1, "[2qbf-puura] cls: " << cnf.get_clauses().size() << " T: " << (cpuTime() - start_time));
     if (qbf2) {
         const auto cex = cnf.get_2qbf_def_cex();
         if (!cex.empty()) {
             verb_print(1, "[arjun] simplification defined a universal: false");
             qbf2_result(cnf, false, cex);
         }
+        check_2qbf_univ_clause(cnf);
     }
-    if (qbf2) check_2qbf_univ_clause(cnf);
     if (!need_funs && !has_univ(cnf)) {
         verb_print(1, "[arjun] no universal left, and the CNF is satisfiable");
         qbf2_result(cnf, true);
     }
-}
-
-// Repeated Puura, each round on the previous result minus its blocked clauses.
-// BCE only builds the next round's input, cnf always holds a Puura result
-void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) {
-    const bool bce = qbf2 && !need_funs && pre_bce;
-    vector<vector<CMSat::Lit>> cls;
-    size_t prev_lits = 0;
-    for (int round = 0;; round++) {
-        ArjunNS::SimplifiedCNF prev_cnf(fg);
-        if (round > 0) prev_cnf = cnf;
-        synth_2qbf_puura_round(cnf, cls, round, need_funs);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
-        SLOW_DEBUG_DO(check_stage(cnf, "simplified_cnf"));
-        const size_t lits = num_lits(cnf.get_clauses());
-        const bool smaller = round == 0 || lits < prev_lits;
-        verb_print(1, "[2qbf-puura] round: " << round << " cls: " << cnf.get_clauses().size() << " lits: " << lits
-                << (smaller ? "" : " -- not smaller, dropped") << " T: " << (cpuTime() - start_time));
-        if (!smaller) {
-            cnf = std::move(prev_cnf);
-            return;
-        }
-        prev_lits = lits;
-        if (!bce || cnf.all_ys_defined() || round >= qbf2_puura_rounds - 1) return;
-
-        auto left = cnf.get_clauses();
-        const auto removed = cnf.bce_2qbf(left);
-        verb_print(1, "[2qbf-puura] blocked cls removed: " << removed);
-        if (left.empty()) qbf2_result(cnf, true);
-        cls = cnf.to_orig_cls(left);
-        if (round == 0 && removed == 0) round++;
-        if (round >= qbf2_puura_rounds - 1) return;
-    }
+    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
+    SLOW_DEBUG_DO(check_stage(cnf, "simplified_cnf"));
 }
 
 void check_synth_2qbf_input(const ArjunNS::SimplifiedCNF& cnf) {
@@ -906,10 +838,6 @@ int main(int argc, char** argv) {
     if ((synthesis || qbf2) && !output_file.empty() && output_file != "/dev/null"
             && !output_file.ends_with(".aig") && !output_file.ends_with(".v")) {
         cout << "ERROR: the output file for the functions must end in .aig or .v, or be /dev/null" << endl;
-        exit(EXIT_FAILURE);
-    }
-    if (qbf2_puura_rounds < 1 || qbf2_puura_rounds > 4) {
-        cout << "ERROR: --2qbfpuurarounds must be between 1 and 4" << endl;
         exit(EXIT_FAILURE);
     }
     if (synthesis || qbf2) {

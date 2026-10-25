@@ -35,9 +35,9 @@ arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
   too slow on them, and the interpolation of extend/backward ran out of memory.
 - `small-pipeline-fixpoint` (7): the orig run takes 5867M ticks and 67 s for
   201 rounds, refinements of 4656. bloqqer + CADET: 5 s.
-- `ctrl` (10): DONE, `--2qbfpuurarounds 2` is the default. bloqqer needs
-  its BCE and VE for them, not expansion; a 2nd Puura run after the blocked
-  clauses are gone does the same. 14 of 29 in 200 s, all by covering.
+- `ctrl` (10): open again, BCE was removed (CLAUDE.md). bloqqer needs its
+  BCE and VE for them, not expansion; BCE + a 2nd Puura run got 14 of 29 in
+  200 s, all by covering.
 - `ci` (6): 1 of 6 with 2 runs. bloqqer + RAReQS gets all 6. Open.
 
 ## To try, in order
@@ -66,8 +66,7 @@ arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
    - hidden/covered blocked clauses: bloqqer `hidden_tautology()`
      `bloqqer.c:3270`; QRATPre+ `qratpreplus/qbce_qrat_plus.c:142`.
    - QBCE with functions, by reconstruction in reverse removal order,
-     `l := l or ~(rest of C)`: DepQBF `qdpll.c:16924`. Would let
-     `bce_2qbf()` run for `--synth` and `--2qbf` with an output file.
+     `l := l or ~(rest of C)`: DepQBF `qdpll.c:16924`.
    - blocked universal literal elimination: bloqqer `block_lit()`
      `bloqqer.c:2812`, QRATPre+ `qbce_qrat_plus.c:263`. Does not keep the
      set of X that have a Y: `--2qbf` verdict only.

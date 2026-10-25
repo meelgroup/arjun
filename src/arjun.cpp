@@ -25,7 +25,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <numeric>
 #include <limits>
 #include <iomanip>
 #include <sstream>
@@ -879,23 +878,6 @@ DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {
     vector<Lit> assumps;
     for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, cex[v] != l_True);
     return s.solve(&assumps) == l_False;
-}
-
-DLL_PUBLIC vector<vector<Lit>> SimplifiedCNF::to_orig_cls(const vector<vector<Lit>>& cls) const {
-    vector<Lit> to_orig(nVars(), lit_Undef);
-    for (const auto& [orig, l] : orig_to_new_var) {
-        if (to_orig[l.var()] != lit_Undef && !orig_sampl_vars.count(orig)) continue;
-        to_orig[l.var()] = Lit(orig, l.sign());
-    }
-    vector<vector<Lit>> ret;
-    for (const auto& cl : cls) {
-        ret.emplace_back();
-        for (const auto& l : cl) {
-            release_assert(to_orig[l.var()] != lit_Undef);
-            ret.back().push_back(to_orig[l.var()] ^ l.sign());
-        }
-    }
-    return ret;
 }
 
 DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_def_cex() const {
@@ -1855,62 +1837,6 @@ DLL_PUBLIC void SimplifiedCNF::renumber_vars(const vector<uint32_t>& map_here_to
     }
     nvars = new_nvars;
     defs.resize(std::max<size_t>(defs.size(), nvars));
-}
-
-DLL_PUBLIC uint32_t SimplifiedCNF::bce_2qbf(vector<vector<Lit>>& cls) const {
-    vector<char> univ(nVars(), 0);
-    for (const auto& [o, l] : orig_to_new_var) if (orig_sampl_vars.count(o)) univ[l.var()] = 1;
-    vector<vector<uint32_t>> occ(2*nVars());
-    for (uint32_t i = 0; i < cls.size(); i++) for (const auto& l : cls[i]) occ[l.toInt()].push_back(i);
-    vector<char> removed(cls.size(), 0), queued(cls.size(), 1), in_cl(2*nVars(), 0);
-    vector<uint32_t> todo(cls.size());
-    std::iota(todo.rbegin(), todo.rend(), 0);
-
-    // work is the literals looked at: the same on every machine
-    uint64_t work = 0;
-    const uint64_t max_work = 2000ULL*1000ULL*1000ULL;
-    auto taut_resolvent = [&](const uint32_t other, const Lit on) {
-        work += cls[other].size();
-        for (const auto& l : cls[other]) if (l != on && in_cl[(~l).toInt()]) return true;
-        return false;
-    };
-    uint32_t num_removed = 0;
-    while (!todo.empty() && work < max_work) {
-        const uint32_t at = todo.back();
-        todo.pop_back();
-        queued[at] = 0;
-        if (removed[at]) continue;
-        for (const auto& l : cls[at]) in_cl[l.toInt()] = 1;
-        bool blocked = false;
-        for (const auto& l : cls[at]) {
-            if (univ[l.var()]) continue;
-            blocked = true;
-            for (const auto& other : occ[(~l).toInt()]) if (!removed[other] && !taut_resolvent(other, ~l)) {
-                blocked = false;
-                break;
-            }
-            if (blocked) break;
-        }
-        for (const auto& l : cls[at]) in_cl[l.toInt()] = 0;
-        if (!blocked) continue;
-
-        // only a clause that resolved with this one can be blocked now
-        removed[at] = 1;
-        num_removed++;
-        for (const auto& l : cls[at]) for (const auto& other : occ[(~l).toInt()])
-            if (!removed[other] && !queued[other]) {
-                queued[other] = 1;
-                todo.push_back(other);
-            }
-    }
-
-    uint32_t j = 0;
-    for (uint32_t i = 0; i < cls.size(); i++) if (!removed[i]) {
-        if (i != j) cls[j] = std::move(cls[i]);
-        j++;
-    }
-    cls.resize(j);
-    return num_removed;
 }
 
 DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) const {

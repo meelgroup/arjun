@@ -1833,11 +1833,6 @@ public:
                          std::vector<std::vector<CMSat::Lit>>&& red);
 
     void write_simpcnf(const std::string& fname, bool red = true) const;
-    // Removes the clauses that are blocked on an existential literal: every
-    // resolvent on it is a tautology. Keeps the 2QBF's truth and its X with
-    // no Y, but not its Skolem functions. cls is over the CNF's vars. Returns
-    // the number removed
-    uint32_t bce_2qbf(std::vector<std::vector<CMSat::Lit>>& cls) const;
 
     [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);
@@ -1918,9 +1913,6 @@ public:
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex() const;
     // No Y extends X to a model of the orig clauses. For debugging
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
-    // cls, over the CNF's vars, over ORIG vars instead
-    [[nodiscard]] std::vector<std::vector<CMSat::Lit>> to_orig_cls(
-            const std::vector<std::vector<CMSat::Lit>>& cls) const;
     // Simplification defines an orig sampl var only by what F implies: a unit,
     // or an equivalence with another one. An X that breaks that def has no Y.
     // Empty if no orig sampl var is defined: then the clauses are the 2QBF,
@@ -1936,21 +1928,6 @@ public:
     // Used after SBVA to replace clauses
     void replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses);
 
-    // Used after BCE to replace clauses
-    // DELETES ALL REDUNDANT CLAUSES!!!
-    struct BCEClause {
-        uint32_t at = std::numeric_limits<uint32_t>::max();
-        std::vector<CMSat::Lit> lits;
-        bool to_remove = false;
-    };
-    void replace_clauses_with(std::vector<BCEClause>& cls) {
-        clauses.clear();
-        red_clauses.clear(); // Yes, it's necessary
-        for(const auto& cl: cls) {
-            if (cl.to_remove) continue;
-            add_clause(cl.lits);
-        }
-    }
     void set_after_backward_round_synth() {
         assert(!after_backward_round_synth && "Should only be set once");
         after_backward_round_synth = true;

@@ -93,15 +93,6 @@ std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) const {
     return solver;
 }
 
-void Puura::reverse_bce(SimplifiedCNF& cnf) {
-    auto solver = fill_solver(cnf);
-    solver->set_renumber(false);
-    solver->set_scc(false);
-    set_up_sampl_vars_dont_elim(cnf);
-    solver->set_sampl_vars(cnf.get_sampl_vars());
-    solver->reverse_bce();
-}
-
 bool Puura::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<SATSolver>& solver) {
     if (!cnf.get_weighted()) return true;
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
