@@ -1231,7 +1231,7 @@ SimplifiedCNF Cegr::do_cegr() {
     // input vars -- original sampling vars
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
-    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_cegr").unpack_to(input, to_define, backward_defined);
+    cnf.get_var_types(conf.verb, "start do_cegr").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
         verb_print(1, "[cegr] No variables to-define, returning original CNF");
         return cnf;
@@ -1442,14 +1442,14 @@ SimplifiedCNF Cegr::do_cegr() {
     SimplifiedCNF fcnf = std::move(cnf);
     fcnf.map_aigs_to_orig(aigs, cnf_nvars, y_hat_to_y);
     assert(verify_final_cnf(fcnf));
-    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "end do_cegr");
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(conf.verb >= 2 ? conf.verb : 0, "end do_cegr");
     stats.print_stats("", COLYEL, " Round done");
     return fcnf;
 }
 
 bool Cegr::verify_final_cnf(const SimplifiedCNF& fcnf) const {
     assert(fcnf.check_aig_cycles());
-    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "verify_final_cnf");
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(conf.verb >= 2 ? conf.verb : 0, "verify_final_cnf");
     for(const auto& v: to_define2) {
         cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
         assert(false && "All to-define vars must be defined in final CNF");

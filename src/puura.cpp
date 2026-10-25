@@ -123,7 +123,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         SLOW_DEBUG_DO(assert(cnf.defs_invariant()));
-        auto vt = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf");
+        auto vt = cnf.get_var_types(conf.verb, "start get_fully_simplified_renumbered_cnf");
         to_define = std::move(vt.to_define);
     }
     for(const auto& v: cnf.get_sampl_vars())
@@ -282,7 +282,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     print_cnf_shape("out", ret_cnf);
     ret_cnf.check_no_touch_mapping();
     if (cnf.get_need_aig()) {
-        auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | verbose_debug_enabled, "end get_fully_simplified_renumbered_cnf");
+        auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(conf.verb >= 2 ? conf.verb : 0, "end get_fully_simplified_renumbered_cnf");
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
             << " final cls: " << ret_cnf.get_clauses().size()
             << " defined: " << to_define.size() - to_define2.size()

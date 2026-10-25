@@ -295,11 +295,11 @@ void InterpTracerMcMillan::add_original_clause(int64_t id, bool /*red*/,
     if (next_is_b) b_clause_ids.insert(id);
     // Label deferred to build_interpolant(): it depends on input_vars (which
     // grow between solves) and only proof-core clauses ever need one.
-    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 5) {
+    VERBOSE_DEBUG_DO(
         cout << "c o [interp] orig id=" << id
              << (next_is_b ? " B" : " A")
              << " sz=" << cls[id].size() << endl;
-    });
+    );
 }
 
 // McMillan label of an original clause from the current input_vars.
@@ -357,9 +357,9 @@ void InterpTracerMcMillan::add_derived_clause(int64_t id, bool /*red*/,
     antec[id] = antecedents;
     if (cls[id].empty() && empty_id == INT64_MAX) {
         empty_id = id;
-        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 4) {
+        VERBOSE_DEBUG_DO(
             cout << "c o [interp] empty clause derived id=" << id << endl;
-        });
+        );
     }
 }
 

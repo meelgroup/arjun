@@ -51,7 +51,7 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 void Extend::extend_synth(SimplifiedCNF& cnf) {
     const double my_time = cpuTime();
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
-    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start extend_synth");
+    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb, "start extend_synth");
 
     double start_round_time = cpuTime();
     fill_solver(cnf);
@@ -173,7 +173,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
 
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
-    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end extend_synth");
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(conf.verb >= 2 ? conf.verb : 0, "end extend_synth");
     verb_print(1, COLRED "[synth-extend] Done. "
             << " True: " << num_sat
             << " Unkn: " << num_unknown

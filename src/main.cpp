@@ -660,7 +660,7 @@ void do_synth_2qbf() {
         cout << "ERROR: --debugsynth needs the functions to be kept: give an output file for them" << endl;
         exit(EXIT_FAILURE);
     }
-    if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
+    if (conf.verb) cnf.get_var_types(conf.verb, "start do_synthesis");
 
     // Only 2QBF: an X with no Y ends it early here, synthesis has no such early exit to win
     if (qbf2 && !cnf.all_ys_defined())
