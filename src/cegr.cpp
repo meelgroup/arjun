@@ -1424,7 +1424,7 @@ SimplifiedCNF Cegr::do_cegr() {
         }
         verb_print(2, "[cegr] Num repaired: " << num_repaired << " tot repaired: " << stats.tot_repaired << " num_loops_repair: " << stats.num_loops_repair);
 
-        if (mconf.check_repair) check_repair_monotonic();
+        if (mconf.check_repair) check_repair_monotonic(needs_repair.empty());
     }
     const double repair_time = cpuTime() - stats.repair_start_time;
     assert(check_map_dependency_cycles());
@@ -2612,18 +2612,24 @@ void Cegr::compute_needs_repair(const sample& ctx) {
     }
 }
 
-void Cegr::check_repair_monotonic() {
+// A repair never breaks an input whose functions satisfy F: its conflict cube,
+// when true there, forces the value the function already has. So the count
+// never grows, and drops if the repair loop fixed the counterexample's input
+// (it may break out early, e.g. after cost-zero repairs, leaving it unfixed).
+void Cegr::check_repair_monotonic(const bool ctx_fixed) {
     mpz_class cnt;
     if (!count_error_formula(cnt)) return;
 
     if (prev_error_count >= 0) {
-        if (cnt >= prev_error_count) {
-            cout << "c o ERROR [cegr-checkrepair] Error count did NOT strictly decrease: "
+        const bool ok = ctx_fixed ? cnt < prev_error_count : cnt <= prev_error_count;
+        if (!ok) {
+            cout << "c o ERROR [cegr-checkrepair] Error count did NOT "
+                 << (ctx_fixed ? "strictly decrease" : "stay or decrease") << ": "
                  << prev_error_count << " -> " << cnt << endl;
         }
-        assert(cnt < prev_error_count &&
-            "Error formula count must strictly decrease after each repair iteration");
-        verb_print(1, "[cegr-checkrepair] Error count decreased: "
+        assert(ok && "Error formula count must not grow, and must drop once the counterexample is fixed");
+        verb_print(1, "[cegr-checkrepair] Error count "
+            << (cnt < prev_error_count ? "decreased" : "unchanged, counterexample not fixed") << ": "
             << prev_error_count << " -> " << cnt << " (good)");
     }
     prev_error_count = cnt;
