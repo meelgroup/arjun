@@ -326,14 +326,14 @@ public:
     int64_t drop_covered();
 
 private:
-    void split_by_ys();
+    using Cls = std::vector<std::vector<CMSat::Lit>>;
+    void split_into_components();
     CMSat::lbool cover_components(std::vector<CMSat::lbool>& cex);
-    CMSat::lbool cover_one(const std::vector<std::vector<CMSat::Lit>>& comp_cls, const uint32_t verb,
+    CMSat::lbool cover_one(const Cls& comp_cls, const uint32_t verb,
             std::vector<CMSat::lbool>& cex);
     void set_funs();
 
     // drop_covered()
-    using Cls = std::vector<std::vector<CMSat::Lit>>;
     struct DropStats {
         uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0, kept_def = 0;
         uint64_t cube_cls = 0, cube_lits = 0;
@@ -374,8 +374,8 @@ private:
     const std::optional<OrigTranslation> trans; // none for counting
     const CoverProblem problem;
 
-    std::vector<std::vector<std::vector<CMSat::Lit>>> components;
-    std::vector<std::vector<CMSat::Lit>> x_cls;
+    std::vector<Cls> components;
+    Cls x_cls;
     CoverComponent::Funs found_funs;
     uint64_t used_ticks = 0;
 };

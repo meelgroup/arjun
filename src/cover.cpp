@@ -150,8 +150,8 @@ void CoverComponent::add_vars_and_cls() {
 bool CoverComponent::model_satisfies(const vector<lbool>& model) const {
     assert(assumps.size() == num_x);
     assert(model.size() == y_solver.nVars());
-    for (uint32_t i = 0; i < assumps.size(); i++)
-        if (model[assumps[i].var()] != boolToLBool(!assumps[i].sign())) return false;
+    for (const auto& a : assumps)
+        if (model[a.var()] != boolToLBool(!a.sign())) return false;
     for (const auto& cl : comp_cls) {
         if (cconf.assume_outer && std::all_of(cl.begin(), cl.end(), [&](const Lit l) { return on_x_side[l.var()]; }))
             continue;
@@ -697,7 +697,7 @@ CoverComponent::Result CoverComponent::run() {
 
 // Clauses that share no y, directly or through a function, are
 // covered apart: together they need the product of their models
-void Cover::split_by_ys() {
+void Cover::split_into_components() {
     assert(components.empty() && x_cls.empty());
     const uint32_t num_vars = problem.size();
     const auto [state, defined, unconstrained] = CoverComponent::classify_defined(problem, cnf.get_clauses());
@@ -744,7 +744,7 @@ void Cover::split_by_ys() {
 }
 
 // Covers one component with what is left of the ticks
-lbool Cover::cover_one(const vector<vector<Lit>>& comp_cls, const uint32_t verb, vector<lbool>& cex) {
+lbool Cover::cover_one(const Cls& comp_cls, const uint32_t verb, vector<lbool>& cex) {
     assert(cex.empty());
     if (cconf.max_ticks) assert(used_ticks < cconf.max_ticks);
     CoverComponent comp(problem, cnf.get_aig_mng(), comp_cls, cconf, cconf.max_ticks ? cconf.max_ticks - used_ticks : 0, verb);
@@ -804,9 +804,12 @@ int64_t Cover::drop_covered() {
     assert(components.empty() && used_ticks == 0);
     const double start = cpuTime();
     const uint32_t num_vars = problem.size();
+
+    // UNSAT CNF, return
     if (std::any_of(cnf.get_clauses().begin(), cnf.get_clauses().end(), [](const auto& cl) { return cl.empty(); }))
         return 0;
-    split_by_ys();
+
+    split_into_components();
     std::stable_sort(components.begin(), components.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
 
     vector<char> weighted_y(num_vars, 0);
@@ -832,8 +835,9 @@ int64_t Cover::drop_covered() {
         const bool has_def = cconf.keep_cubes && has_var(comp_cls, is_def);
         drop_stats.weighted += has_weight;
         Covered covered;
-        if (has_weight) {}
-        else if (cconf.max_ticks && used_ticks >= cconf.max_ticks) drop_stats.no_budget++;
+        if (has_weight) {
+          // its Y weights are part of the count, so it must stay: ret stays l_Undef, which keeps it
+        } else if (cconf.max_ticks && used_ticks >= cconf.max_ticks) drop_stats.no_budget++;
         else covered = cover_for_drop(comp_cls, has_def, psi, drop_stats);
 
         const Action action = choose_action(covered, has_def, comp_cls.size());
@@ -967,7 +971,7 @@ void Cover::DropStats::print(const size_t num_comps, const int64_t removed, cons
 lbool Cover::run(vector<lbool>& cex) {
     assert(trans);
     assert(cex.empty());
-    split_by_ys();
+    split_into_components();
     vector<lbool> cex_internal;
     const lbool ret = components.size() <= 1 ? cover_one(cnf.get_clauses(), conf.verb, cex_internal) : cover_components(cex_internal);
     if (ret == l_False) assert(!cex_internal.empty());
