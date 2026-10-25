@@ -424,9 +424,12 @@ void set_config(ArjunNS::Arjun* arj) {
     cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
         << (cpuTime() - start_time) << endl;
     cout << "s cnf " << is_true << " " << cnf.get_orig_num_vars() << " " << qbf2_num_cls << endl;
-    if (!is_true) for(const auto& v: cnf.get_orig_sampl_vars()) {
-        const bool val = v < cex.size() && cex[v] == CMSat::l_True;
-        cout << "V " << (val ? "" : "-") << v+1 << " 0" << endl;
+    if (!is_true) {
+        vector<CMSat::lbool> full(cnf.get_orig_num_vars(), CMSat::l_False);
+        for (uint32_t v = 0; v < cex.size() && v < full.size(); v++) if (cex[v] == CMSat::l_True) full[v] = CMSat::l_True;
+        SLOW_DEBUG_DO(assert(cnf.is_2qbf_cex(full)));
+        for(const auto& v: cnf.get_orig_sampl_vars())
+            cout << "V " << (full[v] == CMSat::l_True ? "" : "-") << v+1 << " 0" << endl;
     }
     exit(is_true ? 10 : 20);
 }
@@ -463,7 +466,6 @@ void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf) {
             cex[o.var()] = CMSat::boolToLBool(o.sign());
         }
         if (!all_univ) continue;
-        SLOW_DEBUG_DO(assert(cnf.is_2qbf_cex(cex)));
         qbf2_result(cnf, false, cex);
     }
 }
@@ -537,7 +539,6 @@ void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double b
     my_conf.stop_at_cex = qbf2;
     my_conf.need_funs = need_funs;
     const auto ret = arjun->standalone_cover(cnf, my_conf, cex);
-    SLOW_DEBUG_DO(if (ret == CMSat::l_False) assert(cnf.is_2qbf_cex(cex)));
     if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
     SLOW_DEBUG_DO(if (need_funs && ret != CMSat::l_False) check_stage(cnf, "cover"));
     // the functions are in place, and get written out by do_synth_2qbf()
@@ -741,7 +742,6 @@ void do_synth_2qbf() {
     if (qbf2) {
         if (cover_done) qbf2_result(cnf, true);
         const auto cex = cnf.get_2qbf_cex();
-        SLOW_DEBUG_DO(if (!cex.empty()) assert(cnf.is_2qbf_cex(cex)));
         qbf2_result(cnf, cex.empty(), cex);
     }
 }

@@ -1,0 +1,4 @@
+c no vars, no clauses
+c RUN: %expect_exit 10 %arjun --2qbf --cover 0 %s > %t.log
+c RUN: %expect_exit 10 %arjun --2qbf --cover 50 %s > %t.log
+p cnf 0 0

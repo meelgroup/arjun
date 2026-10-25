@@ -1,0 +1,11 @@
+c 3 is defined as 1, so 1 -> 2 must hold for all universals
+c RUN: %expect_exit 20 %arjun --2qbf --cover 0 %s > %t.log
+c RUN: grep "^[sV]" %t.log | tr "\n" " " | grep -q "^s cnf 0 3 3 V 1 0 V -2 0 $"
+c RUN: %expect_exit 20 %arjun --2qbf --cover 50 %s > %t.log
+c RUN: grep "^[sV]" %t.log | tr "\n" " " | grep -q "^s cnf 0 3 3 V 1 0 V -2 0 $"
+p cnf 3 3
+a 1 2 0
+e 3 0
+-1 3 0
+1 -3 0
+-3 2 0
