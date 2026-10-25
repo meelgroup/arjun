@@ -190,7 +190,7 @@ public:
         std::vector<CMSat::lbool> cex; // l_False: an X with no Y
         Funs funs; // l_True and need_funs: the functions found, for the caller to set
     };
-    Result run();
+    Result cegar_run();
     uint64_t ticks() { return x_solver.get_sum_ticks() + y_solver.get_sum_ticks() + defs_in_x.work * 10; }
     uint64_t conflicts() const { return x_solver.get_sum_conflicts() + y_solver.get_sum_conflicts(); }
     bool out_of_ticks() { return gave_up || (max_ticks != 0 && ticks() >= max_ticks); }

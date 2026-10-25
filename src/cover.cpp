@@ -644,7 +644,7 @@ void CoverComponent::refine() {
 }
 
 // The CEGAR loop: x_solver proposes an X, y_solver finds it a Y or proves there is none
-CoverComponent::Result CoverComponent::run() {
+CoverComponent::Result CoverComponent::cegar_run() {
     assert(stats.rounds == 0);
     Result result;
     auto done = [&](const lbool ret) {
@@ -748,7 +748,7 @@ lbool Cover::cover_one(const Cls& comp_cls, const uint32_t verb, vector<lbool>& 
     assert(cex.empty());
     if (cconf.max_ticks) assert(used_ticks < cconf.max_ticks);
     CoverComponent comp(problem, cnf.get_aig_mng(), comp_cls, cconf, cconf.max_ticks ? cconf.max_ticks - used_ticks : 0, verb);
-    auto r = comp.run();
+    auto r = comp.cegar_run();
     used_ticks += comp.ticks();
     if (r.ret == l_False) cex = std::move(r.cex);
     found_funs.insert(found_funs.end(), r.funs.begin(), r.funs.end());
@@ -853,6 +853,7 @@ int64_t Cover::drop_covered() {
         for (auto& cl : covered.cubes) cubes.push_back(std::move(cl));
         for (const auto& cl : comp_cls) for (const auto& l : cl) if (!problem.is_x[l.var()]) gone[l.var()] = 1;
     }
+
     const int64_t removed = rewrite_cnf_with_cubes(gone, std::move(cubes));
     if (conf.verb) drop_stats.print(components.size(), removed, std::count(gone.begin(), gone.end(), 1), used_ticks, start);
     return removed;
@@ -876,7 +877,7 @@ Cover::Covered Cover::cover_for_drop(Cls& comp_cls, const bool has_def, PsiReach
         ticks, conf.verb >= 2 ? conf.verb - 1 : 0);
     const double comp_start = cpuTime();
     Covered covered;
-    covered.ret = comp.run().ret;
+    covered.ret = comp.cegar_run().ret;
     drop_stats.max_comp_t = std::max(drop_stats.max_comp_t, cpuTime() - comp_start);
     const uint64_t comp_ticks = comp.ticks();
     used_ticks += comp_ticks;
