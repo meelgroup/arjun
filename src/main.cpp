@@ -173,7 +173,9 @@ void add_arjun_options() {
     myopt("--cover", cover_conf.budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
     myopt("--coverorigticks", cover_orig_ticks, "As --coverticks, for the covering run of --2qbf on the original clauses");
-    myopt("--coverminim", cover_conf.minim, "How covering shortens a refinement, a sum: 1 = SAT calls for a model of the same input whose existentials satisfy more clauses, 2 = flipping existentials no clause needs, 4 = dropping what another part of it implies");
+    myopt("--coverminimsat", cover_conf.sat_minim, "Covering shortens a refinement by SAT calls for a model of the same input whose existentials satisfy more clauses");
+    myopt("--coverminimflip", cover_conf.flip_minim, "Covering shortens a refinement by flipping existentials no clause needs");
+    myopt("--coverminimsubs", cover_conf.subs_minim, "Covering shortens a refinement by dropping a helper another one of it implies");
     myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit. The 1st runs are short, the long one is cover(ticks=N) of --cstrategy");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthpuura", do_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");

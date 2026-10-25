@@ -86,9 +86,9 @@ arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
   dropped: they could be kept.
 
 ## Tried, no gain
-- `--coverminim 2`, the flip pass: 7.3M flips on the 83 files, the SAT
+- `--coverminimflip 1`, the flip pass: 7.3M flips on the 83 files, the SAT
   minimization then removes that much less, same rounds, same files done.
-- `--coverminim 4`, dropping implied helpers: refinements a third shorter
+- `--coverminimsubs 1`, dropping implied helpers: refinements a third shorter
   on the 83 files, same rounds. `stmt19_83_142` under `--2qbf`: 2 s -> 15 s,
   the X with no Y is found later. Both are left as options, off.
 
@@ -112,4 +112,4 @@ resolution, RAReQS's recursion, QESTO `-r` (verdict only, quadratic).
   `*query*_1344n`.
 - Local: 16 at a time, each under `ulimit -v 2500000` and a timeout.
 - Tuning run launched with efe45e02: defaults, `--coverticks 100`,
-  `--coverticks 2000`, `--coverminim 0`.
+  `--coverticks 2000`, `--coverminimsat 0`.
