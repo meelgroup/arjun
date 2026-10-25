@@ -846,12 +846,14 @@ int64_t Cover::drop_covered() {
         if (action == Action::keep || action == Action::keep_def) continue;
         if (action == Action::drop) drop_stats.dropped++;
         else drop_stats.replaced++;
+
+        // drop and replace both: its cubes (none on drop) are added and its Ys marked gone, rewrite_cnf_with_cubes() removes their clauses
         drop_stats.cube_cls += covered.cubes.size();
         for (const auto& cl : covered.cubes) drop_stats.cube_lits += cl.size();
         for (auto& cl : covered.cubes) cubes.push_back(std::move(cl));
         for (const auto& cl : comp_cls) for (const auto& l : cl) if (!problem.is_x[l.var()]) gone[l.var()] = 1;
     }
-    const int64_t removed = set_kept(gone, std::move(cubes));
+    const int64_t removed = rewrite_cnf_with_cubes(gone, std::move(cubes));
     if (conf.verb) drop_stats.print(components.size(), removed, std::count(gone.begin(), gone.end(), 1), used_ticks, start);
     return removed;
 }
@@ -909,7 +911,7 @@ Cover::Action Cover::choose_action(const Covered& covered, const bool has_def, c
 
 // The ys of different components are disjoint: a clause goes iff it has a
 // gone y. The rest keep their order, which the counter is sensitive to
-int64_t Cover::set_kept(const vector<char>& gone, Cls&& cubes) {
+int64_t Cover::rewrite_cnf_with_cubes(const vector<char>& gone, Cls&& cubes) {
     assert(gone.size() == problem.size());
     for (const auto& v : cnf.get_sampl_vars()) assert(!gone[v]);
     if (cubes.empty() && std::none_of(gone.begin(), gone.end(), [](const char g) { return g; })) return 0;

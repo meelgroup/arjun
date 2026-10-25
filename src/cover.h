@@ -366,7 +366,7 @@ private:
     Covered cover_for_drop(Cls& comp_cls, bool has_def, PsiReach& psi, DropStats& drop_stats);
     Action choose_action(const Covered& covered, bool has_def, size_t num_cls) const;
     // gone: the ys of the components that went; cubes: the clauses replacing them
-    int64_t set_kept(const std::vector<char>& gone, Cls&& cubes);
+    int64_t rewrite_cnf_with_cubes(const std::vector<char>& gone, Cls&& cubes);
 
     const Config& conf;
     const ArjunNS::Arjun::CoverConf& cconf;
