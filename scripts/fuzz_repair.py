@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Test script for --checkrepair: generates small random CNFs with random
-# independent sets, runs arjun synthesis with --checkrepair, and checks
-# that the error formula count never increases.
+# Fuzzes --checkrepair: the error formula count must never increase, and the
+# final AIGs must be correct (test-synth -u). Stops at the first failure.
 
 import subprocess
 import os
@@ -15,11 +14,11 @@ import optparse
 import time
 import itertools
 import shlex
+import shutil
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FUZZER = os.path.join(SCRIPT_DIR, "cnf-fuzz-brummayer.py")
-ARJUN = os.path.join(SCRIPT_DIR, "..", "build", "arjun")
 CMS = os.path.join(SCRIPT_DIR, "..", "..", "cryptominisat", "build", "cryptominisat5")
 
 
@@ -75,6 +74,10 @@ def set_up_parser():
     parser.add_option(
         "--timeout", "-t", type=int, default=120, dest="timeout",
         help="Timeout per arjun run in seconds (default: %default)")
+
+    parser.add_option(
+        "--build", type=str, default=os.path.join(SCRIPT_DIR, "..", "build"),
+        dest="build", help="Build dir with arjun and test-synth (default: %default)")
 
     parser.add_option(
         "--verbose", "-v", action="store_true", default=False, dest="verbose",
@@ -134,21 +137,22 @@ def is_unsat(fname):
     try:
         result = subprocess.run(
             [CMS, fname], capture_output=True, text=True, timeout=30)
-        for line in result.stdout.split("\n"):
-            if line.strip().startswith("s UNSATISFIABLE"):
-                return True
-            if line.strip().startswith("s SATISFIABLE"):
-                return False
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    return None  # unknown
+    except subprocess.TimeoutExpired:
+        return None
+    for line in result.stdout.split("\n"):
+        if line.strip().startswith("s UNSATISFIABLE"):
+            return True
+        if line.strip().startswith("s SATISFIABLE"):
+            return False
+    print("ERROR: cryptominisat gave no answer on %s:\n%s" % (fname, result.stdout))
+    sys.exit(1)
 
 
-def run_arjun_checkrepair(fname, seed, timeout):
+def run_arjun_checkrepair(arjun, fname, seed, timeout):
     """Run arjun with --synth --checkrepair and analyze output.
     Returns (result_dict_or_string, output_or_None, cmd_list)."""
     cmd = [
-        ARJUN,
+        arjun,
         "--synth",
         "--checkrepair",
         "--verb", "1",
@@ -161,6 +165,8 @@ def run_arjun_checkrepair(fname, seed, timeout):
         "--extend", "0",
         "--backward", "0",
         "--samples", "0",
+        "--cover", "0",
+        "--bruteforcesynth", "0",
         fname,
         fname + "-out.aig",
     ]
@@ -186,20 +192,36 @@ def run_arjun_checkrepair(fname, seed, timeout):
             m = re.search(r"Error formula count:\s*(\d+)", line)
             if m:
                 counts.append(int(m.group(1)))
-        if "ERROR [cegr-checkrepair] Error count INCREASED" in line:
+        if "ERROR" in line:
             increased = True
         if "checkrepair] Error count decreased" in line:
             decreased_count += 1
         if "checkrepair] Error count UNCHANGED" in line:
             unchanged_count += 1
 
+    if any(b >= a for a, b in zip(counts, counts[1:])):
+        increased = True
+
     return {
         "increased": increased,
+        "wrote_aig": any(l.startswith("c o Wrote AIG defs:") for l in output.split("\n")),
         "counts": counts,
         "decreased": decreased_count,
         "unchanged": unchanged_count,
         "output": output,
     }, None, cmd
+
+
+def fail(what, fname, seed, cmd, output):
+    saved = "fail_repair_%d.cnf" % seed
+    shutil.copy2(fname, saved)
+    print("\n%s. Saved CNF to: %s" % (what, os.path.abspath(saved)))
+    print("Reproduce with:\n  %s" % " ".join(shlex.quote(str(c)) for c in cmd[:-2] + [saved, saved + "-out.aig"]))
+    if output:
+        print("\nLast lines of output:")
+        for line in output.strip().split("\n")[-25:]:
+            print("  | %s" % line)
+    sys.exit(1)
 
 
 def main():
@@ -213,9 +235,12 @@ def main():
         print("Using random seed: %d" % rnd_seed)
     random.seed(rnd_seed)
 
-    if not os.path.isfile(ARJUN):
-        print("ERROR: arjun binary not found at %s" % ARJUN)
-        sys.exit(1)
+    arjun = os.path.join(options.build, "arjun")
+    test_synth = os.path.join(options.build, "test-synth")
+    for f in (arjun, test_synth, CMS):
+        if not os.path.isfile(f):
+            print("ERROR: %s not found" % f)
+            sys.exit(1)
     if not os.path.isfile(FUZZER):
         print("ERROR: fuzzer not found at %s" % FUZZER)
         sys.exit(1)
@@ -224,10 +249,8 @@ def main():
         "total": 0,
         "skipped_unsat": 0,
         "timeout": 0,
-        "crash": 0,
         "no_repair": 0,
         "ok_decreased": 0,
-        "bad_increased": 0,
     }
 
     num = options.num_runs
@@ -278,7 +301,7 @@ def main():
             stats["total"] += 1
             t_start = time.time()
             result, error_output, cmd = run_arjun_checkrepair(
-                fname, seed, options.timeout)
+                arjun, fname, seed, options.timeout)
             elapsed = time.time() - t_start
 
             if result == "timeout":
@@ -288,37 +311,20 @@ def main():
 
             if result == "crash":
                 print("CRASH (%.1fs)" % elapsed)
-                stats["crash"] += 1
-                # Copy the CNF to current directory so it survives tmpdir cleanup
-                import shutil
-                saved = "crash_%d.cnf" % seed
-                shutil.copy2(fname, saved)
-                # Build reproduce command with the saved file instead of the temp path
-                reproduce_cmd = cmd[:-1] + [saved]
-                print("\nArjun crashed. Saved CNF to: %s" % os.path.abspath(saved))
-                print("Reproduce with:\n  %s"
-                      % " ".join(shlex.quote(str(c)) for c in reproduce_cmd))
-                if error_output:
-                    print("\nLast lines of output:")
-                    lines = error_output.strip().split("\n")
-                    for line in lines[-15:]:
-                        print("  | %s" % line)
-                sys.exit(1)
+                fail("Arjun crashed", fname, seed, cmd, error_output)
 
             info = result
             counts = info["counts"]
 
-            if len(counts) == 0:
+            if info["increased"]:
+                print("BAD - ERROR line, or count did not strictly decrease! counts=%s (%.1fs)"
+                      % (counts, elapsed))
+                fail("Bad repair", fname, seed, cmd,
+                     "\n".join(l for l in info["output"].split("\n") if "checkrepair" in l or "ERROR" in l))
+            elif len(counts) == 0:
                 print("OK (no repair iterations, solved immediately) "
                       "(%.1fs)" % elapsed)
                 stats["no_repair"] += 1
-            elif info["increased"]:
-                print("BAD - count INCREASED! counts=%s (%.1fs)"
-                      % (counts, elapsed))
-                stats["bad_increased"] += 1
-                for line in info["output"].split("\n"):
-                    if "checkrepair" in line:
-                        print("  | %s" % line.strip())
             else:
                 print("OK (counts=%s, decreased=%d, unchanged=%d) "
                       "(%.1fs)"
@@ -331,23 +337,23 @@ def main():
                     if "checkrepair" in line:
                         print("  | %s" % line.strip())
 
+            if not info["wrote_aig"]:
+                fail("Arjun wrote no AIG", fname, seed, cmd, info["output"])
+            check = subprocess.run([test_synth, "-u", "-s", str(seed), fname, fname + "-out.aig"],
+                                   capture_output=True, text=True)
+            if check.returncode != 0 or "AIGs are verified CORRECT" not in check.stdout:
+                fail("test-synth rejected the AIGs", fname, seed, cmd, check.stdout + check.stderr)
+
     print("\n" + "=" * 60)
     print("Results:")
     print("  Total runs with repair: %d" % stats["total"])
     print("  Skipped (UNSAT):        %d" % stats["skipped_unsat"])
     print("  Timeout:                %d" % stats["timeout"])
-    print("  Crash/Error:            %d" % stats["crash"])
     print("  No repair needed:       %d" % stats["no_repair"])
     print("  OK (monotone decrease): %d" % stats["ok_decreased"])
-    print("  BAD (count increased):  %d" % stats["bad_increased"])
     print("=" * 60)
 
-    if stats["bad_increased"] > 0:
-        print("\nWARNING: Some runs had increasing error counts!")
-        sys.exit(1)
-    else:
-        print("\nAll runs OK - error count never increased.")
-        sys.exit(0)
+    print("\nAll runs OK - error count never increased, AIGs correct.")
 
 
 if __name__ == "__main__":
