@@ -576,8 +576,8 @@ void synth_2qbf_puura_round(ArjunNS::SimplifiedCNF& cnf, const vector<vector<CMS
     }
 }
 
-// Puura rounds with blocked clause elimination in between: the last one is a
-// Puura round, so cnf is the 2QBF
+// Repeated Puura, each round on the previous result minus its blocked clauses.
+// BCE only builds the next round's input, cnf always holds a Puura result
 void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) {
     const bool bce = qbf2 && !need_funs && pre_bce;
     vector<vector<CMSat::Lit>> cls;
