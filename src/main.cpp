@@ -697,7 +697,8 @@ void do_synth_2qbf() {
         SLOW_DEBUG_DO(check_stage(cnf, "unate_def"));
     }
 
-    if (!cnf.synth_done() && has_defined(cnf)) try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
+    if (!cnf.synth_done() && has_defined(cnf))
+        try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
 
     cnf.rewrite_aigs(conf.verb);
     SLOW_DEBUG_DO(check_stage(cnf, "rewrite_aigs"));
