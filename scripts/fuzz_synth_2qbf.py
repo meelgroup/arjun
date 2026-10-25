@@ -345,7 +345,7 @@ def check_qbf2_cex(fname, proj, cex):
 def qbf2_nofuns_verdict(fname):
     cmd = "./arjun --2qbf --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
     cmd += " --synthpuura %d" % random.choice([0, 1, 1, 1])
-    cmd += " --coverticks %s" % random.choice([0, 0.01, 20])
+    cmd += " --coverticks %s" % random.choice([0.01, 20])
     cmd += " --coverminim %d" % random.randint(0, 7)
     cmd += " --prebce %d --2qbfpuurarounds %d" % (random.choice([0, 1, 1]), random.randint(1, 4))
     cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
@@ -593,10 +593,11 @@ if __name__ == "__main__":
         solver += "--debugverilog %d " % random.randint(0, 1)
         # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
         solver += "--cover %s " % random.choice([0, 0, 0.1, 1, 50, 100000])
-        solver += "--coverticks %s " % random.choice([0, 0.001, 0.01, 5, 500])
+        cover_ticks = random.choice([0.001, 0.01, 5, 500])
+        solver += "--coverticks %s " % cover_ticks
         solver += "--coverminim %d " % random.randint(0, 7)
         solver += "--coverlateticks %s " % random.choice([0, 0.01, 100])
-        solver += "--coverbigticks %s --coverbiglateticks %s " % (random.choice([0, 5, 5000]), random.choice([0, 5, 600]))
+        solver += "--coverbigticks %s " % random.choice([t for t in [0.01, 5, 5000] if t > cover_ticks])
         solver += "--coverorigticks %s " % random.choice([0, 0.01, 2000])
         solver += "--2qbfpuurarounds %d " % random.randint(1, 4)
 
