@@ -181,6 +181,18 @@ SynthStrategy SynthRunner::parse_one_strategy(const string& raw) {
             string k = trim(param.substr(0, eq));
             string v = trim(param.substr(eq + 1));
 
+            if (strat.type == "cover") {
+                if (k != "ticks") {
+                    cout << "ERROR: unknown cover strategy parameter '" << k << "', it only takes 'ticks'" << endl;
+                    exit(EXIT_FAILURE);
+                }
+                if (!validate_param_value(ParamType::Double, v) || std::stod(v) <= 0) {
+                    cout << "ERROR: cover strategy needs ticks above 0, not '" << v << "'" << endl;
+                    exit(EXIT_FAILURE);
+                }
+                strat.overrides[k] = v;
+                continue;
+            }
             auto it = param_table.find(k);
             if (it == param_table.end()) {
                 cout << "ERROR: unknown strategy parameter '" << k << "'" << endl;
@@ -197,8 +209,19 @@ SynthStrategy SynthRunner::parse_one_strategy(const string& raw) {
         }
     }
 
-    if (strat.type != "learn" && strat.type != "bve" && strat.type != "const" && strat.type != "rnd") {
-        cout << "ERROR: unknown strategy type '" << strat.type << "'. Use 'learn', 'bve', or 'const'." << endl;
+    if (strat.type != "learn" && strat.type != "bve" && strat.type != "const" && strat.type != "rnd"
+            && strat.type != "cover") {
+        cout << "ERROR: unknown strategy type '" << strat.type << "'. Use 'learn', 'bve', 'const', 'rnd' or 'cover'." << endl;
+        exit(EXIT_FAILURE);
+    }
+#ifndef EXTRA_SYNTH
+    if (strat.type == "learn") {
+        cout << "ERROR: strategy type 'learn' is only supported in EXTRA_SYNTH mode!" << endl;
+        exit(EXIT_FAILURE);
+    }
+#endif
+    if (strat.type == "cover" && strat.overrides.count("ticks") == 0) {
+        cout << "ERROR: cover strategy needs ticks, e.g. cover(ticks=5000): " << raw << endl;
         exit(EXIT_FAILURE);
     }
     return strat;
@@ -210,7 +233,25 @@ vector<SynthStrategy> SynthRunner::parse_mstrategy(const string& s) {
         if (!tok.empty()) strategies.push_back(parse_one_strategy(tok));
     }
     if (strategies.empty()) {
-        cout << "ERROR: --mstrategy string is empty" << endl;
+        cout << "ERROR: --cstrategy string is empty" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (strategies.back().type == "cover") {
+        cout << "ERROR: the last strategy must be a Cegr one, it must always run to completion, not "
+             << strategies.back().raw << endl;
+        exit(EXIT_FAILURE);
+    }
+    for (size_t i = 0; i + 1 < strategies.size(); i++) {
+        if (strategies[i].type == "cover") continue;
+        if (strategies[i].overrides.count("max_repairs") == 0) {
+            cout << "ERROR: strategy " << i+1 << " (" << strategies[i].raw
+                 << ") must set max_repairs (only the last strategy may omit it)" << endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (strategies.back().overrides.count("max_repairs") != 0) {
+        cout << "ERROR: the last strategy (" << strategies.back().raw
+             << ") must not set max_repairs (it must always run to completion)" << endl;
         exit(EXIT_FAILURE);
     }
     return strategies;
@@ -220,10 +261,6 @@ ArjunNS::Arjun::CegrConf SynthRunner::apply_strategy(const ArjunNS::Arjun::CegrC
         const SynthStrategy& strat) {
     auto mconf = base;
     if (strat.type == "learn") {
-#ifndef EXTRA_SYNTH
-        cout << "ERROR: strategy type 'learn' is only supported in EXTRA_SYNTH mode!" << endl;
-        exit(EXIT_FAILURE);
-#endif
         mconf.cegr_base = 0;
     } else if (strat.type == "const") {
         mconf.cegr_base = 1;
@@ -241,36 +278,23 @@ ArjunNS::Arjun::CegrConf SynthRunner::apply_strategy(const ArjunNS::Arjun::CegrC
     return mconf;
 }
 
-void SynthRunner::run_cegr_strategies(
+void SynthRunner::run_strategies(
         ArjunNS::SimplifiedCNF& cnf,
         const ArjunNS::Arjun::CegrConf& mconf_orig,
         const vector<SynthStrategy>& strategies,
-        const std::function<void()>& before_last)
+        const std::function<void(double ticks)>& cover)
 {
-    if (strategies.empty()) {
-        cout << "ERROR: no strategies to run" << endl;
-        exit(EXIT_FAILURE);
-    }
-    for (size_t i = 0; i + 1 < strategies.size(); i++) {
-        if (strategies[i].overrides.count("max_repairs") == 0) {
-            cout << "ERROR: strategy " << i+1 << " (" << strategies[i].raw
-                 << ") must set max_repairs (only the last strategy may omit it)" << endl;
-            exit(EXIT_FAILURE);
-        }
-    }
-    if (!strategies.empty() && strategies.back().overrides.count("max_repairs") != 0) {
-        cout << "ERROR: the last strategy (" << strategies.back().raw
-             << ") must not set max_repairs (it must always run to completion)" << endl;
-        exit(EXIT_FAILURE);
-    }
+    assert(!strategies.empty() && strategies.back().type != "cover");
     if (cnf.synth_done()) return;
 
     for (size_t i = 0; i < strategies.size(); i++) {
         const auto& strat = strategies[i];
         const bool is_last = (i == strategies.size() - 1);
-        if (is_last && before_last) {
-            before_last();
+        if (strat.type == "cover") {
+            verb_print(1, "Running strategy " << i+1 << "/" << strategies.size() << " -- " << strat.raw);
+            cover(std::stod(strat.overrides.at("ticks")));
             if (cnf.synth_done()) break;
+            continue;
         }
 
         auto mconf = apply_strategy(mconf_orig, strat);

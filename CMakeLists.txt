@@ -586,6 +586,7 @@ add_subdirectory(src)
 if(ENABLE_TESTING)
     add_subdirectory(tests/2qbf)
     add_subdirectory(tests/verilog)
+    add_subdirectory(tests/cstrategy)
 endif()
 
 # -----------------------------------------------------------------------------

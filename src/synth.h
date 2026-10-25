@@ -31,7 +31,7 @@
 #include "config.h"
 
 struct SynthStrategy {
-    std::string type;   // "learn", "bve", or "const"
+    std::string type;   // "learn", "bve", "const", "rnd", or "cover"
     std::string raw;    // original strategy string as parsed
     std::map<std::string, std::string> overrides; // param name -> string value
 };
@@ -44,17 +44,17 @@ public:
 
     // Parse a comma-separated strategy string, e.g.:
     //   "learn(samples=1,max_repairs=4), learn(max_repairs=20), bve"
-    // The last strategy always runs with unlimited tries.
+    // The last strategy always runs with unlimited tries. Exits on a bad one
     std::vector<SynthStrategy> parse_mstrategy(const std::string& s);
 
-    // Run strategies in sequence on cnf. Skips finished strategies if cnf.synth_done().
-    // Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited.
-    // before_last: called if the limited ones did not finish, and may finish cnf.
-    void run_cegr_strategies(
+    // Run strategies in sequence on cnf, until cnf.synth_done(). Each non-last
+    // Cegr one runs for 20*max_repairs tries; the last runs unlimited.
+    // cover(ticks=N) calls cover with N million ticks, and may finish cnf
+    void run_strategies(
         ArjunNS::SimplifiedCNF& cnf,
         const ArjunNS::Arjun::CegrConf& mconf_orig,
         const std::vector<SynthStrategy>& strategies,
-        const std::function<void()>& before_last = nullptr);
+        const std::function<void(double ticks)>& cover);
 
 private:
     const ArjunInt::Config& conf;

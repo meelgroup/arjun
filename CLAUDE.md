@@ -90,9 +90,9 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
    takes a handful of rounds when it works, so it has its own, lower limit
    (`--coverlateticks`, 100): a failing one is slow. These runs are SHORT:
    most of what covering solves takes under 100M ticks, and a failing run
-   is paid by every file. The long run (`--coverbigticks`, 5000, on the CNF
-   with the functions of the passes) comes before the last, unlimited
-   strategy of `--mstrategy`: only once the repair-limited ones did not
+   is paid by every file. The long run (`cover(ticks=5000)` in
+   `--cstrategy`, on the CNF with the functions of the passes) comes before
+   the last, unlimited strategy: only once the repair-limited ones did not
    finish either. NEVER make the 1st runs long instead. On the CNF as it
    was after Puura it was slower: of 55 files at 90 s, 3 more done on the
    one with the functions, none fewer. Only `--2qbf` also

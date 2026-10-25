@@ -541,6 +541,9 @@ def gen_mstrategy():
     for i in range(n):
         strategies.append(gen_strategy(must_have_max_repairs=(i < n - 1),
                                        must_not_have_max_repairs=(i == n - 1)))
+    for _ in range(random.choice([0, 1, 1, 2])):
+        strategies.insert(random.randint(0, len(strategies) - 1),
+                          "cover(ticks=%s)" % random.choice([0.01, 5, 500]))
     return ",".join(strategies)
 
 
@@ -593,11 +596,9 @@ if __name__ == "__main__":
         solver += "--debugverilog %d " % random.randint(0, 1)
         # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
         solver += "--cover %s " % random.choice([0, 0, 0.1, 1, 50, 100000])
-        cover_ticks = random.choice([0.001, 0.01, 5, 500])
-        solver += "--coverticks %s " % cover_ticks
+        solver += "--coverticks %s " % random.choice([0, 0.001, 0.01, 5, 500])
         solver += "--coverminim %d " % random.randint(0, 7)
         solver += "--coverlateticks %s " % random.choice([0, 0.01, 100])
-        solver += "--coverbigticks %s " % random.choice([t for t in [0.01, 5, 5000] if t > cover_ticks])
         solver += "--coverorigticks %s " % random.choice([0, 0.01, 2000])
         solver += "--2qbfpuurarounds %d " % random.randint(1, 4)
 
