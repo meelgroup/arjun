@@ -244,7 +244,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_cegr(SimplifiedCNF&& cnf, const CegrC
         }
     }
 
-    if (arjdata->conf.verb >= 1 && cnf.synth_done()) {
+    if (arjdata->conf.verb >= 1 && cnf.all_ys_defined()) {
         cumul_stats.print_stats(COLRED " Done. ");
     }
     return cnf;
@@ -837,7 +837,7 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
 }
 
 DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
-    assert(need_aig && synth_done());
+    assert(need_aig && all_ys_defined());
     const OrigTranslation trans(*this);
     const CoverProblem problem = trans.problem(*this);
     MetaSolver s;
@@ -2205,7 +2205,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
     return true;
 }
 
-DLL_PUBLIC bool SimplifiedCNF::synth_done() const {
+DLL_PUBLIC bool SimplifiedCNF::all_ys_defined() const {
     if (!need_aig) return true;
     for(uint32_t v = 0; v < defs.size(); v++) {
         if (orig_sampl_vars.count(v)) continue;

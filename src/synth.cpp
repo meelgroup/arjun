@@ -285,7 +285,7 @@ void SynthRunner::run_strategies(
         const std::function<void(double ticks)>& cover)
 {
     assert(!strategies.empty() && strategies.back().type != "cover");
-    if (cnf.synth_done()) return;
+    if (cnf.all_ys_defined()) return;
 
     for (size_t i = 0; i < strategies.size(); i++) {
         const auto& strat = strategies[i];
@@ -293,7 +293,7 @@ void SynthRunner::run_strategies(
         if (strat.type == "cover") {
             verb_print(1, "Running strategy " << i+1 << "/" << strategies.size() << " -- " << strat.raw);
             cover(std::stod(strat.overrides.at("ticks")));
-            if (cnf.synth_done()) break;
+            if (cnf.all_ys_defined()) break;
             continue;
         }
 
@@ -305,7 +305,7 @@ void SynthRunner::run_strategies(
             << " -- " << strat.raw << " with max_repairs="
             << (mconf.max_repairs == std::numeric_limits<int32_t>::max() ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
         cnf = arjun->standalone_cegr(std::move(cnf), mconf);
-        if (cnf.synth_done()) {
+        if (cnf.all_ys_defined()) {
             verb_print(1,"Cegr finished with strategy " << i+1 << "/" << strategies.size()
                     << " -- " << strat.raw);
             break;

@@ -47,7 +47,7 @@ public:
     // The last strategy always runs with unlimited tries. Exits on a bad one
     std::vector<SynthStrategy> parse_mstrategy(const std::string& s);
 
-    // Run strategies in sequence on cnf, until cnf.synth_done(). Each non-last
+    // Run strategies in sequence on cnf, until cnf.all_ys_defined(). Each non-last
     // Cegr one runs for 20*max_repairs tries; the last runs unlimited.
     // cover(ticks=N) calls cover with N million ticks, and may finish cnf
     void run_strategies(

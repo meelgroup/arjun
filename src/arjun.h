@@ -1593,7 +1593,7 @@ public:
     void check_no_touch_sanity() const;
     void check_no_touch_mapping() const;
     void restore_no_touch(std::unique_ptr<CMSat::SATSolver>& solver, const SimplifiedCNF& prev);
-    [[nodiscard]] bool synth_done() const;
+    [[nodiscard]] bool all_ys_defined() const;
     [[nodiscard]] bool is_projected() const { return proj; }
 
     template<class T>

@@ -66,7 +66,7 @@ ArjunNS::Arjun::InterpConf iconf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
-int do_synth_puura = true;
+int do_puura = true;
 int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rnd(max_repairs=400),cover(ticks=5000),bve";
 
@@ -180,7 +180,7 @@ void add_arjun_options() {
     myopt("--coverminim", cover_conf.minim, "How covering shortens a refinement, a sum: 1 = SAT calls for a model of the same input whose existentials satisfy more clauses, 2 = flipping existentials no clause needs, 4 = dropping what another part of it implies");
     myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit. The 1st runs are short, the long one is cover(ticks=N) of --cstrategy");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
-    myopt("--synthpuura", do_synth_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
+    myopt("--synthpuura", do_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict,"Minimize conflict size when repairing");
     myopt("--unatedef", do_unate_def,"Perform definition-aware unate analysis");
@@ -597,7 +597,7 @@ void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) 
             return;
         }
         prev_lits = lits;
-        if (!bce || cnf.synth_done() || round >= qbf2_puura_rounds - 1) return;
+        if (!bce || cnf.all_ys_defined() || round >= qbf2_puura_rounds - 1) return;
 
         auto left = cnf.get_clauses();
         const auto removed = cnf.bce_2qbf(left);
@@ -663,59 +663,59 @@ void do_synth_2qbf() {
     if (conf.verb) cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
     // Only 2QBF: an X with no Y ends it early here, synthesis has no such early exit to win
-    if (qbf2 && !cnf.synth_done())
+    if (qbf2 && !cnf.all_ys_defined())
         try_cover(cnf, need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
 
-    if (do_synth_puura && !cnf.synth_done())
+    if (do_puura && !cnf.all_ys_defined())
         simplify_for_synth_2qbf(cnf, need_funs);
 
-    if (!cnf.synth_done())
+    if (!cnf.all_ys_defined())
         try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
 
-    if (etof_conf.do_autarky && !cnf.synth_done()) {
+    if (etof_conf.do_autarky && !cnf.all_ys_defined()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "autarky"));
     }
 
-    if (etof_conf.do_extend_indep && !cnf.synth_done()) {
+    if (etof_conf.do_extend_indep && !cnf.all_ys_defined()) {
         arjun->standalone_extend_synth(cnf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage(cnf, "extend_synth"));
     }
 
-    if (do_backward && !cnf.synth_done()) {
+    if (do_backward && !cnf.all_ys_defined()) {
         arjun->standalone_backward_round_synth(cnf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage(cnf, "minim_idep_synt"));
     }
 
-    if (do_unate_def && !cnf.synth_done()) {
+    if (do_unate_def && !cnf.all_ys_defined()) {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "unate_def"));
     }
 
-    if (!cnf.synth_done() && has_defined(cnf))
+    if (!cnf.all_ys_defined() && has_defined(cnf))
         try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
 
     cnf.rewrite_aigs(conf.verb);
     SLOW_DEBUG_DO(check_stage(cnf, "rewrite_aigs"));
-    if (use_brute_force_synth && !cnf.synth_done()) {
+    if (use_brute_force_synth && !cnf.all_ys_defined()) {
         verb_print(1, "[arjun] Synthesis: brute-force decision trees");
         cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "brute_force_synth"));
     }
 
-    if (!cnf.synth_done()) {
+    if (!cnf.all_ys_defined()) {
         synth_runner.run_strategies(cnf, mconf, strategies, [&](const double ticks) {
             try_cover(cnf, need_funs, cover_conf.budget, ticks);
         });
 
-        release_assert(cnf.synth_done() && "All Ys should have functions by now (synthesis or 2QBF), but some do not!");
+        release_assert(cnf.all_ys_defined() && "All Ys should have functions by now (synthesis or 2QBF), but some do not!");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cegr.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "cegr"));
     }
