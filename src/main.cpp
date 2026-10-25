@@ -665,8 +665,11 @@ void do_synth_2qbf() {
     // Only 2QBF: an X with no Y ends it early here, synthesis has no such early exit to win
     if (qbf2) try_cover(cnf, need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
 
-    if (do_synth_puura && !cnf.synth_done()) simplify_for_synth_2qbf(cnf, need_funs);
-    if (!cnf.synth_done()) try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
+    if (do_synth_puura && !cnf.synth_done())
+        simplify_for_synth_2qbf(cnf, need_funs);
+
+    if (!cnf.synth_done())
+        try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
