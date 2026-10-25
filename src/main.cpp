@@ -632,6 +632,7 @@ void check_synth_2qbf_input(const ArjunNS::SimplifiedCNF& cnf) {
 }
 
 void do_synth_2qbf() {
+    assert(cover_ticks != 0 && cover_big_ticks > cover_ticks);
     if (etof_conf.all_indep) {
         cout << "ERROR: synthesis with --allindep makes no sense" << endl;
         exit(EXIT_FAILURE);
@@ -670,8 +671,7 @@ void do_synth_2qbf() {
     if (!cnf.synth_done()) try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
     // for the 2nd, long covering run: without the functions of the passes below
     ArjunNS::SimplifiedCNF simplified_cnf(fg);
-    const bool big_cover = cover_ticks != 0 && cover_big_ticks > cover_ticks;
-    if (big_cover && !cnf.synth_done()) simplified_cnf = cnf;
+    if (!cnf.synth_done()) simplified_cnf = cnf;
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
@@ -714,10 +714,8 @@ void do_synth_2qbf() {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);
         synth_runner.run_cegr_strategies(cnf, mconf, strategies, [&] {
-            if (big_cover) {
-                try_cover(simplified_cnf, need_funs, cover_conf.budget, cover_big_ticks);
-                if (cover_done) cnf = std::move(simplified_cnf);
-            }
+            try_cover(simplified_cnf, need_funs, cover_conf.budget, cover_big_ticks);
+            if (cover_done) cnf = std::move(simplified_cnf);
             if (!cover_done && cover_late_ticks != 0 && cover_big_late_ticks > cover_late_ticks
                     && has_defined(cnf))
                 try_cover(cnf, need_funs, cover_conf.budget, cover_big_late_ticks);
