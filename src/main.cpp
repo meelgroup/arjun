@@ -738,8 +738,8 @@ void do_synth_2qbf() {
         cout << "./test-synth -u -v 1 " << input_file << " " << final_fname << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
-    if (qbf2 && cover_done) qbf2_result(cnf, true);
     if (qbf2) {
+        if (cover_done) qbf2_result(cnf, true);
         const auto cex = cnf.get_2qbf_cex();
         SLOW_DEBUG_DO(if (!cex.empty()) assert(cnf.is_2qbf_cex(cex)));
         qbf2_result(cnf, cex.empty(), cex);
