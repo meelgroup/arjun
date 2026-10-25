@@ -187,11 +187,16 @@ def run_arjun_checkrepair(arjun, fname, seed, timeout):
     decreased_count = 0
     unchanged_count = 0
     counts = []
+    # each cstrategy is a fresh Cegr: its counts start over
+    runs = [[]]
     for line in output.split("\n"):
+        if "Running Cegr strategy" in line:
+            runs.append([])
         if "cegr-checkrepair" in line and "Error formula count:" in line:
             m = re.search(r"Error formula count:\s*(\d+)", line)
             if m:
                 counts.append(int(m.group(1)))
+                runs[-1].append(int(m.group(1)))
         if "ERROR" in line:
             increased = True
         if "checkrepair] Error count decreased" in line:
@@ -199,7 +204,7 @@ def run_arjun_checkrepair(arjun, fname, seed, timeout):
         if "checkrepair] Error count UNCHANGED" in line:
             unchanged_count += 1
 
-    if any(b >= a for a, b in zip(counts, counts[1:])):
+    if any(b >= a for r in runs for a, b in zip(r, r[1:])):
         increased = True
 
     return {
