@@ -88,9 +88,11 @@ arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
 ## Tried, no gain
 - `--coverminimflip 1`, the flip pass: 7.3M flips on the 83 files, the SAT
   minimization then removes that much less, same rounds, same files done.
-- `--coverminimsubs 1`, dropping implied helpers: refinements a third shorter
-  on the 83 files, same rounds. `stmt19_83_142` under `--2qbf`: 2 s -> 15 s,
-  the X with no Y is found later. Both are left as options, off.
+  Left as an option, off.
+- Dropping a helper of a refinement that another one in it implies: removed
+  (2026-10-26). It excludes no more X, so same rounds; on 375 files of
+  1-20 s, 375 -> 374 solved, same time. Shorter Skolem AIGs: aig_rewrite
+  absorbs that.
 
 - Minimizing the no-Y cubes by literal deletion: the cores are near-minimal.
 - Selector phase preference in f.

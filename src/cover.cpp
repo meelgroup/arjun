@@ -29,7 +29,7 @@
 // a Y from y_solver works for exactly the X that satisfy U of every clause
 // whose E it leaves false, so x_solver gets "one of those U is false". A
 // helper var per distinct U (true: all of U is false) keeps these refinements
-// short, and lets one imply another (HelperSubsumption). The fewer U a Y
+// short. The fewer U a Y
 // needs, the more X it covers: RefinementMinimizer and Flipper look for such Y.
 // x_solver UNSAT: every X has a Y, and the models, first one that works wins,
 // are the Skolem functions. y_solver UNSAT for an X: the cube of its failed
@@ -217,42 +217,6 @@ void CoverComponent::add_helpers() {
         }
         split_cls.push_back({y_part, it->second});
     }
-}
-
-// Finds, within work, which helpers' x parts are subsets of which others'
-HelperSubsumption::HelperSubsumption(const vector<Helper>& helpers, int64_t work) :
-        subsumed_by(helpers.size()), in_refinement(helpers.size(), 0) {
-    // std::includes needs them sorted
-    for (const auto& h : helpers) assert(std::is_sorted(h.x_part.begin(), h.x_part.end()));
-    map<Lit, vector<uint32_t>> occ;
-    for (uint32_t i = 0; i < helpers.size(); i++) for (const auto& l : helpers[i].x_part) occ[l].push_back(i);
-    for (uint32_t sub = 0; sub < helpers.size() && work > 0; sub++) {
-        const auto& sub_x = helpers[sub].x_part;
-        const vector<uint32_t>* rarest = nullptr;
-        for (const auto& l : sub_x) if (!rarest || occ[l].size() < rarest->size()) rarest = &occ[l];
-        if (!rarest) continue;
-        for (const auto& super : *rarest) {
-            const auto& super_x = helpers[super].x_part;
-            if (super_x.size() <= sub_x.size()) continue;
-            work -= super_x.size();
-            if (std::includes(super_x.begin(), super_x.end(), sub_x.begin(), sub_x.end())) subsumed_by[super].push_back(sub);
-        }
-    }
-}
-
-// Drops the helpers of refinement that another one in it makes redundant
-void HelperSubsumption::drop(vector<Lit>& refinement, const uint32_t helper_base) {
-    for (const auto& h : refinement) assert(h.var() >= helper_base && h.var() - helper_base < subsumed_by.size());
-    SLOW_DEBUG_DO(for (const auto& f : in_refinement) assert(!f));
-    for (const auto& h : refinement) in_refinement[h.var() - helper_base] = 1;
-    kept.clear();
-    for (const auto& h : refinement) {
-        const auto& subsumers = subsumed_by[h.var() - helper_base];
-        if (std::none_of(subsumers.begin(), subsumers.end(), [&](const uint32_t a) { return in_refinement[a]; })) kept.push_back(h);
-    }
-    for (const auto& h : refinement) in_refinement[h.var() - helper_base] = 0;
-    subsumed += refinement.size() - kept.size();
-    std::swap(refinement, kept);
 }
 
 // A selector per helper in y_solver: true, the y parts of its clauses hold
@@ -476,7 +440,7 @@ void CoverComponent::print_stats(const char* what) {
         << " avg refinement: " << std::setprecision(1) << (refs ? (double)stats.ref_lits / refs : 0)
         << " avg cube: " << (stats.num_cubes ? (double)stats.cube_lits / stats.num_cubes : 0)
         << " minim calls: " << minimizer.calls << " removed: " << stats.minim_removed
-        << " flips: " << flipper.flips << " subsumed: " << subsumption.subsumed
+        << " flips: " << flipper.flips
         << " cost: " << std::setprecision(2) << budget_used << " of " << cconf.budget
         << " ticks(M) x: " << x_solver.get_sum_ticks() / 1e6 << " y: " << y_solver.get_sum_ticks() / 1e6
         << " y-def: " << defs_in_x.work * 10 / 1e6
@@ -619,7 +583,6 @@ void CoverComponent::refine() {
         stats.minim_removed += before - refinement.size();
     }
     budget_used += frac_squared(refinement.size(), helpers.size());
-    if (subs_minim) subsumption.drop(refinement, helper_base);
     // progress: the X at hand satisfies every x part named, so it is now ruled out
     SLOW_DEBUG_DO(for (const auto& h : refinement) {
         assert(h.var() >= helper_base && helper_idx(h) < helpers.size());
@@ -658,7 +621,6 @@ CoverComponent::Result CoverComponent::cegar_run() {
     add_vars_and_cls();
     tie_defs();
     add_helpers();
-    if (subs_minim) subsumption = HelperSubsumption(helpers, cconf.subs_work);
     if (sat_minim) minimizer = RefinementMinimizer(y_solver, split_cls, helpers.size(), cconf);
     set_phases();
     init_flip();

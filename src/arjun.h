@@ -2135,10 +2135,8 @@ public:
         // How a refinement is shortened
         bool sat_minim = true; // a model, of the same X, whose existentials satisfy more of the clauses
         bool flip_minim = false; // flipping the existentials no clause needs
-        bool subs_minim = false; // dropping a helper another one of it implies
         uint32_t max_minim_calls = 50; // per round, for sat_minim
         uint32_t max_minim_wait = 7; // a helper that a core kept out of the model sits out 1, 3, 7.. of its next tries
-        int64_t subs_work = 20LL*1000*1000; // for subs_minim: finding which helper implies which
         uint32_t stats_every = 1000; // rounds
     };
 

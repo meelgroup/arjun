@@ -75,9 +75,7 @@ an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
    - `--coverminimsat` (on): further SAT calls for a model of the same X
      whose existentials satisfy more clauses, on selectors, dropping the
      cores. `--coverminimflip` (off): flip the existentials no clause
-     needs, no SAT call. `--coverminimsubs` (off): drop a helper that
-     another one of the refinement implies. The last two made no
-     difference on small samples;
+     needs, no SAT call, made no difference on small samples;
    - a clause of outer vars only gets no helper, and clauses that share no
      existential are covered apart;
    - `--synth` only: after the first X with no Y, abs gets the clauses, so

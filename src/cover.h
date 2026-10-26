@@ -158,21 +158,6 @@ private:
     std::vector<char> is_false_helper, in_core;
 };
 
-// subsumed_by[b]: the helpers whose x part is a subset of b's. With one of
-// them in a refinement, b says nothing more
-class HelperSubsumption {
-public:
-    HelperSubsumption() = default;
-    HelperSubsumption(const std::vector<Helper>& helpers, int64_t work);
-    void drop(std::vector<CMSat::Lit>& refinement, uint32_t helper_base);
-    uint64_t subsumed = 0;
-
-private:
-    std::vector<std::vector<uint32_t>> subsumed_by;
-    std::vector<char> in_refinement;
-    std::vector<CMSat::Lit> kept;
-};
-
 // The covering of clauses that share ys. x_solver picks an X no model
 // settles yet, y_solver gives a model of the clauses for it
 class CoverComponent {
@@ -180,7 +165,7 @@ public:
     CoverComponent(const CoverProblem& _problem, const ArjunNS::AIGManager& _aig_mng, const std::vector<std::vector<CMSat::Lit>>& _comp_cls,
             const ArjunNS::Arjun::CoverConf& _cconf, const uint64_t _max_ticks, const uint32_t _verb) :
         problem(_problem), aig_mng(_aig_mng), comp_cls(_comp_cls), cconf(_cconf), max_ticks(_max_ticks), verb(_verb),
-        num_vars(_problem.size()), sat_minim(_cconf.sat_minim), flip_minim(_cconf.flip_minim), subs_minim(_cconf.subs_minim),
+        num_vars(_problem.size()), sat_minim(_cconf.sat_minim), flip_minim(_cconf.flip_minim),
         defs_in_y(_problem), defs_in_x(_problem), defs_in_vars(_problem), enc_y(y_solver), enc_x(x_solver) {}
 
     using Funs = std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>;
@@ -251,7 +236,7 @@ private:
     bool gave_up = false;
     const uint32_t verb;
     const uint32_t num_vars;
-    const bool sat_minim, flip_minim, subs_minim;
+    const bool sat_minim, flip_minim;
     MetaSolver x_solver, y_solver;
 
     // Fixed after setup.
@@ -280,7 +265,6 @@ private:
 
     Flipper flipper;
     RefinementMinimizer minimizer;
-    HelperSubsumption subsumption;
 
     // Changed every round.
     // per refinement, for the Skolem functions: its helpers, and the model's Y
