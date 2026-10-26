@@ -115,25 +115,6 @@ struct SplitClause {
     uint32_t helper;
 };
 
-// Flips a y that no clause needs, at this X, if the other value satisfies the
-// y part of more clauses with an x side. No SAT call
-class Flipper {
-public:
-    Flipper() = default;
-    // cls in y_solver's numbering, its x side the vars below num_x_side
-    Flipper(const std::vector<std::vector<CMSat::Lit>>& cls, const std::vector<char>& can_flip, uint32_t num_x_side);
-    // true if it flipped something
-    bool flip(std::vector<CMSat::lbool>& model);
-    uint64_t flips = 0;
-
-private:
-    uint32_t num_x_side = 0;
-    std::vector<std::vector<CMSat::Lit>> cls; // the ones with a var to flip
-    std::vector<char> has_x;
-    std::vector<std::vector<uint32_t>> occ; // per literal, its clauses
-    std::vector<uint32_t> flip_vars, num_true, num_y_true;
-};
-
 // A model for the same X whose ys satisfy the y parts that the given one
 // does, and as many more as the cores allow: a selector per helper in
 // y_solver, true: all of its clauses' y parts hold. A helper in a core
@@ -165,7 +146,7 @@ public:
     CoverComponent(const CoverProblem& _problem, const ArjunNS::AIGManager& _aig_mng, const std::vector<std::vector<CMSat::Lit>>& _comp_cls,
             const ArjunNS::Arjun::CoverConf& _cconf, const uint64_t _max_ticks, const uint32_t _verb) :
         problem(_problem), aig_mng(_aig_mng), comp_cls(_comp_cls), cconf(_cconf), max_ticks(_max_ticks), verb(_verb),
-        num_vars(_problem.size()), sat_minim(_cconf.sat_minim), flip_minim(_cconf.flip_minim),
+        num_vars(_problem.size()), sat_minim(_cconf.sat_minim),
         defs_in_y(_problem), defs_in_x(_problem), defs_in_vars(_problem), enc_y(y_solver), enc_x(x_solver) {}
 
     using Funs = std::vector<std::pair<uint32_t, ArjunNS::aig_lit>>;
@@ -199,7 +180,6 @@ private:
     void tie_defs();
     void add_helpers();
     void set_phases();
-    void init_flip();
 
     bool x_cls_cex(std::vector<CMSat::lbool>& cex);
     void cex_from_x_solver(std::vector<CMSat::lbool>& cex);
@@ -236,7 +216,7 @@ private:
     bool gave_up = false;
     const uint32_t verb;
     const uint32_t num_vars;
-    const bool sat_minim, flip_minim;
+    const bool sat_minim;
     MetaSolver x_solver, y_solver;
 
     // Fixed after setup.
@@ -263,7 +243,6 @@ private:
     std::vector<SplitClause> split_cls;
     std::vector<std::vector<CMSat::Lit>> y_def_cls, x_cls_solver;
 
-    Flipper flipper;
     RefinementMinimizer minimizer;
 
     // Changed every round.

@@ -174,7 +174,6 @@ void add_arjun_options() {
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
     myopt("--coverorigticks", cover_orig_ticks, "As --coverticks, for the covering run of --2qbf on the original clauses");
     myopt("--coverminimsat", cover_conf.sat_minim, "Covering shortens a refinement by SAT calls for a model of the same input whose existentials satisfy more clauses");
-    myopt("--coverminimflip", cover_conf.flip_minim, "Covering shortens a refinement by flipping existentials no clause needs");
     myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit. The 1st runs are short, the long one is cover(ticks=N) of --cstrategy");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthpuura", do_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");

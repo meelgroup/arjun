@@ -86,9 +86,9 @@ arjun --2qbf 662, VBS 728, no verdict disagreements. What arjun misses (66):
   dropped: they could be kept.
 
 ## Tried, no gain
-- `--coverminimflip 1`, the flip pass: 7.3M flips on the 83 files, the SAT
-  minimization then removes that much less, same rounds, same files done.
-  Left as an option, off.
+- Flipping the existentials no clause needs, no SAT call: removed
+  (2026-10-26). On 32 cover-heavy files: with SAT minimization, rounds -5%,
+  same time, 32 -> 31 solved; without it, same rounds, refine time x3.
 - Dropping a helper of a refinement that another one in it implies: removed
   (2026-10-26). It excludes no more X, so same rounds; on 375 files of
   1-20 s, 375 -> 374 solved, same time. Shorter Skolem AIGs: aig_rewrite

@@ -30,7 +30,7 @@
 // whose E it leaves false, so x_solver gets "one of those U is false". A
 // helper var per distinct U (true: all of U is false) keeps these refinements
 // short. The fewer U a Y
-// needs, the more X it covers: RefinementMinimizer and Flipper look for such Y.
+// needs, the more X it covers: RefinementMinimizer looks for such Y.
 // x_solver UNSAT: every X has a Y, and the models, first one that works wins,
 // are the Skolem functions. y_solver UNSAT for an X: the cube of its failed
 // assumptions has no Y.
@@ -242,78 +242,6 @@ void CoverComponent::set_phases() {
     for (const auto& v : y_vars) if (!problem.defined(v)) y_solver.set_phase(Lit(solver_var[v], pos_occ[solver_var[v]] <= 0));
 }
 
-// Sets up the Flipper over the ys that are in no y_def_cls clause and no def depends on
-void CoverComponent::init_flip() {
-    assert(solver_var.size() == num_vars);
-    assert(flipper.flips == 0);
-    vector<char> can_flip(y_solver.nVars(), 0);
-    if (flip_minim) for (const auto& v : y_vars) if (!problem.defined(v)) can_flip[solver_var[v]] = 1;
-    for (const auto& cl : y_def_cls) for (const auto& l : cl) can_flip[solver_var[l.var()]] = 0;
-    for (const auto& v : defined) {
-        set<uint32_t> deps;
-        AIG::get_dependent_vars(problem.def[v], deps, v);
-        for (const auto& d : deps) if (solver_var[d] != none) can_flip[solver_var[d]] = 0;
-    }
-    vector<vector<Lit>> cls_y;
-    for (const auto& cl : comp_cls) {
-        cls_y.emplace_back();
-        for (const auto& l : cl) cls_y.back().push_back(in_solvers(l));
-    }
-    flipper = Flipper(cls_y, can_flip, x_side.size());
-}
-
-// Keeps the clauses with a var it may flip, and per literal, its clauses
-Flipper::Flipper(const vector<vector<Lit>>& all_cls, const vector<char>& can_flip, const uint32_t _num_x_side) :
-        num_x_side(_num_x_side), occ(can_flip.size() * 2) {
-    assert(num_x_side <= can_flip.size());
-    for (const auto& cl : all_cls) {
-        bool has_flip = false, has_x_side = false;
-        for (const auto& l : cl) {
-            has_flip |= can_flip[l.var()];
-            has_x_side |= l.var() < num_x_side;
-        }
-        if (!has_flip) continue;
-        cls.push_back(cl);
-        for (const auto& l : cl) if (can_flip[l.var()]) occ[l.toInt()].push_back(cls.size() - 1);
-        has_x.push_back(has_x_side);
-    }
-    for (uint32_t v = 0; v < can_flip.size(); v++) if (can_flip[v]) flip_vars.push_back(v);
-    num_true.resize(cls.size());
-    num_y_true.resize(cls.size());
-}
-
-// Flips ys while that satisfies the y parts of more clauses with an x side, breaking none
-bool Flipper::flip(vector<lbool>& model) {
-    assert(model.size() * 2 >= occ.size());
-    for (uint32_t c = 0; c < cls.size(); c++) {
-        num_true[c] = num_y_true[c] = 0;
-        for (const auto& l : cls[c]) if (model[l.var()] == boolToLBool(!l.sign())) {
-            num_true[c]++;
-            num_y_true[c] += l.var() >= num_x_side;
-        }
-    }
-    const uint64_t before = flips;
-    for (bool changed = true; changed;) {
-        changed = false;
-        for (const auto& v : flip_vars) {
-            const Lit t = Lit(v, model[v] != l_True);
-            const auto& loses = occ[t.toInt()];
-            const auto& gains = occ[(~t).toInt()];
-            if (std::any_of(loses.begin(), loses.end(), [&](const uint32_t c) { return num_true[c] < 2; })) continue;
-            int gain = 0;
-            for (const auto& c : gains) gain += has_x[c] && num_y_true[c] == 0;
-            for (const auto& c : loses) gain -= has_x[c] && num_y_true[c] == 1;
-            if (gain <= 0) continue;
-            model[v] = t.sign() ? l_True : l_False;
-            for (const auto& c : loses) { num_true[c]--; num_y_true[c]--; }
-            for (const auto& c : gains) { num_true[c]++; num_y_true[c]++; }
-            flips++;
-            changed = true;
-        }
-    }
-    return flips != before;
-}
-
 // Asks y_solver for a model of the same X that leaves fewer helpers' y parts false
 vector<lbool> RefinementMinimizer::minimize(vector<lbool> model, vector<Lit>& assumps,
         const vector<uint32_t>& false_helpers, const std::function<lbool(vector<Lit>&)>& solve,
@@ -440,7 +368,6 @@ void CoverComponent::print_stats(const char* what) {
         << " avg refinement: " << std::setprecision(1) << (refs ? (double)stats.ref_lits / refs : 0)
         << " avg cube: " << (stats.num_cubes ? (double)stats.cube_lits / stats.num_cubes : 0)
         << " minim calls: " << minimizer.calls << " removed: " << stats.minim_removed
-        << " flips: " << flipper.flips
         << " cost: " << std::setprecision(2) << budget_used << " of " << cconf.budget
         << " ticks(M) x: " << x_solver.get_sum_ticks() / 1e6 << " y: " << y_solver.get_sum_ticks() / 1e6
         << " y-def: " << defs_in_x.work * 10 / 1e6
@@ -565,10 +492,6 @@ void CoverComponent::refine() {
     assert(assumps.size() == num_x);
     SLOW_DEBUG_DO(assert(model_satisfies(model)));
     compute_refinement(model);
-    if (flip_minim && refinement.size() > 1 && flipper.flip(model)) {
-        SLOW_DEBUG_DO(assert(model_satisfies(model)));
-        compute_refinement(model);
-    }
     if (sat_minim && refinement.size() > 1) {
         const size_t before = refinement.size();
         vector<uint32_t> false_helper_idxs;
@@ -623,7 +546,6 @@ CoverComponent::Result CoverComponent::cegar_run() {
     add_helpers();
     if (sat_minim) minimizer = RefinementMinimizer(y_solver, split_cls, helpers.size(), cconf);
     set_phases();
-    init_flip();
     stats.setup_time = cpuTime() - stats.start_time;
 
     if (cconf.stop_at_cex && !cconf.assume_outer && x_cls_cex(result.cex)) return done(l_False);
