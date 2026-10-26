@@ -898,7 +898,7 @@ lbool Cover::run(vector<lbool>& cex) {
     if (ret == l_False) assert(!cex_internal.empty());
     else assert(cex_internal.empty());
     if (ret == l_True && cconf.need_funs) set_funs({});
-    if (ret == l_Undef && cconf.need_funs && cconf.partial) keep_covered(removable);
+    if (ret == l_Undef && cconf.need_funs) keep_covered(removable);
     if (ret == l_False) cex = trans->x_to_orig(cnf, cex_internal);
     return ret;
 }
@@ -908,7 +908,7 @@ lbool Cover::run(vector<lbool>& cex) {
 // others are, become defs. Any other stays: its clauses may restrict X. The
 // rest is left to the passes after. The clauses of X only stay
 void Cover::keep_covered(const vector<char>& removable) {
-    assert(cconf.need_funs && cconf.partial);
+    assert(cconf.need_funs);
     assert(removable.empty() || removable.size() == components.size());
     if (std::none_of(removable.begin(), removable.end(), [](const char c) { return c; })) return;
     set_funs(removable);

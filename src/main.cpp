@@ -510,7 +510,6 @@ void check_stage(ArjunNS::SimplifiedCNF& cnf, const std::string& stage) {
 void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double budget, const double ticks) {
     vector<CMSat::lbool> cex;
     auto my_conf = cover_conf;
-    my_conf.partial = true;
     my_conf.budget = budget;
     my_conf.max_ticks = ticks * 1e6;
     my_conf.stop_at_cex = qbf2;

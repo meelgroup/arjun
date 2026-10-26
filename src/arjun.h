@@ -2129,9 +2129,6 @@ public:
         uint32_t def_replace_min_cls = 1000;
         uint32_t def_replace_ratio = 50;
         bool need_funs = true; // false: l_True comes with no Skolem functions, only the verdict
-        // with need_funs, when not all components are covered: the ones every X has a Y of
-        // get their functions and leave the CNF, as BVE's vars do
-        bool partial = false;
         bool sat_minim = true; // shorten a refinement: a model, of the same X, whose existentials satisfy more clauses
         uint32_t max_minim_calls = 50; // per round, for sat_minim
         uint32_t max_minim_wait = 7; // a helper that a core kept out of the model sits out 1, 3, 7.. of its next tries
