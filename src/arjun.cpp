@@ -34,7 +34,8 @@
 #include "arjun.h"
 #include "config.h"
 #include "backward.h"
-#include "cover.h"
+#include "cover_synth.h"
+#include "cover_drop.h"
 #include "minimize.h"
 #include "GitSHA1.h"
 #include "puura.h"
@@ -137,19 +138,12 @@ DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF&
 }
 
 DLL_PUBLIC lbool Arjun::standalone_cover(SimplifiedCNF& cnf, const CoverConf& cover_conf, vector<lbool>& cex) {
-    Cover cover(arjdata->conf, cover_conf, cnf);
+    CoverSynth cover(arjdata->conf, cover_conf, cnf);
     return cover.run(cex);
 }
 
 DLL_PUBLIC int64_t Arjun::standalone_cover_drop(SimplifiedCNF& cnf, const uint64_t max_ticks, const uint32_t max_cubes,
         const bool weighted_as_x) {
-    CoverConf mconf;
-    mconf.max_ticks = max_ticks;
-    mconf.stop_at_cex = max_cubes == 0;
-    mconf.keep_cubes = max_cubes != 0;
-    mconf.max_cubes = max_cubes;
-    mconf.assume_outer = true;
-    mconf.need_funs = false;
     // A weighted opt sampling var is defined by the sampling vars: with it in
     // X the count is the same, and a component that defines it never goes
     vector<uint32_t> univ = cnf.get_sampl_vars();
@@ -158,8 +152,8 @@ DLL_PUBLIC int64_t Arjun::standalone_cover_drop(SimplifiedCNF& cnf, const uint64
         for (const auto& v : cnf.get_opt_sampl_vars())
             if (!sampl.count(v) && cnf.weight_set(v)) univ.push_back(v);
     }
-    Cover cover(arjdata->conf, mconf, cnf, univ);
-    return cover.drop_covered();
+    CoverDrop cover(arjdata->conf, cnf, univ, max_ticks, max_cubes);
+    return cover.run();
 }
 
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {

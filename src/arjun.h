@@ -2118,16 +2118,6 @@ public:
         double budget = 100000; // a refinement naming fraction f of the helpers costs f^2: next to nothing while it converges
         uint64_t max_ticks = 0; // of SAT solver work, 0 = no limit
         bool stop_at_cex = false; // return the first X with no Y, instead of skipping its cube
-        bool assume_outer = false; // the clauses of X only restrict X, an X that falsifies them is no cex
-        // abs never gets the clauses: the cubes of X with no Y are kept, and l_True comes with
-        // all of them. Gives up after max_cubes
-        bool keep_cubes = false;
-        uint32_t max_cubes = 1000;
-        bool minim_cubes = true; // drop the literals of a kept cube that it does not need
-        // cover drop: a component with a var of the opt sampling set, defined, is replaced
-        // only if it has this many clauses, and the cubes are 1/ratio of them at most
-        uint32_t def_replace_min_cls = 1000;
-        uint32_t def_replace_ratio = 50;
         bool need_funs = true; // false: l_True comes with no Skolem functions, only the verdict
         bool sat_minim = true; // shorten a refinement: a model, of the same X, whose existentials satisfy more clauses
         uint32_t max_minim_calls = 50; // per round, for sat_minim

@@ -35,7 +35,6 @@
 #include <map>
 #include <set>
 #include <functional>
-#include <optional>
 #include <unordered_map>
 
 namespace ArjunInt {
@@ -143,8 +142,17 @@ private:
 // settles yet, y_solver gives a model of the clauses for it
 class CoverComponent {
 public:
+    struct Conf : ArjunNS::Arjun::CoverConf {
+        // counting: the clauses of X only restrict X, an X that falsifies them is no cex
+        bool assume_outer = false;
+        // counting: x_solver never gets the clauses, the cubes of X with no Y are
+        // kept, and l_True comes with all of them. Gives up after max_cubes
+        bool keep_cubes = false;
+        uint32_t max_cubes = 0;
+        bool minim_cubes = true; // drop the literals of a kept cube that it does not need
+    };
     CoverComponent(const CoverProblem& _problem, const ArjunNS::AIGManager& _aig_mng, const std::vector<std::vector<CMSat::Lit>>& _comp_cls,
-            const ArjunNS::Arjun::CoverConf& _cconf, const uint64_t _max_ticks, const uint32_t _verb) :
+            const Conf& _cconf, const uint64_t _max_ticks, const uint32_t _verb) :
         problem(_problem), aig_mng(_aig_mng), comp_cls(_comp_cls), cconf(_cconf), max_ticks(_max_ticks), verb(_verb),
         num_vars(_problem.size()), sat_minim(_cconf.sat_minim),
         defs_in_y(_problem), defs_in_x(_problem), defs_in_vars(_problem), enc_y(y_solver), enc_x(x_solver) {}
@@ -211,7 +219,7 @@ private:
     const CoverProblem& problem;
     const ArjunNS::AIGManager& aig_mng;
     const std::vector<std::vector<CMSat::Lit>>& comp_cls;
-    const ArjunNS::Arjun::CoverConf& cconf;
+    const Conf& cconf;
     const uint64_t max_ticks;
     bool gave_up = false;
     const uint32_t verb;
@@ -259,90 +267,18 @@ private:
     } stats;
 };
 
-// Covers the X space with models of cnf's clauses: a model settles
-// every X that satisfies the universal parts of the clauses its Y leaves
-// unsatisfied. This is the CEGAR of the 2QBF literature. l_True: the
-// vars with no def yet got their Skolem functions, l_Undef: gave up. An X
-// with no Y is returned in `cex` with l_False if stop_at_cex, else its
-// cube is skipped, and x_solver gets the clauses so that no more come up.
-// The limits and the ways a refinement is shortened: see Arjun::CoverConf.
-//
-// The defs that cnf already has are kept, and used: a model is then the
-// values of the vars with no def, and it settles the X for which the
-// clauses hold with the defined vars following their defs.
-class Cover {
-public:
-    Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _cconf, ArjunNS::SimplifiedCNF& _cnf) :
-        conf(_conf), cconf(_cconf), cnf(_cnf), trans(std::in_place, _cnf), problem(trans->problem(_cnf)) {}
-    // For counting: no defs, the CNF's own numbering, xs are X
-    Cover(const Config& _conf, const ArjunNS::Arjun::CoverConf& _cconf, ArjunNS::SimplifiedCNF& _cnf,
-            const std::vector<uint32_t>& xs) :
-        conf(_conf), cconf(_cconf), cnf(_cnf), problem(_cnf.nVars(), xs) {}
-    CMSat::lbool run(std::vector<CMSat::lbool>& cex);
+using Cls = std::vector<std::vector<CMSat::Lit>>;
 
-    // A component C whose existentials Y_C occur nowhere else, with every X
-    // of the clauses of X only, psi, having a Y_C, is removed: ∃Y psi ∧ C ∧
-    // rest = psi ∧ ∃Y rest. With keep_cubes, C is replaced by the clauses
-    // that rule out the cubes of X with no Y_C, if they are few. Each one is
-    // checked against psi only, never against the others, which may go too.
-    // A component with a weighted existential stays: its weights would go.
-    // Returns the clauses removed, net
-    int64_t drop_covered();
-
-private:
-    using Cls = std::vector<std::vector<CMSat::Lit>>;
-    void split_into_components();
-    CMSat::lbool cover_components(std::vector<CMSat::lbool>& cex, std::vector<char>& removable);
-    CoverComponent::Result cover_one(const Cls& comp_cls, const uint32_t verb, uint64_t max_comp_ticks = 0);
-    void set_funs(const std::vector<char>& only);
-    void keep_covered(const std::vector<char>& removable);
-
-    // drop_covered()
-    struct DropStats {
-        uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0, kept_def = 0;
-        uint64_t cube_cls = 0, cube_lits = 0;
-        uint32_t up_ticks = 0, up_cubes = 0, out_of_budget = 0;
-        uint64_t done_ticks = 0, max_done_ticks = 0, up_ticks_used = 0, confl = 0;
-        double max_comp_t = 0;
-        void print(size_t num_comps, int64_t removed, size_t vars_gone, uint64_t used_ticks, double start) const;
-    };
-    // A component only needs the part of psi that its X reach, through the X
-    // psi's clauses share: the rest is satisfiable apart from it, or nothing
-    // is counted anyway
-    class PsiReach {
-    public:
-        PsiReach(const Cls& psi, uint32_t num_vars);
-        // appends to comp_cls the clauses of psi its X reach
-        void add_reached(const std::vector<char>& is_x, Cls& comp_cls);
-    private:
-        const Cls& psi;
-        UnionFind uf;
-        std::vector<std::vector<uint32_t>> psi_of; // per root, its clauses
-        std::vector<char> root_seen;
-        std::vector<uint32_t> roots;
-    };
-    struct Covered {
-        CMSat::lbool ret = CMSat::l_Undef;
-        Cls cubes; // keep_cubes: per X-cube with no Y, a clause that rules it out
-    };
-    // what becomes of a component. keep_def: kept as its defined var beats the cubes
-    enum class Action { keep, keep_def, drop, replace };
-    Covered cover_for_drop(Cls& comp_cls, bool has_def, PsiReach& psi, DropStats& drop_stats);
-    Action choose_action(const Covered& covered, bool has_def, size_t num_cls) const;
-    // gone: the ys of the components that went; cubes: the clauses replacing them
-    int64_t rewrite_cnf_with_cubes(const std::vector<char>& gone, Cls&& cubes);
-
-    const Config& conf;
-    const ArjunNS::Arjun::CoverConf& cconf;
-    ArjunNS::SimplifiedCNF& cnf;
-    const std::optional<OrigTranslation> trans; // none for counting
-    const CoverProblem problem;
-
-    std::vector<Cls> components;
-    Cls x_cls;
+// Clauses that share no y, directly or through a function, are covered
+// apart: together they need the product of their models
+struct Components {
+    std::vector<Cls> comps;
+    Cls x_cls; // over the x side only
     std::vector<char> on_x_side; // X, or a function of X only
-    std::vector<CoverComponent::Funs> found_funs; // per component
-    uint64_t used_ticks = 0;
 };
+Components split_into_components(const CoverProblem& problem, const Cls& cls);
+
+// gone: ys whose clauses go; cubes: the clauses replacing them. Returns the clauses removed, net
+int64_t rewrite_cnf_with_cubes(ArjunNS::SimplifiedCNF& cnf, const std::vector<char>& gone, Cls&& cubes);
 
 }
