@@ -78,6 +78,7 @@ ArjunNS::Arjun::CoverConf cover_conf;
 double cover_ticks = 200;
 double cover_late_ticks = 100;
 double cover_orig_ticks = 2000;
+double cover_orig_budget = 50;
 bool cover_done = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
@@ -173,8 +174,9 @@ void add_arjun_options() {
     myopt("--cover", cover_conf.budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
     myopt("--coverorigticks", cover_orig_ticks, "As --coverticks, for the covering run of --2qbf on the original clauses");
+    myopt("--coverorigbudget", cover_orig_budget, "As --cover, for the covering run of --2qbf on the original clauses, at most --cover");
     myopt("--coverminimsat", cover_conf.sat_minim, "Covering shortens a refinement by SAT calls for a model of the same input whose existentials satisfy more clauses");
-    myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit. The 1st runs are short, the long one is cover(ticks=N) of --cstrategy");
+    myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit, negative = no such run. The 1st runs are short, the long one is cover(ticks=N) of --cstrategy");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
     myopt("--synthpuura", do_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
@@ -508,6 +510,7 @@ void check_stage(ArjunNS::SimplifiedCNF& cnf, const std::string& stage) {
 }
 
 void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double budget, const double ticks) {
+    if (ticks < 0) return;
     vector<CMSat::lbool> cex;
     auto my_conf = cover_conf;
     my_conf.budget = budget;
@@ -596,7 +599,7 @@ void do_synth_2qbf() {
 
     // Only 2QBF: an X with no Y ends it early here, synthesis has no such early exit to win
     if (qbf2 && !cnf.all_ys_defined())
-        try_cover(cnf, need_funs, std::min(cover_conf.budget, 50.0), cover_orig_ticks);
+        try_cover(cnf, need_funs, std::min(cover_conf.budget, cover_orig_budget), cover_orig_ticks);
 
     if (do_puura && !cnf.all_ys_defined())
         simplify_for_synth_2qbf(cnf, need_funs);

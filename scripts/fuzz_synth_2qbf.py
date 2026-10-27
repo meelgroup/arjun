@@ -330,7 +330,7 @@ def check_qbf2_cex(fname, proj, cex):
 def qbf2_nofuns_verdict(fname, proj):
     cmd = "./arjun --2qbf --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
     cmd += " --synthpuura %d" % random.choice([0, 1, 1, 1])
-    cmd += " --coverticks %s" % random.choice([0.01, 20])
+    cmd += " --coverticks %s" % random.choice([-1, 0.01, 20])
     cmd += " --coverminimsat %d" % random.randint(0, 1)
     cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
     print(col("Running 2QBF with no functions: ", CYAN) + cmd)
@@ -588,10 +588,11 @@ if __name__ == "__main__":
         solver += "--debugverilog %d " % random.randint(0, 1)
         # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
         solver += "--cover %s " % random.choice([0, 0, 0.1, 1, 50, 100000])
-        solver += "--coverticks %s " % random.choice([0, 0.001, 0.01, 5, 500])
+        solver += "--coverticks %s " % random.choice([-1, 0, 0.001, 0.01, 5, 500])
         solver += "--coverminimsat %d " % random.randint(0, 1)
-        solver += "--coverlateticks %s " % random.choice([0, 0.01, 100])
-        solver += "--coverorigticks %s " % random.choice([0, 0.01, 2000])
+        solver += "--coverlateticks %s " % random.choice([-1, 0, 0.01, 100])
+        solver += "--coverorigticks %s " % random.choice([-1, 0, 0.01, 2000])
+        solver += "--coverorigbudget %s " % random.choice([0.1, 50, 100000])
 
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
