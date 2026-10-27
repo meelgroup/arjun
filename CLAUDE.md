@@ -56,6 +56,14 @@ short. Pick them from existing cluster results instead of guessing:
   `select fname, arjun_time from arjun where dirname='out-synth-...' and cegr_time>0 order by arjun_time limit 16;`
 - Benchmarks: `build/benchmarks-qdimacs/*.qdimacs.gz`.
 
+Cluster runs are set up in `../pbs-scripts/`: `creator_synth.sh` +
+`run-synth-trillium.slurm` (`--synth`), `creator_2qbf.sh` +
+`run-2qbf-trillium.slurm` (`--2qbf`). The creator holds the binary name
+(`arjun_<arjun>_<sbva>_<cms>`, 8-char SHAs), `opts_arr` of configs, benchmark
+set, per-job timeout; the slurm `--time` must cover configs x files / cores x
+timeout. When a change wants a cluster run, propose edits to these, keeping
+their patterns -- never change them without asking.
+
 ## 2QBF (`--2qbf`)
 
 `arjun --2qbf file.qdimacs` decides forall X exists Y. F, with X the `a`
