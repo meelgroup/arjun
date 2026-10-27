@@ -42,7 +42,7 @@
 //
 // For counting (CoverDrop), X are the sampling vars and the
 // clauses of X only are assumed, not checked. A component whose X all have
-// a Y is removed. With keep_cubes, the X-cubes with no Y are kept, minimized,
+// a Y is removed. With NoY::keep, the X-cubes with no Y are kept, minimized,
 // as clauses: when x_solver is UNSAT they are ∃Y of the component, which replaces
 // it. That is quantifier elimination by minimal blocking clauses, as in [6].
 //
@@ -68,6 +68,7 @@ using namespace CMSat;
 using std::vector;
 using std::map;
 using std::set;
+using NoY = CoverComponent::Conf::NoY;
 
 // Per var of cls: X, a function of X only, or a y; and which ones have a def or no clause
 CoverComponent::Classified CoverComponent::classify_defined(const CoverProblem& problem, const vector<vector<Lit>>& cls) {
@@ -408,7 +409,7 @@ void CoverComponent::cex_from_x_solver(vector<lbool>& cex) {
 // helper it would be in every refinement
 bool CoverComponent::x_cls_cex(vector<lbool>& cex) {
     assert(cex.empty());
-    assert(cconf.stop_at_cex && !cconf.assume_outer);
+    assert(cconf.no_y == NoY::stop && !cconf.assume_outer);
     assert(stats.rounds == 0);
     if (x_cls_solver.empty()) return false;
     x_solver.new_var();
@@ -433,11 +434,11 @@ bool CoverComponent::x_cls_cex(vector<lbool>& cex) {
 // no X in the cube of y_solver's conflict has a Y, so any function will do there
 void CoverComponent::block_no_y_cube() {
     // y_solver just found no Y for the X in assumps
-    assert(!cconf.stop_at_cex);
+    assert(cconf.no_y != NoY::stop);
     assert(assumps.size() == num_x);
     auto cube = y_solver.get_conflict();
     // A kept cube becomes a clause of the counted CNF: the shorter, the more it propagates
-    if (cconf.keep_cubes && cconf.minim_cubes) {
+    if (cconf.no_y == NoY::keep && cconf.minim_cubes) {
         vector<Lit> cand = cube, without_l;
         for (const auto& l : cand) {
             if (out_of_ticks()) break;
@@ -457,7 +458,7 @@ void CoverComponent::block_no_y_cube() {
     budget_used += frac_squared(cube.size(), num_x);
     x_solver.add_clause(cube);
     stats.num_cubes++;
-    if (cconf.keep_cubes) {
+    if (cconf.no_y == NoY::keep) {
         kept_cubes.emplace_back();
         for (const auto& l : cube) kept_cubes.back().emplace_back(x_side[l.var()], l.sign());
         return;
@@ -469,7 +470,7 @@ void CoverComponent::block_no_y_cube() {
 
 // x_solver gets all of comp_cls, ys included, so it only proposes X that have a Y
 void CoverComponent::x_solver_gets_cls() {
-    assert(!cconf.keep_cubes);
+    assert(cconf.no_y == NoY::skip);
     assert(stats.num_cubes == 1);
     vector<uint32_t> to_x(num_vars, none);
     for (const auto& v : x_side) to_x[v] = solver_var[v];
@@ -548,7 +549,7 @@ CoverComponent::Result CoverComponent::cegar_run() {
     set_phases();
     stats.setup_time = cpuTime() - stats.start_time;
 
-    if (cconf.stop_at_cex && !cconf.assume_outer && x_cls_cex(result.cex)) return done(l_False);
+    if (cconf.no_y == NoY::stop && !cconf.assume_outer && x_cls_cex(result.cex)) return done(l_False);
     for (const auto& cl : x_cls_solver) x_solver.add_clause(cl);
     for (; budget_used < cconf.budget && !out_of_ticks(); stats.rounds++) {
         if (stats.rounds && stats.rounds % cconf.stats_every == 0) print_stats("progress");
@@ -565,15 +566,12 @@ CoverComponent::Result CoverComponent::cegar_run() {
         const auto y_ret = timed(stats.y_time, [&] { return solve(y_solver, &assumps); });
         if (y_ret == l_Undef) break;
         if (y_ret == l_False) {
-            if (cconf.stop_at_cex) {
+            if (cconf.no_y == NoY::stop) {
                 cex_from_x_solver(result.cex);
                 return done(l_False);
             }
-            const auto cubes_before = kept_cubes.size();
             block_no_y_cube();
-            if (cconf.keep_cubes) assert(kept_cubes.size() == cubes_before + 1);
-            else assert(kept_cubes.empty());
-            if (cconf.keep_cubes && stats.num_cubes > cconf.max_cubes) return done(l_Undef);
+            if (cconf.no_y == NoY::keep && stats.num_cubes > cconf.max_cubes) return done(l_Undef);
             continue;
         }
         refine();

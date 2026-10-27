@@ -145,9 +145,12 @@ public:
     struct Conf : ArjunNS::Arjun::CoverConf {
         // counting: the clauses of X only restrict X, an X that falsifies them is no cex
         bool assume_outer = false;
-        // counting: x_solver never gets the clauses, the cubes of X with no Y are
-        // kept, and l_True comes with all of them. Gives up after max_cubes
-        bool keep_cubes = false;
+        // What an X with no Y does. stop: it is returned as the cex. skip: its
+        // cube is blocked, and x_solver gets the clauses so that no more come
+        // up. keep: its cube is blocked and kept, l_True comes with all of them,
+        // more than max_cubes gives up; x_solver never gets the clauses
+        enum class NoY { stop, skip, keep };
+        NoY no_y = NoY::skip;
         uint32_t max_cubes = 0;
         bool minim_cubes = true; // drop the literals of a kept cube that it does not need
     };
@@ -180,7 +183,7 @@ public:
     };
     static Classified classify_defined(const CoverProblem& problem, const std::vector<std::vector<CMSat::Lit>>& cls);
     static constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
-    // keep_cubes: per X with no Y, a clause over X that rules out its cube
+    // NoY::keep: per X with no Y, a clause over X that rules out its cube
     std::vector<std::vector<CMSat::Lit>> kept_cubes;
 
 private:

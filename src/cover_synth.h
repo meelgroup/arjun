@@ -44,6 +44,7 @@ public:
     CoverSynth(const Config& _conf, const ArjunNS::Arjun::CoverConf& _cconf, ArjunNS::SimplifiedCNF& _cnf) :
         conf(_conf), cnf(_cnf), trans(_cnf), problem(trans.problem(_cnf)) {
         static_cast<ArjunNS::Arjun::CoverConf&>(cconf) = _cconf;
+        cconf.no_y = _cconf.stop_at_cex ? CoverComponent::Conf::NoY::stop : CoverComponent::Conf::NoY::skip;
     }
     CMSat::lbool run(std::vector<CMSat::lbool>& cex);
 

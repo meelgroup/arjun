@@ -31,13 +31,13 @@ using namespace ArjunNS;
 using namespace ArjunInt;
 using namespace CMSat;
 using std::vector;
+using NoY = CoverComponent::Conf::NoY;
 
 CoverDrop::CoverDrop(const Config& _conf, SimplifiedCNF& _cnf, const vector<uint32_t>& xs,
         const uint64_t max_ticks, const uint32_t max_cubes) :
         conf(_conf), cnf(_cnf), problem(_cnf.nVars(), xs) {
     cconf.max_ticks = max_ticks;
-    cconf.stop_at_cex = max_cubes == 0;
-    cconf.keep_cubes = max_cubes != 0;
+    cconf.no_y = max_cubes ? NoY::keep : NoY::stop;
     cconf.max_cubes = max_cubes;
     cconf.assume_outer = true;
     cconf.need_funs = false;
@@ -47,7 +47,7 @@ CoverDrop::CoverDrop(const Config& _conf, SimplifiedCNF& _cnf, const vector<uint
 // existentials Y_i. The count is of psi ∧ ∃Y_1 C_1 ∧ ... ∧ ∃Y_n C_n, so
 // each component, checked against the part of psi its X reach, ends up:
 // - removed: every X satisfying psi has a Y_i, so ∃Y_i C_i is true
-// - replaced (keep_cubes): the minimized X-cubes with no Y_i, as clauses,
+// - replaced (NoY::keep): the minimized X-cubes with no Y_i, as clauses,
 //   which together are exactly ∃Y_i C_i. Not if there are over max_cubes of
 //   them, nor if C_i has a defined var and they do not make it much smaller
 // - kept: it has a weighted Y (its weight would be lost), or the ticks ran out
@@ -85,7 +85,7 @@ int64_t CoverDrop::run() {
     Cls cubes;
     for (auto& comp_cls : components) {
         const bool has_weight = has_var(comp_cls, weighted_y);
-        const bool has_def = cconf.keep_cubes && has_var(comp_cls, is_def);
+        const bool has_def = cconf.no_y == NoY::keep && has_var(comp_cls, is_def);
         drop_stats.weighted += has_weight;
         Covered covered;
         if (has_weight) {
@@ -121,8 +121,7 @@ CoverDrop::Covered CoverDrop::cover_for_drop(Cls& comp_cls, const bool has_def, 
     const size_t num_comp_cls = comp_cls.size();
     psi.add_reached(problem.is_x, comp_cls);
     auto drop_conf = cconf;
-    drop_conf.stop_at_cex = true;
-    drop_conf.keep_cubes = false;
+    drop_conf.no_y = NoY::stop;
     const bool only_drop = has_def && num_comp_cls < def_replace_min_cls;
     // a quarter of it at most, one hopeless component does not use it all up
     const uint64_t ticks = cconf.max_ticks ? std::min(cconf.max_ticks - used_ticks, cconf.max_ticks / 4 + 1) : 0;
@@ -137,7 +136,7 @@ CoverDrop::Covered CoverDrop::cover_for_drop(Cls& comp_cls, const bool has_def, 
     drop_stats.confl += comp.conflicts();
     assert(comp_cls.size() >= num_comp_cls);
     // an X with no Y only ends the run when its cube is not kept
-    if (cconf.keep_cubes && !only_drop) assert(covered.ret != l_False);
+    if (cconf.no_y == NoY::keep && !only_drop) assert(covered.ret != l_False);
     comp_cls.resize(num_comp_cls);
     drop_stats.no_y += covered.ret == l_False;
     if (covered.ret == l_Undef) {
@@ -155,7 +154,7 @@ CoverDrop::Covered CoverDrop::cover_for_drop(Cls& comp_cls, const bool has_def, 
 
 // Whether a covered component goes, is replaced by its cubes, or stays
 CoverDrop::Action CoverDrop::choose_action(const Covered& covered, const bool has_def, const size_t num_cls) const {
-    assert(covered.cubes.empty() || cconf.keep_cubes);
+    assert(covered.cubes.empty() || cconf.no_y == NoY::keep);
     if (covered.ret != l_True) return Action::keep;
     // an empty cube: no X has a Y, let the rest of Arjun find that out
     if (std::any_of(covered.cubes.begin(), covered.cubes.end(), [](const auto& cl) { return cl.empty(); })) return Action::keep;

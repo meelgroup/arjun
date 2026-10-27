@@ -74,7 +74,7 @@ private:
     };
     struct Covered {
         CMSat::lbool ret = CMSat::l_Undef;
-        Cls cubes; // keep_cubes: per X-cube with no Y, a clause that rules it out
+        Cls cubes; // NoY::keep: per X-cube with no Y, a clause that rules it out
     };
     // what becomes of a component. keep_def: kept as its defined var beats the cubes
     enum class Action { keep, keep_def, drop, replace };
