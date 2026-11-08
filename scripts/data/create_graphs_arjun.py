@@ -31,7 +31,7 @@ SOLVE_TIME_EXPR = "(CASE WHEN solver='arjun' THEN arjun_time ELSE timeout_t END)
 
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
-    # "out-synth-1587721-6", # CADET
+    "out-synth-1587721-6", # CADET
 
     # "out-synth-1068169-0",
     # "out-synth-1296625-", # lots of memory (9GB)
@@ -82,15 +82,22 @@ only_dirs = [
     # "out-synth-2535088-2", # CEGAR for Y->X skolem and also testing 2QBF
     # "out-synth-2538628-", # improved cover
     # "out-synth-2539107-0", # improved cover
-    "out-synth-2539107-4", # improved cover
     # "out-synth-2539107-3", # improved cover
-    "out-synth-2669714-2", # cleanup of cover
 
-    # # "out-2qbf-2544900-4", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    # synth
+    # "out-synth-2539107-4", # improved cover
+    "out-synth-2669714-2", # cleanup of cover
+    "out-synth-2791167-", # improved cover
+
+    # "out-2qbf-2544900-4", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
     # "out-2qbf-2544900-9", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
     # "out-2qbf-2544900-6", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
-    # # "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    # "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
     # "out-2qbf-2554015-4", # improved cover + multi-run puura in qbf
+    # "out-2qbf-2669713-5",
+    # "out-2qbf-2669713-3", # after cover cleanup
+    # "out-2qbf-2680942",
+    # "out-2qbf-2717062",
 
     # "out-synth-1367674-0", # before unate-eq
 ]
@@ -467,6 +474,40 @@ def print_stuck_top_table(table_todo, fname_like, top=5):
         _print_table(["fname", "stuck at", "term(s)", "memMB", "sig", "mem_out"],
                      str_rows)
     con.close()
+
+
+def print_cover_runs_table(table_todo, fname_like):
+    """--2qbf only: per covering run, what it decided and what giving up cost.
+    'gaveup T on solved' is time lost on files the run did not decide but the
+    config solved anyway; max ticks of a decided run shows if its limit binds."""
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    str_rows = []
+    for dir, ver in table_todo:
+        for run in ("orig", "simp", "late", "long"):
+            p = f"cover_{run}_"
+            cur.execute(
+                f"SELECT COUNT({p}res), SUM({p}res!='gaveup'),"
+                f" SUM(CASE WHEN {p}res!='gaveup' THEN {p}t END),"
+                f" SUM(CASE WHEN {p}res='gaveup' THEN {p}t END),"
+                f" SUM(CASE WHEN {p}res='gaveup' AND {SOLVE_TIME_EXPR} IS NOT NULL THEN {p}t END),"
+                f" SUM({p}res='gaveup' AND {p}t>30),"
+                f" MAX(CASE WHEN {p}res!='gaveup' THEN {p}ticks END),"
+                f" MAX(CASE WHEN {p}res!='gaveup' THEN {p}t END)"
+                f" FROM {TABLE} WHERE dirname=? AND {VER_EXPR}=?{fname_like}", (dir, ver))
+            n, dec, tdec, tfail, tfail_solved, slow, maxticks, maxt = cur.fetchone()
+            if not n:
+                continue
+            f = lambda x: f"{x:.0f}" if x is not None else ""
+            str_rows.append([dir, run, str(n), str(dec or 0), f(tdec), f(tfail),
+                             f(tfail_solved), str(slow or 0), f(maxticks), f(maxt)])
+    con.close()
+    if not str_rows:
+        return
+    print(f"\n{BLUE}2QBF covering runs{RESET}")
+    _print_table(["dirname", "run", "ran", "decided", "T decided", "T gaveup",
+                  "T gaveup solved", "gaveup >30s", "max Mticks dec", "max T dec"],
+                 str_rows)
 
 
 def print_signal_warnings(table_todo, fname_like):
@@ -860,6 +901,7 @@ def main():
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)
+    print_cover_runs_table(table_todo, fname_like)
     print_slower_tables(matched_dirs, fname_like, verbose=args.verbose)
     print_solve_diff_tables(matched_dirs, fname_like, verbose=args.verbose)
 

@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <limits>
 #include <iomanip>
 #include <sstream>
@@ -98,6 +99,16 @@ using std::ifstream;
 using std::ofstream;
 using std::numeric_limits;
 
+DLL_PUBLIC uint64_t AIG::next_nid() {
+    static uint64_t counter = 0;
+    return ++counter;
+}
+
+DLL_PUBLIC uint64_t AIG::next_visit_epoch() {
+    static uint64_t counter = 0;
+    return ++counter;
+}
+
 DLL_PUBLIC Arjun::Arjun() { arjdata = new ArjPrivateData; }
 DLL_PUBLIC Arjun::~Arjun() { delete arjdata; }
 DLL_PUBLIC string Arjun::get_sbva_version_sha1() {
@@ -142,17 +153,16 @@ DLL_PUBLIC lbool Arjun::standalone_cover(SimplifiedCNF& cnf, const CoverConf& co
     return cover.run(cex);
 }
 
-DLL_PUBLIC int64_t Arjun::standalone_cover_drop(SimplifiedCNF& cnf, const uint64_t max_ticks, const uint32_t max_cubes,
-        const bool weighted_as_x) {
+DLL_PUBLIC int64_t Arjun::standalone_cover_drop(SimplifiedCNF& cnf, const ElimToFileConf& etof_conf) {
     // A weighted opt sampling var is defined by the sampling vars: with it in
     // X the count is the same, and a component that defines it never goes
     vector<uint32_t> univ = cnf.get_sampl_vars();
-    if (weighted_as_x && cnf.get_weighted()) {
+    if (etof_conf.cover_drop_weighted_as_x && cnf.get_weighted()) {
         std::set<uint32_t> sampl(univ.begin(), univ.end());
         for (const auto& v : cnf.get_opt_sampl_vars())
             if (!sampl.count(v) && cnf.weight_set(v)) univ.push_back(v);
     }
-    CoverDrop cover(arjdata->conf, cnf, univ, max_ticks, max_cubes);
+    CoverDrop cover(arjdata->conf, cnf, univ, etof_conf);
     return cover.run();
 }
 
@@ -275,8 +285,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     cnf.remove_equiv_weights();
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     if (etof_conf.do_autarky) standalone_autarky(cnf);
-    if (etof_conf.cover_drop_mticks > 0) standalone_cover_drop(cnf, etof_conf.cover_drop_mticks * 1e6, etof_conf.cover_drop_max_cubes,
-            etof_conf.cover_drop_weighted_as_x);
+    if (etof_conf.cover_drop_mticks > 0) standalone_cover_drop(cnf, etof_conf);
     cnf.remove_equiv_weights();
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
@@ -872,6 +881,23 @@ DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {
     vector<Lit> assumps;
     for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, cex[v] != l_True);
     return s.solve(&assumps) == l_False;
+}
+
+DLL_PUBLIC vector<vector<Lit>> SimplifiedCNF::to_orig_cls(const vector<vector<Lit>>& cls) const {
+    vector<Lit> to_orig(nVars(), lit_Undef);
+    for (const auto& [orig, l] : orig_to_new_var) {
+        if (to_orig[l.var()] != lit_Undef && !orig_sampl_vars.count(orig)) continue;
+        to_orig[l.var()] = Lit(orig, l.sign());
+    }
+    vector<vector<Lit>> ret;
+    for (const auto& cl : cls) {
+        ret.emplace_back();
+        for (const auto& l : cl) {
+            release_assert(to_orig[l.var()] != lit_Undef);
+            ret.back().push_back(to_orig[l.var()] ^ l.sign());
+        }
+    }
+    return ret;
 }
 
 DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_def_cex() const {
@@ -1831,6 +1857,62 @@ DLL_PUBLIC void SimplifiedCNF::renumber_vars(const vector<uint32_t>& map_here_to
     }
     nvars = new_nvars;
     defs.resize(std::max<size_t>(defs.size(), nvars));
+}
+
+DLL_PUBLIC uint32_t SimplifiedCNF::bce_2qbf(vector<vector<Lit>>& cls) const {
+    vector<char> univ(nVars(), 0);
+    for (const auto& [o, l] : orig_to_new_var) if (orig_sampl_vars.count(o)) univ[l.var()] = 1;
+    vector<vector<uint32_t>> occ(2*nVars());
+    for (uint32_t i = 0; i < cls.size(); i++) for (const auto& l : cls[i]) occ[l.toInt()].push_back(i);
+    vector<char> removed(cls.size(), 0), queued(cls.size(), 1), in_cl(2*nVars(), 0);
+    vector<uint32_t> todo(cls.size());
+    std::iota(todo.rbegin(), todo.rend(), 0);
+
+    // work is the literals looked at: the same on every machine
+    uint64_t work = 0;
+    const uint64_t max_work = 2000ULL*1000ULL*1000ULL;
+    auto taut_resolvent = [&](const uint32_t other, const Lit on) {
+        work += cls[other].size();
+        for (const auto& l : cls[other]) if (l != on && in_cl[(~l).toInt()]) return true;
+        return false;
+    };
+    uint32_t num_removed = 0;
+    while (!todo.empty() && work < max_work) {
+        const uint32_t at = todo.back();
+        todo.pop_back();
+        queued[at] = 0;
+        if (removed[at]) continue;
+        for (const auto& l : cls[at]) in_cl[l.toInt()] = 1;
+        bool blocked = false;
+        for (const auto& l : cls[at]) {
+            if (univ[l.var()]) continue;
+            blocked = true;
+            for (const auto& other : occ[(~l).toInt()]) if (!removed[other] && !taut_resolvent(other, ~l)) {
+                blocked = false;
+                break;
+            }
+            if (blocked) break;
+        }
+        for (const auto& l : cls[at]) in_cl[l.toInt()] = 0;
+        if (!blocked) continue;
+
+        // only a clause that resolved with this one can be blocked now
+        removed[at] = 1;
+        num_removed++;
+        for (const auto& l : cls[at]) for (const auto& other : occ[(~l).toInt()])
+            if (!removed[other] && !queued[other]) {
+                queued[other] = 1;
+                todo.push_back(other);
+            }
+    }
+
+    uint32_t j = 0;
+    for (uint32_t i = 0; i < cls.size(); i++) if (!removed[i]) {
+        if (i != j) cls[j] = std::move(cls[i]);
+        j++;
+    }
+    cls.resize(j);
+    return num_removed;
 }
 
 DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) const {

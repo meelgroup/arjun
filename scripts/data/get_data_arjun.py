@@ -261,6 +261,40 @@ def arjun_decided_by(fname):
     return "cegr" if "[cegr]" in txt else "simplification"
 
 
+COVER_RUNS = ("orig", "simp", "late", "long")
+COVER_FIN = re.compile(r"\[cover\] (all X covered|gave up|X with no Y) rounds: (\d+).*"
+                       r"ticks\(M\) x: ([0-9.]+) y: ([0-9.]+) y-def: ([0-9.]+).* T: ([0-9.]+) \(")
+COVER_LATE = re.compile(r"start (find_autarkies|extend_synth|backward_round_synth|do_unate_def) ")
+
+
+# The 2QBF covering runs of do_synth_2qbf(), told apart by what the log prints
+# between them; a run split into components has a [cover] line per component
+def arjun_cover_runs(fname):
+    ret = {}
+    run = "orig"
+    with open(fname, "r", errors="replace") as f:
+        for line in f:
+            if "[2qbf-puura]" in line:
+                run = "simp"
+            elif run == "simp" and COVER_LATE.search(line):
+                run = "late"
+            elif "Running strategy" in line and "cover(" in line:
+                run = "long"
+            elif "Running Cegr strategy" in line and run == "long":
+                run = None
+            m = COVER_FIN.search(line)
+            if not m or run is None:
+                continue
+            res = {"all X covered": "covered", "X with no Y": "cex", "gave up": "gaveup"}[m.group(1)]
+            p = "cover_" + run
+            ret[p + "_t"] = ret.get(p + "_t", 0) + float(m.group(6))
+            ret[p + "_ticks"] = ret.get(p + "_ticks", 0) + sum(float(m.group(i)) for i in (3, 4, 5))
+            ret[p + "_rounds"] = ret.get(p + "_rounds", 0) + int(m.group(2))
+            if res != "gaveup" or p + "_res" not in ret:
+                ret[p + "_res"] = res
+    return ret
+
+
 # One 2QBF run (creator_2qbf.sh) is a preprocessor and a solver, each with its
 # own log and time file; .out_res has the commands and the RESULT line.
 def finalize_2qbf(entry):
@@ -302,6 +336,8 @@ def finalize_2qbf(entry):
     if arjun_log in parts:
         data = find_arjun_time(parts[arjun_log])
         entry.update({k: v for k, v in data.items() if k not in ("solved", "mem_out")})
+        if arjun_log == "out_solve":
+            entry.update(arjun_cover_runs(parts[arjun_log]))
         if entry["verdict"] and res["by"] == ("pre" if arjun_log == "out_pre" else "solver"):
             entry["decided_by"] = arjun_decided_by(parts[arjun_log])
     entry["mem_out"] = int(any(has_mem_out(parts[k]) for k in ("out_pre", "out_solve") if k in parts))
@@ -473,7 +509,11 @@ COLUMNS = [
     ("pre_time",                "REAL"),
     # arjun's own verdicts: coverN-covered, coverN-cex, cegr, simplification
     ("decided_by",              "TEXT"),
-]
+    # --2qbf covering runs (orig: orig clauses, simp: after Puura, late: after
+    # the def passes, long: cover(ticks=N) of --cstrategy). NULL = did not run.
+    # res: covered/cex/gaveup, ticks: x+y+y-def M ticks
+] + [("cover_%s_%s" % (r, k), t) for r in COVER_RUNS
+     for k, t in (("res", "TEXT"), ("t", "REAL"), ("ticks", "REAL"), ("rounds", "INTEGER"))]
 
 
 def open_db(db_path, recreate):

@@ -570,17 +570,13 @@ private:
     // written with (the value of the POSITIVE node; edge signs applied by
     // the reader).
     mutable uint8_t eval_val = 0;
-    static uint64_t next_visit_epoch() {
-        static uint64_t counter = 0;
-        return ++counter;
-    }
+    static uint64_t next_visit_epoch();
 
     // Counter backing `nid`. A plain static counter suffices: construction is
-    // single-threaded, and each run starts from 0.
-    static uint64_t next_nid() {
-        static uint64_t counter = 0;
-        return ++counter;
-    }
+    // single-threaded, and each run starts from 0. Both counters are defined
+    // in arjun.cpp: inline here, a library built with -fvisibility=hidden and
+    // the program using it would each have one, and hand out the same nids
+    static uint64_t next_nid();
 };
 
 // Deterministic aig_lit ordering: keyed on the node's monotonic nid, not its
@@ -1833,6 +1829,9 @@ public:
                          std::vector<std::vector<CMSat::Lit>>&& red);
 
     void write_simpcnf(const std::string& fname, bool red = true) const;
+    // Removes the clauses blocked on an existential literal. Keeps, for every
+    // X, whether it has a Y, but not the Skolem functions. Returns the number removed
+    uint32_t bce_2qbf(std::vector<std::vector<CMSat::Lit>>& cls) const;
 
     [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);
@@ -1913,6 +1912,9 @@ public:
     [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex() const;
     // No Y extends X to a model of the orig clauses. For debugging
     [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
+    // cls, over the CNF's vars, over orig vars instead
+    [[nodiscard]] std::vector<std::vector<CMSat::Lit>> to_orig_cls(
+            const std::vector<std::vector<CMSat::Lit>>& cls) const;
     // Simplification defines an orig sampl var only by what F implies: a unit,
     // or an equivalence with another one. An X that breaks that def has no Y.
     // Empty if no orig sampl var is defined: then the clauses are the 2QBF,
@@ -2045,6 +2047,10 @@ public:
         double cover_drop_mticks = 0; // see standalone_cover_drop. 0 = off
         uint32_t cover_drop_max_cubes = 0;
         bool cover_drop_weighted_as_x = true;
+        bool cover_drop_sat_minim = true;
+        uint32_t cover_drop_sls_flips = 0;
+        uint32_t cover_drop_sls_stall = 30;
+        bool cover_drop_minim_cubes = true;
     };
     struct InterpConf {
         uint32_t interp_rebuild_every = 50;
@@ -2122,6 +2128,8 @@ public:
         bool sat_minim = true; // shorten a refinement: a model, of the same X, whose existentials satisfy more clauses
         uint32_t max_minim_calls = 50; // per round, for sat_minim
         uint32_t max_minim_wait = 7; // a helper that a core kept out of the model sits out 1, 3, 7.. of its next tries
+        uint32_t sls_flips = 0; // before sat_minim, per round: flips of a local search that keeps every clause true, for fewer helpers with a false y part
+        uint32_t sls_stall = 30; // sls stops after this many flips with no better model
         uint32_t stats_every = 1000; // rounds
     };
 
@@ -2157,7 +2165,7 @@ public:
     // max_cubes != 0: also replaces them by at most this many clauses over X
     // that rule out the X with no model. weighted_as_x: the weighted opt
     // sampling vars are taken as sampling ones. Returns the clauses removed, net
-    int64_t standalone_cover_drop(SimplifiedCNF& cnf, uint64_t max_ticks, uint32_t max_cubes, bool weighted_as_x);
+    int64_t standalone_cover_drop(SimplifiedCNF& cnf, const ElimToFileConf& etof_conf);
 
     //Set config
     void set_verb(uint32_t verb);

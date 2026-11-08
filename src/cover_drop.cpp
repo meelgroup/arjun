@@ -34,11 +34,15 @@ using std::vector;
 using NoY = CoverComponent::Conf::NoY;
 
 CoverDrop::CoverDrop(const Config& _conf, SimplifiedCNF& _cnf, const vector<uint32_t>& xs,
-        const uint64_t max_ticks, const uint32_t max_cubes) :
+        const Arjun::ElimToFileConf& etof_conf) :
         conf(_conf), cnf(_cnf), problem(_cnf.nVars(), xs) {
-    cconf.max_ticks = max_ticks;
-    cconf.no_y = max_cubes ? NoY::keep : NoY::stop;
-    cconf.max_cubes = max_cubes;
+    cconf.max_ticks = etof_conf.cover_drop_mticks * 1e6;
+    cconf.no_y = etof_conf.cover_drop_max_cubes ? NoY::keep : NoY::stop;
+    cconf.max_cubes = etof_conf.cover_drop_max_cubes;
+    cconf.sat_minim = etof_conf.cover_drop_sat_minim;
+    cconf.sls_flips = etof_conf.cover_drop_sls_flips;
+    cconf.sls_stall = etof_conf.cover_drop_sls_stall;
+    cconf.minim_cubes = etof_conf.cover_drop_minim_cubes;
     cconf.assume_outer = true;
     cconf.need_funs = false;
 }
@@ -58,7 +62,8 @@ int64_t CoverDrop::run() {
     const uint32_t num_vars = problem.size();
 
     // UNSAT CNF, return
-    if (std::any_of(cnf.get_clauses().begin(), cnf.get_clauses().end(), [](const auto& cl) { return cl.empty(); }))
+    if (std::any_of(cnf.get_clauses().begin(), cnf.get_clauses().end(),
+                [](const auto& cl) { return cl.empty(); }))
         return 0;
 
     auto comps = split_into_components(problem, cnf.get_clauses());
@@ -68,6 +73,7 @@ int64_t CoverDrop::run() {
     vector<char> weighted_y(num_vars, 0);
     if (cnf.get_weighted()) for (uint32_t v = 0; v < num_vars; v++)
         if (!problem.is_x[v] && cnf.weight_set(v)) weighted_y[v] = 1;
+
     // A defined var is a good one for the counter to branch on, and its
     // defining clauses propagate better than cubes: a component with one is
     // replaced only if its clauses mostly go away. Also when the var is taken
@@ -100,7 +106,8 @@ int64_t CoverDrop::run() {
         if (action == Action::drop) drop_stats.dropped++;
         else drop_stats.replaced++;
 
-        // drop and replace both: its cubes (none on drop) are added and its Ys marked gone, rewrite_cnf_with_cubes() removes their clauses
+        // drop and replace both: its cubes (none on drop) are added and its Ys
+        // marked gone, rewrite_cnf_with_cubes() removes their clauses
         drop_stats.cube_cls += covered.cubes.size();
         for (const auto& cl : covered.cubes) drop_stats.cube_lits += cl.size();
         for (auto& cl : covered.cubes) cubes.push_back(std::move(cl));

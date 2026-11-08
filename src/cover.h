@@ -33,6 +33,7 @@
 #include "time_mem.h"
 #include <limits>
 #include <map>
+#include <random>
 #include <set>
 #include <functional>
 #include <unordered_map>
@@ -169,7 +170,8 @@ public:
         bool every_x_has_y = false;
     };
     Result cegar_run();
-    uint64_t ticks() { return x_solver.get_sum_ticks() + y_solver.get_sum_ticks() + defs_in_x.work * 10; }
+    // a call costs about a tick per var that the solver's ticks miss: x_solver grows by the cofactors
+    uint64_t ticks() { return x_solver.get_sum_ticks() + y_solver.get_sum_ticks() + defs_in_x.work * 10 + x_var_ticks + sls_work; }
     uint64_t conflicts() const { return x_solver.get_sum_conflicts() + y_solver.get_sum_conflicts(); }
     bool out_of_ticks() { return gave_up || (max_ticks != 0 && ticks() >= max_ticks); }
 
@@ -198,6 +200,11 @@ private:
     void x_solver_gets_cls();
     void refine();
     void compute_refinement(const std::vector<CMSat::lbool>& model);
+    void setup_flip();
+    void setup_sls();
+    void sls(std::vector<CMSat::lbool>& model);
+    bool sls_score(const std::vector<CMSat::lbool>& model, CMSat::Lit p, int32_t& d_helpers, int32_t& d_split);
+    void sls_flip(std::vector<CMSat::lbool>& model, CMSat::Lit p, uint64_t step);
     bool model_satisfies(const std::vector<CMSat::lbool>& model) const;
     ArjunNS::aig_lit y_def_cls_hold(Subst& s);
     void build_funs(Funs& funs);
@@ -225,6 +232,7 @@ private:
     const Conf& cconf;
     const uint64_t max_ticks;
     bool gave_up = false;
+    uint64_t x_var_ticks = 0, sls_work = 0;
     const uint32_t verb;
     const uint32_t num_vars;
     const bool sat_minim;
@@ -256,6 +264,20 @@ private:
 
     RefinementMinimizer minimizer;
 
+    // sls: comp_cls in the solvers' numbering and the y parts, with no
+    // duplicate lit and no tautology, so that a count of true lits is exact.
+    // It flips only the ys no def reads
+    std::vector<char> can_flip;
+    std::vector<std::vector<CMSat::Lit>> sls_cls, sls_y_part;
+    std::vector<std::vector<uint32_t>> sls_occ, y_part_occ, helper_y_parts;
+    std::vector<uint32_t> sls_y_helper;
+    std::vector<uint32_t> cls_true, y_part_true, helper_false, false_pos, false_helpers, last_flip, touched;
+    std::vector<int32_t> helper_delta;
+    std::vector<uint32_t> trail_var;
+    std::vector<CMSat::lbool> trail_val;
+    uint32_t false_y_parts = 0, sls_backoff = 0, sls_skip = 0;
+    std::mt19937_64 rng{1};
+
     // Changed every round.
     // per refinement, for the Skolem functions: its helpers, and the model's Y
     std::vector<std::vector<CMSat::Lit>> refinements;
@@ -264,7 +286,7 @@ private:
     std::vector<CMSat::Lit> assumps, refinement;
     double budget_used = 0;
     struct Stats {
-        uint64_t rounds = 0, ref_lits = 0, num_cubes = 0, cube_lits = 0, minim_removed = 0;
+        uint64_t rounds = 0, ref_lits = 0, num_cubes = 0, cube_lits = 0, minim_removed = 0, sls_removed = 0, sls_flips = 0;
         double start_time = 0, setup_time = 0;
         double x_time = 0, y_time = 0, refine_time = 0, y_def_time = 0, funs_time = 0;
     } stats;

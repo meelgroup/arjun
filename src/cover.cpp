@@ -61,6 +61,7 @@
 #include <cmath>
 #include <functional>
 #include <numeric>
+#include <unordered_set>
 
 using namespace ArjunNS;
 using namespace ArjunInt;
@@ -292,6 +293,210 @@ vector<lbool> RefinementMinimizer::minimize(vector<lbool> model, vector<Lit>& as
     return model;
 }
 
+void CoverComponent::setup_flip() {
+    can_flip.assign(y_solver.nVars(), 0);
+    for (const auto& v : y_vars) if (!problem.defined(v)) can_flip[solver_var[v]] = 1;
+    vector<char> seen(num_vars, 0);
+    vector<const AIG*> todo;
+    for (const auto& v : defined) todo.push_back(problem.def[v].get());
+    std::unordered_set<const AIG*, Subst::NidHash> visited;
+    while (!todo.empty()) {
+        const AIG* n = todo.back();
+        todo.pop_back();
+        if (!visited.insert(n).second) continue;
+        if (n->type == AIGT::t_lit) {
+            const uint32_t v = n->var;
+            if (seen[v]) continue;
+            seen[v] = 1;
+            if (solver_var[v] != none) can_flip[solver_var[v]] = 0;
+            if (problem.defined(v)) todo.push_back(problem.def[v].get());
+        } else if (n->type == AIGT::t_and) {
+            todo.push_back(n->l.get());
+            todo.push_back(n->r.get());
+        }
+    }
+}
+
+namespace {
+// false: a tautology
+bool normalize(vector<Lit>& cl) {
+    std::sort(cl.begin(), cl.end());
+    cl.erase(std::unique(cl.begin(), cl.end()), cl.end());
+    for (size_t i = 1; i < cl.size(); i++) if (cl[i].var() == cl[i-1].var()) return false;
+    return true;
+}
+}
+
+void CoverComponent::setup_sls() {
+    assert(sls_cls.empty() && sls_y_part.empty());
+    const uint32_t nv = y_solver.nVars();
+    sls_occ.assign(2*nv, {});
+    for (const auto& orig : comp_cls) {
+        if (cconf.assume_outer && std::all_of(orig.begin(), orig.end(), [&](const Lit l) { return on_x_side[l.var()]; }))
+            continue;
+        vector<Lit> cl;
+        for (const auto& l : orig) cl.push_back(in_solvers(l));
+        if (!normalize(cl)) continue;
+        for (const auto& l : cl) sls_occ[l.toInt()].push_back(sls_cls.size());
+        sls_cls.push_back(std::move(cl));
+    }
+    y_part_occ.assign(2*nv, {});
+    helper_y_parts.assign(helpers.size(), {});
+    for (const auto& split : split_cls) {
+        auto yp = split.y_part;
+        if (!normalize(yp)) continue;
+        for (const auto& l : yp) y_part_occ[l.toInt()].push_back(sls_y_part.size());
+        helper_y_parts[split.helper].push_back(sls_y_part.size());
+        sls_y_helper.push_back(split.helper);
+        sls_y_part.push_back(std::move(yp));
+    }
+    helper_delta.assign(helpers.size(), 0);
+    false_pos.assign(helpers.size(), none);
+    last_flip.assign(nv, 0);
+}
+
+// Flipping p true: false if a clause would be false. Otherwise the change
+// in the helpers with a false y part, and in the false y parts
+bool CoverComponent::sls_score(const vector<lbool>& model, const Lit p, int32_t& d_helpers, int32_t& d_split) {
+    const Lit q = ~p;
+    assert(model[p.var()] != boolToLBool(!p.sign()));
+    const bool q_true = model[q.var()] == boolToLBool(!q.sign());
+    d_split = 0;
+    if (q_true) {
+        sls_work += sls_occ[q.toInt()].size();
+        for (const auto& c : sls_occ[q.toInt()]) if (cls_true[c] == 1) return false;
+    }
+    touched.clear();
+    auto touch = [&](const uint32_t h, const int32_t d) {
+        if (helper_delta[h] == 0) touched.push_back(h);
+        helper_delta[h] += d;
+    };
+    if (q_true) for (const auto& s : y_part_occ[q.toInt()]) if (y_part_true[s] == 1) {
+        d_split++;
+        touch(sls_y_helper[s], 1);
+    }
+    for (const auto& s : y_part_occ[p.toInt()]) if (y_part_true[s] == 0) {
+        d_split--;
+        touch(sls_y_helper[s], -1);
+    }
+    sls_work += y_part_occ[q.toInt()].size() + y_part_occ[p.toInt()].size();
+    d_helpers = 0;
+    for (const auto& h : touched) {
+        d_helpers += (helper_false[h] + helper_delta[h] > 0) - (helper_false[h] > 0);
+        helper_delta[h] = 0;
+    }
+    return true;
+}
+
+void CoverComponent::sls_flip(vector<lbool>& model, const Lit p, const uint64_t step) {
+    const Lit q = ~p;
+    const bool q_true = model[q.var()] == boolToLBool(!q.sign());
+    trail_var.push_back(p.var());
+    trail_val.push_back(model[p.var()]);
+    model[p.var()] = boolToLBool(!p.sign());
+    last_flip[p.var()] = step;
+    auto set_false = [&](const uint32_t h, const int32_t d) {
+        const bool was = helper_false[h];
+        helper_false[h] += d;
+        if (was == (bool)helper_false[h]) return;
+        if (helper_false[h]) {
+            false_pos[h] = false_helpers.size();
+            false_helpers.push_back(h);
+        } else {
+            const uint32_t last = false_helpers.back();
+            false_helpers[false_pos[h]] = last;
+            false_pos[last] = false_pos[h];
+            false_helpers.pop_back();
+            false_pos[h] = none;
+        }
+    };
+    if (q_true) {
+        for (const auto& c : sls_occ[q.toInt()]) cls_true[c]--;
+        for (const auto& s : y_part_occ[q.toInt()]) if (--y_part_true[s] == 0) {
+            false_y_parts++;
+            set_false(sls_y_helper[s], 1);
+        }
+    }
+    for (const auto& c : sls_occ[p.toInt()]) cls_true[c]++;
+    for (const auto& s : y_part_occ[p.toInt()]) if (y_part_true[s]++ == 0) {
+        false_y_parts--;
+        set_false(sls_y_helper[s], -1);
+    }
+    sls_work += sls_occ[q.toInt()].size() + sls_occ[p.toInt()].size();
+}
+
+// A walk from the model: at a helper with a false y part, the
+// flip that fixes one of its y parts with the fewest helpers, then y parts,
+// false, every clause staying true. A var flipped in the last few steps
+// waits, unless it gives a new best. Ends at the best model it saw
+void CoverComponent::sls(vector<lbool>& model) {
+    constexpr uint64_t tabu = 10;
+    auto is_true = [&](const Lit l) { return model[l.var()] == boolToLBool(!l.sign()); };
+    cls_true.assign(sls_cls.size(), 0);
+    for (uint32_t c = 0; c < sls_cls.size(); c++) {
+        for (const auto& l : sls_cls[c]) cls_true[c] += is_true(l);
+        sls_work += sls_cls[c].size();
+        assert(cls_true[c] > 0);
+    }
+    y_part_true.assign(sls_y_part.size(), 0);
+    helper_false.assign(helpers.size(), 0);
+    false_helpers.clear();
+    false_y_parts = 0;
+    for (uint32_t h = 0; h < helpers.size(); h++) {
+        false_pos[h] = none;
+        for (const auto& s : helper_y_parts[h]) {
+            for (const auto& l : sls_y_part[s]) y_part_true[s] += is_true(l);
+            sls_work += sls_y_part[s].size();
+            if (y_part_true[s] == 0) { helper_false[h]++; false_y_parts++; }
+        }
+        if (helper_false[h]) {
+            false_pos[h] = false_helpers.size();
+            false_helpers.push_back(h);
+        }
+    }
+    std::fill(last_flip.begin(), last_flip.end(), 0);
+    trail_var.clear();
+    trail_val.clear();
+    size_t best_len = 0;
+    uint32_t best = false_helpers.size(), best_split = false_y_parts;
+    uint64_t best_step = 0;
+    for (uint64_t step = 1; step <= cconf.sls_flips && step - best_step <= cconf.sls_stall && !false_helpers.empty() && !out_of_ticks(); step++) {
+        stats.sls_flips++;
+        const uint32_t h = false_helpers[rng() % false_helpers.size()];
+        Lit pick = lit_Undef;
+        int32_t pick_h = 0, pick_s = 0;
+        for (const auto& s : helper_y_parts[h]) {
+            if (y_part_true[s]) continue;
+            for (const auto& p : sls_y_part[s]) {
+                if (!can_flip[p.var()]) continue;
+                int32_t dh, ds;
+                if (!sls_score(model, p, dh, ds)) continue;
+                const bool improves = (int64_t)false_helpers.size() + dh < best ||
+                    ((int64_t)false_helpers.size() + dh == best && (int64_t)false_y_parts + ds < best_split);
+                if (last_flip[p.var()] && step - last_flip[p.var()] <= tabu && !improves) continue;
+                if (pick == lit_Undef || dh < pick_h || (dh == pick_h && ds < pick_s)) {
+                    pick = p;
+                    pick_h = dh;
+                    pick_s = ds;
+                }
+            }
+        }
+        if (pick == lit_Undef) continue;
+        sls_flip(model, pick, step);
+        if (false_helpers.size() < best || (false_helpers.size() == best && false_y_parts < best_split)) {
+            best = false_helpers.size();
+            best_split = false_y_parts;
+            best_len = trail_var.size();
+            best_step = step;
+        }
+    }
+    while (trail_var.size() > best_len) {
+        model[trail_var.back()] = trail_val.back();
+        trail_var.pop_back();
+        trail_val.pop_back();
+    }
+}
+
 // The helpers of the clauses whose y part model leaves false
 void CoverComponent::compute_refinement(const vector<lbool>& model) {
     assert(model.size() == y_solver.nVars());
@@ -368,11 +573,13 @@ void CoverComponent::print_stats(const char* what) {
         << " helpers: " << helpers.size() << std::fixed
         << " avg refinement: " << std::setprecision(1) << (refs ? (double)stats.ref_lits / refs : 0)
         << " avg cube: " << (stats.num_cubes ? (double)stats.cube_lits / stats.num_cubes : 0)
+        << " sls flips: " << stats.sls_flips << " removed: " << stats.sls_removed
         << " minim calls: " << minimizer.calls << " removed: " << stats.minim_removed
         << " cost: " << std::setprecision(2) << budget_used << " of " << cconf.budget
         << " ticks(M) x: " << x_solver.get_sum_ticks() / 1e6 << " y: " << y_solver.get_sum_ticks() / 1e6
         << " y-def: " << defs_in_x.work * 10 / 1e6
         << " confl x: " << x_solver.get_sum_conflicts() << " y: " << y_solver.get_sum_conflicts()
+        << " vars x: " << x_solver.nVars() << " y: " << y_solver.nVars()
         << " T: " << (cpuTime() - stats.start_time) << " (setup: " << stats.setup_time << " x: " << stats.x_time
         << " y: " << stats.y_time << " refine: " << stats.refine_time << " y-def: " << stats.y_def_time
         << " funs: " << stats.funs_time << ")" << std::endl;
@@ -387,6 +594,7 @@ lbool CoverComponent::solve(MetaSolver& solver, vector<Lit>* assumptions) {
         if (gave_up) return l_Undef;
         solver.set_max_ticks(max_ticks - used);
     }
+    if (&solver == &x_solver) x_var_ticks += x_solver.nVars();
     const auto ret = assumptions ? solver.solve(assumptions) : solver.solve();
     if (ret == l_Undef) gave_up = true;
     return ret;
@@ -493,6 +701,18 @@ void CoverComponent::refine() {
     assert(assumps.size() == num_x);
     SLOW_DEBUG_DO(assert(model_satisfies(model)));
     compute_refinement(model);
+    // a round it gains nothing in makes it sit out 1, 3, 7 rounds
+    if (cconf.sls_flips && refinement.size() > 1 && sls_skip) sls_skip--;
+    else if (cconf.sls_flips && refinement.size() > 1) {
+        const size_t before = refinement.size();
+        sls(model);
+        SLOW_DEBUG_DO(assert(model_satisfies(model)));
+        compute_refinement(model);
+        assert(refinement.size() <= before);
+        stats.sls_removed += before - refinement.size();
+        if (refinement.size() < before) sls_backoff = 0;
+        else sls_skip = sls_backoff = std::min<uint32_t>(sls_backoff * 2 + 1, 7);
+    }
     if (sat_minim && refinement.size() > 1) {
         const size_t before = refinement.size();
         vector<uint32_t> false_helper_idxs;
@@ -506,7 +726,6 @@ void CoverComponent::refine() {
         assert(refinement.size() <= before);
         stats.minim_removed += before - refinement.size();
     }
-    budget_used += frac_squared(refinement.size(), helpers.size());
     // progress: the X at hand satisfies every x part named, so it is now ruled out
     SLOW_DEBUG_DO(for (const auto& h : refinement) {
         assert(h.var() >= helper_base && helper_idx(h) < helpers.size());
@@ -527,6 +746,8 @@ void CoverComponent::refine() {
         else assert(!aig_refs.back().neg);
         stats.y_def_time += cpuTime() - y_def_start;
     }
+    // the cofactor is one more helper: alone, it is all of them
+    budget_used += frac_squared(refinement.size(), helpers.size() + !y_def_cls.empty());
     x_solver.add_clause(refinement);
 }
 
@@ -541,12 +762,15 @@ CoverComponent::Result CoverComponent::cegar_run() {
     stats.start_time = cpuTime();
     x_solver.set_no_lucky();
     y_solver.set_no_lucky();
+    x_solver.set_no_congruence();
+    y_solver.set_no_congruence();
     y_solver.set_decide(false);
     add_vars_and_cls();
     tie_defs();
     add_helpers();
     if (sat_minim) minimizer = RefinementMinimizer(y_solver, split_cls, helpers.size(), cconf);
     set_phases();
+    if (cconf.sls_flips) { setup_flip(); setup_sls(); }
     stats.setup_time = cpuTime() - stats.start_time;
 
     if (cconf.no_y == NoY::stop && !cconf.assume_outer && x_cls_cex(result.cex)) return done(l_False);

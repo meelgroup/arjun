@@ -82,6 +82,11 @@ public:
         cadical->set("luckyassumptions", 0);
     }
 
+    // Congruence closure took 9 GB on cover's x_solver, of a cofactor per round
+    void set_no_congruence() {
+        if (solver_type == SolverType::cadical) cadical->set("congruence", 0);
+    }
+
     void set_decide(const bool phase) {
         if (solver_type != SolverType::cadical) return;
         cadical->set("forcephase", 1);

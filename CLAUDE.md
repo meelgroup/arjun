@@ -49,10 +49,16 @@ NEVER run full benchmark sweeps on this machine -- the cluster does that. Here,
 run small experiments only: ~16 instances (one per core), in parallel, each
 short. Pick them from existing cluster results instead of guessing:
 
-- `build/data/out-synth-<jobid>-<n>/` -- per-instance cluster logs.
+Every cluster run (started from `../pbs-scripts/`) lands in `build/data/`,
+logs and DB both, for `--synth` and `--2qbf` alike:
+
+- `build/data/out-{synth,2qbf}-<jobid>-<n>/` -- per-instance cluster logs
+  (`.out_solve` is arjun's log for 2QBF runs). Grep these for anything not in
+  the DB (e.g. `[cover]` lines).
 - `build/data/data.sqlite3`, table `arjun` -- parsed results (`dirname`,
   `fname`, `timeout_call`, `arjun_time`, `cegr_time`, `start_to_define_vars`,
-  `last_stage`, ...). E.g. short instances that reach CEGR:
+  `last_stage`, 2QBF: `verdict`, `decided_by`, ...). If a run is missing from
+  it, run `./get_data_arjun.py` in `build/data/`. E.g. short instances that reach CEGR:
   `select fname, arjun_time from arjun where dirname='out-synth-...' and cegr_time>0 order by arjun_time limit 16;`
 - Benchmarks: `build/benchmarks-qdimacs/*.qdimacs.gz`.
 
@@ -143,12 +149,18 @@ directory per QBFLIB family), `~/media/qbf/qbfeval17/2QBF` and
 `~/media/qbf/qbflib/qbf_prefix.py` prints `KEEP ae` for the forall-exists
 ones). All of these but the first are `.qdimacs.gz`.
 
-### Blocked clauses: removed
+### Blocked clauses: on a copy only
 
-BCE between Puura runs was removed (2026-10-25) for simplicity. On
-`2qbf_combo` at 60 s: 630 solved without, 623 with. BCE is what solves `ctrl`
-(7 of 29, 0 without: it unlocks BVE, 9137 -> 1736 cls) and won 2 `sdlx`; no
-BCE won 16, mostly the fixpoint families. `ctrl` needs it back (git history).
+With no output file, after the cover run after Puura, `try_bce_cover()` in
+`main.cpp` removes the clauses blocked on a Y (`bce_2qbf()`), redoes BVE
+on that (a light Puura: no oracle, no backbone, they cost minutes), up to 3
+times, and covers the result (`--coverbceticks`, 5000; -1 = off). Only its
+verdict is used: BCE keeps, for every X, whether it has a Y, but not the
+Skolem functions. If it does not decide, the copy is dropped and `cnf` goes
+on unchanged. Replacing `cnf` with it instead (removed 2026-10-25) lost 16
+files, mostly fixpoints, to win 7 `ctrl`. The copy solves 16 of the 35
+ctrl/ci that nothing else did at 300 s, 19 with no tick limit: their
+refinements are ~14 lits, but they take 20k-200k rounds.
 
 ## Other QBF solvers and preprocessors: `qbf_solvers/`
 

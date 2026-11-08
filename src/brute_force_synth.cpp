@@ -95,8 +95,7 @@ void BruteForceSynth::maybe_minimize_enum_set() {
 
     verb_print(1, "[brute_force_synth] minim shrank enum set: " << before
         << " -> " << orig_sampl_cnf.size()
-        << " (2^N rows: " << (1ull << before) << " -> "
-        << (1ull << orig_sampl_cnf.size()) << "). T: "
+        << " (2^N rows). T: "
         << fixed << setprecision(2) << (cpuTime() - t0));
 }
 

@@ -37,9 +37,9 @@ namespace ArjunInt {
 // existential stays: its weights would go.
 class CoverDrop {
 public:
-    // max_cubes 0: only remove
+    // cover_drop_max_cubes 0: only remove
     CoverDrop(const Config& _conf, ArjunNS::SimplifiedCNF& _cnf, const std::vector<uint32_t>& xs,
-            uint64_t max_ticks, uint32_t max_cubes);
+            const ArjunNS::Arjun::ElimToFileConf& etof_conf);
     // Returns the clauses removed, net
     int64_t run();
 

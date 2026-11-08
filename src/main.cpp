@@ -78,6 +78,7 @@ ArjunNS::Arjun::CoverConf cover_conf;
 double cover_ticks = 200;
 double cover_late_ticks = 100;
 double cover_orig_ticks = 2000;
+double cover_bce_ticks = 5000;
 double cover_orig_budget = 50;
 bool cover_done = false;
 int use_brute_force_synth = 1;
@@ -173,8 +174,11 @@ void add_arjun_options() {
     myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
     myopt("--cover", cover_conf.budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
     myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
+    myopt("--coverbceticks", cover_bce_ticks, "--2qbf with no output file: as --coverticks, for the covering run on a copy of the CNF with the blocked clauses removed and BVE redone. -1 = no such copy");
     myopt("--coverorigticks", cover_orig_ticks, "As --coverticks, for the covering run of --2qbf on the original clauses");
     myopt("--coverorigbudget", cover_orig_budget, "As --cover, for the covering run of --2qbf on the original clauses, at most --cover");
+    myopt("--coversls", cover_conf.sls_flips, "Covering shortens a refinement by local search before --coverminimsat: at most this many flips of existentials per round, every clause staying satisfied. 0 = off");
+    myopt("--coverslsstall", cover_conf.sls_stall, "--coversls stops after this many flips that find no better model");
     myopt("--coverminimsat", cover_conf.sat_minim, "Covering shortens a refinement by SAT calls for a model of the same input whose existentials satisfy more clauses");
     myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit, negative = no such run. The 1st runs are short, the long one is cover(ticks=N) of --cstrategy");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
@@ -198,7 +202,10 @@ void add_arjun_options() {
     myopt("--coverdrop", etof_conf.cover_drop_mticks, "After Puura, remove the clauses of non-sampling vars that every allowed sampling assignment can satisfy, checked by model covering (2QBF). Its budget in millions of SAT solver ticks, 0 = off");
     myopt("--coverdropcubes", etof_conf.cover_drop_max_cubes, "With --coverdrop, also replace the clauses by at most this many clauses over the sampling vars that rule out the assignments with no model of them. 0 = only remove");
     myopt("--coverdropw", etof_conf.cover_drop_weighted_as_x, "With --coverdrop, take the weighted defined vars as sampling ones, so that the parts with them can also be removed or replaced");
-    // CNF rewrite via AIG lifting
+    myopt("--coverdropminimsat", etof_conf.cover_drop_sat_minim, "With --coverdrop, shorten a refinement by SAT calls for a model of the same input whose existentials satisfy more clauses");
+    myopt("--coverdropsls", etof_conf.cover_drop_sls_flips, "With --coverdrop, shorten a refinement by local search before --coverdropminimsat: at most this many flips per round. 0 = off");
+    myopt("--coverdropslsstall", etof_conf.cover_drop_sls_stall, "--coverdropsls stops after this many flips that find no better model");
+    myopt("--coverdropminimcubes", etof_conf.cover_drop_minim_cubes, "With --coverdropcubes, shorten each kept cube by SAT calls");
 
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
@@ -456,14 +463,13 @@ vector<CMSat::Lit> new_to_orig(const ArjunNS::SimplifiedCNF& cnf) {
 void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf) {
     const auto to_orig = new_to_orig(cnf);
     for(const auto& cl: cnf.get_clauses()) {
+        if (!std::all_of(cl.begin(), cl.end(), [&](const CMSat::Lit l) {
+                return cnf.get_orig_sampl_vars().count(to_orig[l.var()].var()); })) continue;
         vector<CMSat::lbool> cex(cnf.num_defs(), CMSat::l_Undef);
-        bool all_univ = true;
         for(const auto& l: cl) {
             const CMSat::Lit o = to_orig[l.var()] ^ l.sign();
-            all_univ &= cnf.get_orig_sampl_vars().count(o.var());
             cex[o.var()] = CMSat::boolToLBool(o.sign());
         }
-        if (!all_univ) continue;
         qbf2_result(cnf, false, cex);
     }
 }
@@ -523,6 +529,74 @@ void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double b
     // the functions are in place, and get written out by do_synth_2qbf()
     cover_done = ret == CMSat::l_True;
     if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
+}
+
+// The 2QBF of cls, over orig vars, as a new problem
+ArjunNS::SimplifiedCNF cnf_of_2qbf_cls(const ArjunNS::SimplifiedCNF& cnf,
+        const vector<vector<CMSat::Lit>>& cls) {
+    ArjunNS::SimplifiedCNF ret(fg);
+    ret.set_need_aig();
+    ret.new_vars(cnf.get_orig_num_vars());
+    for(const auto& cl: cls) ret.add_clause(cl);
+    ret.set_sampl_vars(vector<uint32_t>(cnf.get_orig_sampl_vars().begin(), cnf.get_orig_sampl_vars().end()));
+    ret.set_orig_clauses(ret.get_clauses());
+    ret.set_orig_sampl_vars(ret.get_sampl_vars());
+    return ret;
+}
+
+size_t num_lits(const vector<vector<CMSat::Lit>>& cls) {
+    size_t ret = 0;
+    for(const auto& cl: cls) ret += cl.size();
+    return ret;
+}
+
+// Only the verdict comes back: the functions of the copy are not ones of cnf.
+// BCE and BVE of Ys keep, for every X, whether it has a Y
+void try_bce_cover(const ArjunNS::SimplifiedCNF& cnf) {
+    auto puura_conf = simp_conf;
+    puura_conf.bve_grow_iter1 = 16;
+    puura_conf.bve_grow_iter2 = 100;
+    puura_conf.bve_grow_iter2_large = -1;
+    // BVE is what BCE unlocks: the rest costs minutes on big CNFs
+    puura_conf.do_backbone_puura = false;
+    puura_conf.oracle_vivify = puura_conf.oracle_sparsify = puura_conf.oracle_extra = false;
+    puura_conf.iter1 = puura_conf.iter2 = 1;
+    const ArjunNS::SimplifiedCNF* at = &cnf;
+    ArjunNS::SimplifiedCNF copy(fg);
+    auto cls = cnf.get_clauses();
+    uint32_t removed = cnf.bce_2qbf(cls);
+    verb_print(1, "[2qbf-bce] blocked cls removed: " << removed);
+    // with none removed the copy is cnf, and its long cover the one not to do
+    if (!removed) return;
+    for (int round = 0; round < 3 && removed && !cls.empty(); round++) {
+        auto next = arjun->standalone_get_simplified_cnf(cnf_of_2qbf_cls(cnf, at->to_orig_cls(cls)), puura_conf);
+        if (!next.get_2qbf_def_cex().empty() || num_lits(next.get_clauses()) >= num_lits(cls)) break;
+        copy = std::move(next);
+        at = &copy;
+        cls = copy.get_clauses();
+        removed = copy.bce_2qbf(cls);
+    }
+    verb_print(1, "[2qbf-bce] cls: " << cnf.get_clauses().size() << " -> " << cls.size()
+            << " T: " << (cpuTime() - start_time));
+    if (cls.empty()) {
+        verb_print(1, "[arjun] solved by blocked clauses");
+        qbf2_result(cnf, true);
+    }
+    auto bce_cnf = cnf_of_2qbf_cls(cnf, at->to_orig_cls(cls));
+    vector<CMSat::lbool> cex;
+    auto my_conf = cover_conf;
+    my_conf.max_ticks = cover_bce_ticks * 1e6;
+    my_conf.stop_at_cex = true;
+    my_conf.need_funs = false;
+    const auto ret = arjun->standalone_cover(bce_cnf, my_conf, cex);
+    if (ret == CMSat::l_Undef) return;
+    verb_print(1, "[arjun] solved by covering the blocked clause copy");
+    if (ret == CMSat::l_False) {
+        vector<CMSat::lbool> full(cnf.get_orig_num_vars(), CMSat::l_False);
+        for (uint32_t v = 0; v < cex.size() && v < full.size(); v++) if (cex[v] == CMSat::l_True) full[v] = CMSat::l_True;
+        release_assert(cnf.is_2qbf_cex(full) && "The X with no Y of the blocked clause copy must have none in the input");
+    }
+    qbf2_result(cnf, ret == CMSat::l_True, cex);
 }
 
 void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) {
@@ -606,6 +680,8 @@ void do_synth_2qbf() {
 
     if (!cnf.all_ys_defined())
         try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
+
+    if (qbf2 && !need_funs && cover_bce_ticks >= 0 && !cnf.all_ys_defined()) try_bce_cover(cnf);
 
     if (etof_conf.do_autarky && !cnf.all_ys_defined()) {
         arjun->standalone_autarky(cnf);

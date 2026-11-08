@@ -32,6 +32,7 @@
 #include "extend.h"
 #include "constants.h"
 #include "metasolver.h"
+#include "aig_to_cnf.h"
 #include <cryptominisat5/solvertypesmini.h>
 
 using namespace ArjunInt;
@@ -42,6 +43,22 @@ using std::vector;
 using std::set;
 using std::map;
 using std::setw;
+
+// SLOW_DEBUG: the clauses force v to its interpolant
+[[maybe_unused]] static void check_interpolant(const SimplifiedCNF& cnf, const uint32_t v, const aig_lit& def) {
+    for (const bool val : {false, true}) {
+        SATSolver s;
+        s.new_vars(cnf.nVars());
+        for (const auto& cl : cnf.get_clauses()) s.add_clause(cl);
+        AIGToCNF<SATSolver> enc(s);
+        const Lit out = enc.encode(def);
+        vector<Lit> assumps = {Lit(v, !val), val ? ~out : out};
+        if (s.solve(&assumps) == l_True) {
+            std::cout << "c o [synth-extend] WRONG interpolant of var " << v+1 << ": " << def << std::endl;
+            release_assert(false && "interpolant does not define its var");
+        }
+    }
+}
 
 void Extend::add_all_indics_except(const set<uint32_t>& except) {
     ::add_all_indics_except(*solver, orig_num_vars, except,
@@ -134,6 +151,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
             num_unsat++;
             // Dependent fully on `indep`; skip if the interpolant blew budget.
             if (interp.generate_interpolant(assumptions, test_var)) {
+                SLOW_DEBUG_DO(check_interpolant(cnf, test_var, interp.get_defs()[test_var]));
                 solver->add_clause({Lit(indic, false)});
                 interp.add_unit_cl({Lit(indic, false)});
                 cnf.add_opt_sampl_var(test_var);

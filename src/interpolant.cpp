@@ -25,6 +25,8 @@
 #include "interpolant.h"
 #include "constants.h"
 #include "time_mem.h"
+#include "aig_to_cnf.h"
+#include <cryptominisat5/cryptominisat.h>
 
 #include <cadical.hpp>
 #include <algorithm>
@@ -249,6 +251,40 @@ aig_lit InterpTracerMcMillan::hash_and(const aig_lit& l, const aig_lit& r) {
     return res;
 }
 
+// SLOW_DEBUG: McMillan's invariants of the label I of clause C: A |= I or
+// C's A-local literals, and B and I |= C's other literals
+void InterpTracerMcMillan::check_label(const int64_t id) const {
+    const vector<Lit>& c = cls.at(id);
+    const aig_lit& lab = labels.at(id);
+    uint32_t nv = 0;
+    for (const auto& [i, cl] : cls) for (const auto& l : cl) nv = std::max(nv, l.var() + 1);
+    for (const bool a_side : {true, false}) {
+        CMSat::SATSolver s;
+        s.new_vars(nv);
+        for (const auto& [i, cl] : cls) {
+            if (antec.count(i) || (b_clause_ids.count(i) != 0) == a_side) continue;
+            s.add_clause(cl);
+        }
+        AIGToCNF<CMSat::SATSolver> enc(s);
+        const Lit out = enc.encode(lab);
+        vector<Lit> assumps = {a_side ? ~out : out};
+        for (const auto& l : c) {
+            const bool a_local = !is_shared(l.var()) && l.var() < b_local_from;
+            if (a_local == a_side) assumps.push_back(~l);
+        }
+        if (s.solve(&assumps) == l_True) {
+            cout << "c o [interp] WRONG label of clause " << id << (antec.count(id) ? " (derived)" : " (orig)")
+                << (b_clause_ids.count(id) ? " B" : " A") << " " << c << " label: " << lab
+                << " fails the " << (a_side ? "A" : "B") << " side" << endl;
+            if (antec.count(id)) {
+                for (const auto& a : antec.at(id)) cout << "c o [interp]   antecedent " << a << ": " << cls.at(a)
+                    << (antec.count(a) ? " derived" : (b_clause_ids.count(a) ? " B" : " A")) << " label: " << labels.at(a) << endl;
+            }
+            release_assert(false && "McMillan label invariant broken");
+        }
+    }
+}
+
 aig_lit InterpTracerMcMillan::hash_or(const aig_lit& l, const aig_lit& r) {
     return ~hash_and(~l, ~r);
 }
@@ -399,6 +435,7 @@ aig_lit InterpTracerMcMillan::build_interpolant() {
         } else {
             labels[id] = original_label(id);
         }
+        SLOW_DEBUG_DO(check_label(id));
     }
 
     auto it = labels.find(root);
