@@ -53,7 +53,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     cnf_ptr = &cnf;
     already_tested.clear();
 
-    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def")
+    cnf.get_var_types(conf.verb, "start do_unate_def")
         .unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
         verb_print(1, "[unate_def] No variables to-define, skipping");
@@ -379,7 +379,7 @@ void Unate::log_pass_summary(const uint32_t to_define_size_before) {
     }
 
     auto [input2, to_define2, backward_defined2] =
-        cnf_ptr->get_var_types(0 | verbose_debug_enabled, "end do_unate_def");
+        cnf_ptr->get_var_types(conf.verb >= 2 ? conf.verb : 0, "end do_unate_def");
     verb_print(1, COLRED "[unate_def] Done. synthesis_unate_def"
         << " tested: " << tested_num
         << " defined: " << to_define_size_before - to_define2.size()

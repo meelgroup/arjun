@@ -546,7 +546,7 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf)  {
     // other variables, but not self-referentially.
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
-    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");
+    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb, "start backward_round_synth");
     set<uint32_t> pretend_input;
     if (to_define.empty()) {
         verb_print(1, "[backw-synth] No variables to-define, returning original CNF");
@@ -687,7 +687,7 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf)  {
     }
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     cnf.set_after_backward_round_synth();
-    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end backward_round_synth");
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(conf.verb >= 2 ? conf.verb : 0, "end backward_round_synth");
 
     verb_print(1, COLRED "[backward SYNTH] Done. "
         << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false

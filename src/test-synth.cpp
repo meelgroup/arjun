@@ -101,6 +101,7 @@ int num_samples = 100;
 long long seed = 42;
 std::mt19937 mt;
 int unsat_verif = 0;
+int qbf2 = 0;
 
 
 set<uint32_t> aig_vs;
@@ -212,6 +213,9 @@ template<typename T>
 void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, map<uint32_t, typename FHolder<T>::Formula>& var_to_formula) {
     verb_print(2, "c [var-to-formula] Converting AIGs to formulas...");
 
+    // shared by all the AIGs: they are all added to the solver, and nodes they
+    // have in common would otherwise be encoded once per AIG
+    map<aig_lit, Lit> cache;
     for(const auto& v_def: aig_vs) {
         typename FHolder<T>::Formula f;
         const auto& aig = cnf.get_def(v_def);
@@ -260,7 +264,6 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
         };
 
         // Recursively generate clauses for the AIG using the transform function
-        map<aig_lit, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
         f.aig = aig;
@@ -413,7 +416,8 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     // Create verification solver
     ArjunInt::MetaSolver verify_solver;
     verify_solver.new_vars(orig_cnf.nVars());
-    for (const auto& clause : orig_cnf.get_clauses()) {
+    // 2QBF: the AIGs must satisfy F for EVERY x, so no F(x,y) in the miter
+    if (!qbf2) for (const auto& clause : orig_cnf.get_clauses()) {
         verb_print(2, "adding orig clause: " << clause);
         verify_solver.add_clause(clause);
     }
@@ -513,8 +517,13 @@ int main(int argc, char** argv) {
         .flag()
         .help("UNSAT verify, i.e. all AIGs must be present and correct");
 
+    program.add_argument("-q", "--2qbf") \
+        .action([&](const auto&) {qbf2 = true;}) \
+        .flag()
+        .help("With -u: AIGs must be a Skolem function of the true 2QBF forall X exists Y. F");
+
     // Add positional argument for input file
-    program.add_argument("files").remaining().help("input AIG file");
+    program.add_argument("files").remaining().help("CNF file, then the AIG file (.aig, or .v for Verilog)");
 
     try {
         program.parse_args(argc, argv);
@@ -536,7 +545,7 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         if (files.size() != 2) {
-            cout << "ERROR: You MUST pass in an AIG and a CNF file" << endl;
+            cout << "ERROR: You MUST pass in a CNF and an AIG (.aig or .v) file" << endl;
             return EXIT_FAILURE;
         }
     } catch (std::logic_error& e) {
@@ -570,7 +579,8 @@ int main(int argc, char** argv) {
     // Read the AIG file
     SimplifiedCNF cnf(fg);
     if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
-    cnf.read_aig_defs_from_file(aig_fname);
+    if (aig_fname.ends_with(".v")) cnf.read_aig_defs_from_verilog(aig_fname);
+    else cnf.read_aig_defs_from_file(aig_fname);
     [[maybe_unused]] auto check = cnf.defs_invariant();
 
     if (verb) {

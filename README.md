@@ -134,9 +134,25 @@ Arjun supports several top-level modes, selected via command-line flags:
   like `output.cnf` as an output, and Arjun will produce a simplified CNF
 - **Synthesis (`--synth`)** — compute a skolem function for each
   non-input variable in terms of the projection-set variables via CEGR-style
-counterexample-guided repair. Output file will be a Verilog file with the
-skolem functions:
+counterexample-guided repair. The output file is required: the skolem
+functions, as Verilog (`.v`) or as an AIG (`.aig`):
 
   ```shell
   ./arjun --synth input.cnf output.v
   ```
+- **2QBF (`--2qbf`)** — decide a forall-exists quantified Boolean formula.
+  The input is QDIMACS with an `a` block followed by an `e` block (or a CNF
+  with `c p show` naming the universals). Arjun prints `s cnf 1 ...` and exits
+  with 10 if the formula is true, or prints `s cnf 0 ...` and exits with 20 if
+  it is false. A false formula comes with `V` lines: an assignment to the
+  universals that no assignment to the existentials can extend to a model. A
+  true formula can come with its skolem functions, if you give an output file:
+
+  ```shell
+  ./arjun --2qbf input.qdimacs
+  ./arjun --2qbf input.qdimacs skolem.aig
+  ```
+
+  Both `--synth` and `--2qbf` first try to cover all inputs with a few
+  models of the CNF, which gives up by itself when it is not converging. Its
+  budget is `--cover` (a work measure, not a time limit); `--cover 0` turns it off.

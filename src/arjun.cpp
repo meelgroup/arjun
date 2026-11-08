@@ -23,7 +23,9 @@
  */
 
 
+#include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <limits>
 #include <iomanip>
 #include <sstream>
@@ -33,18 +35,22 @@
 #include "arjun.h"
 #include "config.h"
 #include "backward.h"
+#include "cover_synth.h"
+#include "cover_drop.h"
 #include "minimize.h"
 #include "GitSHA1.h"
 #include "puura.h"
 #include "extend.h"
 #include "time_mem.h"
 #include "constants.h"
+#include "verilog.h"
 #include "autarky.h"
 #include "unate_def.h"
 #include "cegr.h"
 #include "brute_force_synth.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
+#include "aig_to_cnf.h"
 #include "constants.h"
 
 using namespace ArjunInt;
@@ -93,6 +99,16 @@ using std::ifstream;
 using std::ofstream;
 using std::numeric_limits;
 
+DLL_PUBLIC uint64_t AIG::next_nid() {
+    static uint64_t counter = 0;
+    return ++counter;
+}
+
+DLL_PUBLIC uint64_t AIG::next_visit_epoch() {
+    static uint64_t counter = 0;
+    return ++counter;
+}
+
 DLL_PUBLIC Arjun::Arjun() { arjdata = new ArjPrivateData; }
 DLL_PUBLIC Arjun::~Arjun() { delete arjdata; }
 DLL_PUBLIC string Arjun::get_sbva_version_sha1() {
@@ -106,7 +122,11 @@ DLL_PUBLIC string Arjun::get_version_sha1() {
 DLL_PUBLIC string Arjun::get_thanks_info(const char* prefix) {
     stringstream ss;
     ss << prefix << "Using ideas by JM Lagniez, and Pierre Marquis" << endl;
-    ss << prefix << "    from paper: Improving Model Counting [..] IJCAI 2016";
+    ss << prefix << "    from paper: Improving Model Counting [..] IJCAI 2016" << endl;
+    ss << prefix << "Using ideas by M. Janota and J. Marques-Silva" << endl;
+    ss << prefix << "    from paper: Abstraction-Based Algorithm for 2QBF, SAT 2011" << endl;
+    ss << prefix << "Using ideas by J. Brauer, A. King, and J. Kriener" << endl;
+    ss << prefix << "    from paper: Existential Quantification as Incremental SAT, CAV 2011";
     return ss.str();
 }
 
@@ -130,6 +150,24 @@ DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, const Inter
 DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep) {
     Minimize common(arjdata->conf, iconf);
     return common.run_minimize_info(cnf, all_indep);
+}
+
+DLL_PUBLIC lbool Arjun::standalone_cover(SimplifiedCNF& cnf, const CoverConf& cover_conf, vector<lbool>& cex) {
+    CoverSynth cover(arjdata->conf, cover_conf, cnf);
+    return cover.run(cex);
+}
+
+DLL_PUBLIC int64_t Arjun::standalone_cover_drop(SimplifiedCNF& cnf, const ElimToFileConf& etof_conf) {
+    // A weighted opt sampling var is defined by the sampling vars: with it in
+    // X the count is the same, and a component that defines it never goes
+    vector<uint32_t> univ = cnf.get_sampl_vars();
+    if (etof_conf.cover_drop_weighted_as_x && cnf.get_weighted()) {
+        std::set<uint32_t> sampl(univ.begin(), univ.end());
+        for (const auto& v : cnf.get_opt_sampl_vars())
+            if (!sampl.count(v) && cnf.weight_set(v)) univ.push_back(v);
+    }
+    CoverDrop cover(arjdata->conf, cnf, univ, etof_conf);
+    return cover.run();
 }
 
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
@@ -213,7 +251,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_cegr(SimplifiedCNF&& cnf, const CegrC
         }
     }
 
-    if (arjdata->conf.verb >= 1 && cnf.synth_done()) {
+    if (arjdata->conf.verb >= 1 && cnf.all_ys_defined()) {
         cumul_stats.print_stats(COLRED " Done. ");
     }
     return cnf;
@@ -240,9 +278,9 @@ DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
             sbva_max_new_vars);
 }
 
-DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
+DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf, int64_t max_confl) {
     Puura puura(arjdata->conf);
-    puura.backbone(cnf);
+    puura.backbone(cnf, max_confl);
 }
 
 DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
@@ -251,6 +289,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     cnf.remove_equiv_weights();
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     if (etof_conf.do_autarky) standalone_autarky(cnf);
+    if (etof_conf.cover_drop_mticks > 0) standalone_cover_drop(cnf, etof_conf);
     cnf.remove_equiv_weights();
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
@@ -389,7 +428,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         new_replaced.emplace_back(elimed, bad_lit.sign());
         var_to_lits_it_replaced[bad_lit.var()] = new_replaced;
-        scnf.defs[elimed] = aig_lit();
+        scnf.defs[orig_replacing.var()] = aig_lit();
         add_elimed.push_back(bad_lit.var());
     }
     for(const auto& v: add_elimed) elimed_vars.push_back(v);
@@ -402,6 +441,9 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
                 cout << "c o [bve-aig] replacing var: " << orig_replaced << " with aig of " << orig_replacing << endl;
             const auto aig = scnf.defs[orig_replacing.var()];
             if (orig_sampl_vars.count(orig_replaced.var()) && orig_sampl_vars.count(orig_replacing.var())) {
+                // an X that breaks it has no Y: a 2QBF is then false
+                if (scnf.defs[orig_replaced.var()] == nullptr)
+                    scnf.defs[orig_replaced.var()] = AIG::new_lit(orig_replacing ^ orig_replaced.sign());
                 continue;
             }
             if (aig == nullptr) {
@@ -559,10 +601,8 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         samp_s.add_clause(cl);
         s.add_clause(cl);
     }
-    if (samp_s.solve() == l_False) {
-        cout << "ERROR: c o [synth-debug] unsat cnf in random_check_synth_funs" << endl;
-        exit(EXIT_FAILURE);
-    }
+    // no model: the defs promise nothing
+    if (samp_s.solve() == l_False) return;
 
     uint32_t filled_defs = 0;
     uint32_t undefs = 0;
@@ -576,6 +616,16 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         vector<CMSat::lbool> orig_vals(defs.size(), l_Undef);
         for(const auto& l: orig_sampl_vars) orig_vals[l] = model[l];
         auto vals = orig_vals;
+
+        // a def of an orig sampl var is implied by the clauses: every model has it
+        for(const auto& v: orig_sampl_vars) {
+            if (defs[v] == nullptr) continue;
+            vector<CMSat::lbool> others = orig_vals;
+            others[v] = l_Undef;
+            map<aig_lit, CMSat::lbool> c;
+            release_assert(AIG::evaluate(others, defs[v], defs, c) == model[v]
+                && "a def of an orig sampl var must hold in every model");
+        }
 
         map<aig_lit, CMSat::lbool> cache;
         for(uint32_t v = 0; v < defs.size(); ++v) {
@@ -790,6 +840,90 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
         return 0; // signal failure (don't know exact var)
     }
     return -1;
+}
+
+DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_cex() const {
+    assert(need_aig && all_ys_defined());
+    const OrigTranslation trans(*this);
+    const CoverProblem problem = trans.problem(*this);
+    MetaSolver s;
+    s.new_vars(problem.size());
+
+    vector<uint32_t> ys;
+    vector<aig_lit> roots;
+    for (uint32_t v = 0; v < problem.size(); v++) if (problem.defined(v) && !problem.is_x[v]) {
+        ys.push_back(v);
+        roots.push_back(problem.def[v]);
+    }
+    AIGToCNF<MetaSolver> enc(s);
+    const auto outs = enc.encode_batch(roots);
+    for (size_t i = 0; i < ys.size(); i++) {
+        const Lit y(ys[i], false);
+        s.add_clause({~y, outs[i]});
+        s.add_clause({y, ~outs[i]});
+    }
+
+    vector<Lit> some_false;
+    for (const auto& cl : clauses) {
+        s.new_var();
+        const Lit f(s.nVars()-1, false);
+        for (const auto& l : cl) s.add_clause({~f, ~l});
+        some_false.push_back(f);
+    }
+    s.add_clause(some_false);
+
+    const auto ret = s.solve();
+    release_assert(ret != l_Undef);
+    if (ret != l_True) return {};
+    return trans.x_to_orig(*this, s.get_model());
+}
+
+DLL_PUBLIC bool SimplifiedCNF::is_2qbf_cex(const vector<lbool>& cex) const {
+    MetaSolver s;
+    s.new_vars(defs.size());
+    for (const auto& cl : orig_clauses) s.add_clause(cl);
+    vector<Lit> assumps;
+    for (const auto& v : orig_sampl_vars) assumps.emplace_back(v, cex[v] != l_True);
+    return s.solve(&assumps) == l_False;
+}
+
+DLL_PUBLIC vector<vector<Lit>> SimplifiedCNF::to_orig_cls(const vector<vector<Lit>>& cls) const {
+    vector<Lit> to_orig(nVars(), lit_Undef);
+    for (const auto& [orig, l] : orig_to_new_var) {
+        if (to_orig[l.var()] != lit_Undef && !orig_sampl_vars.count(orig)) continue;
+        to_orig[l.var()] = Lit(orig, l.sign());
+    }
+    vector<vector<Lit>> ret;
+    for (const auto& cl : cls) {
+        ret.emplace_back();
+        for (const auto& l : cl) {
+            release_assert(to_orig[l.var()] != lit_Undef);
+            ret.back().push_back(to_orig[l.var()] ^ l.sign());
+        }
+    }
+    return ret;
+}
+
+DLL_PUBLIC vector<lbool> SimplifiedCNF::get_2qbf_def_cex() const {
+    for (const auto& v : orig_sampl_vars) {
+        if (defs[v] == nullptr) continue;
+        vector<lbool> cex(defs.size(), l_Undef);
+        for (const auto& u : orig_sampl_vars) if (u != v) cex[u] = l_False;
+        std::map<aig_lit, lbool> cache;
+        const lbool val = AIG::evaluate(cex, defs[v], defs, cache);
+        release_assert(val != l_Undef && "a def of an orig sampl var must be over orig sampl vars");
+        cex[v] = val ^ true;
+        SLOW_DEBUG_DO(assert(is_2qbf_cex(cex)));
+        return cex;
+    }
+    SLOW_DEBUG_DO({
+        auto mult = fg->one();
+        auto two = fg->one();
+        *two += *fg->one();
+        for (const auto& v : orig_sampl_vars) if (!orig_to_new_var.count(v)) *mult *= *two;
+        assert(*mult == *multiplier_weight && "an orig sampl var gone with no def must be free");
+    });
+    return {};
 }
 
 DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
@@ -1399,118 +1533,29 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         cerr << "ERROR: Cannot open file for writing: " << fname << endl;
         exit(EXIT_FAILURE);
     }
-
-    // Collect all unique AIG nodes in topological (post) order: children before parents
-    map<const AIG*, uint32_t> node_to_id;
-    vector<AIG*> topo_order;
-    uint32_t next_id = 0;
-
-    function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
-        if (!aig || node_to_id.count(aig.get())) return;
-        if (aig->type == AIGT::t_and) {
-            collect(aig->l);
-            collect(aig->r);
-        }
-        node_to_id[aig.get()] = next_id++;
-        topo_order.push_back(aig.get());
-    };
-    for (const auto& aig : defs) collect(aig);
-
-    // Collect output variables (defs[v] != nullptr)
-    vector<uint32_t> outputs;
-    for (uint32_t v = 0; v < defs.size(); v++) {
-        if (defs[v] == nullptr) continue;
-        if (orig_sampl_vars.count(v)) continue;
-        outputs.push_back(v);
-    }
-
-    // Fanout = uses by other AND nodes + output roots. Fanout-1 AND nodes are
-    // inlined into their sole user rather than emitted as a named wire.
-    map<const AIG*, uint32_t> fanout;
-    for (const auto* node : topo_order) {
-        if (node->type != AIGT::t_and) continue;
-        if (node->l) fanout[node->l.get()]++;
-        // Only count r separately when it's a distinct pointer; NOT/idem
-        // nodes have l == r and would otherwise inflate fanout to 2.
-        if (node->r && node->r.get() != node->l.get()) fanout[node->r.get()]++;
-    }
-    for (const auto& v : outputs) fanout[defs[v].get()]++;
-
-    // Inlined RHS (no outer parens); set of those that are a bare `a & b`
-    // compound and need parenthesizing when further composed.
-    map<const AIG*, string> inline_expr;
-    set<const AIG*> inline_compound;
-    // Render a signed edge (aig_lit): node gives the base expr, edge sign prepends
-    // '~' or flips the const. Leaves are unsigned, so their sign lives on the edge.
-    auto edge_expr_raw = [&](const aig_lit& e) -> string {
-        if (e->type == AIGT::t_const) return e.neg ? "1'b0" : "1'b1";
-        if (e->type == AIGT::t_lit)
-            return string(e.neg ? "~" : "") + "x" + std::to_string(e->var + 1);
-        auto it = inline_expr.find(e.get());
-        string base = (it != inline_expr.end()) ? it->second : "_n" + std::to_string(node_to_id[e.get()]);
-        if (!e.neg) return base;
-        // Wrap before negating if it was a compound inlined expression.
-        if (inline_compound.count(e.get())) base = "(" + base + ")";
-        return "~" + base;
-    };
-    // Same as edge_expr_raw but wraps an inlined compound `a & b` in parens so
-    // it can safely be composed further.
-    auto edge_expr_paren = [&](const aig_lit& e) -> string {
-        string s = edge_expr_raw(e);
-        // An edge-complement produces `~X` which is already tight; only wrap
-        // when we inlined a bare `a & b`.
-        if (!e.neg && inline_compound.count(e.get())) return "(" + s + ")";
-        return s;
-    };
-
-    // Module header
-    fout << "module aig_defs(\n";
-    bool first = true;
-    for (const auto& v : orig_sampl_vars) {
-        if (!first) fout << ",\n";
-        fout << "    input wire x" << (v + 1);
-        first = false;
-    }
-    for (const auto& v : outputs) {
-        if (!first) fout << ",\n";
-        fout << "    output wire x" << (v + 1);
-        first = false;
-    }
-    fout << "\n);\n";
-
-    // Build a node's RHS in unparenthesized form, and note whether it is a
-    // bare `a & b` (callers must parenthesize it if composing further).
-    auto build_rhs = [&](const AIG* node, bool& is_compound) -> string {
-        is_compound = false;
-        // Idempotent case AND(x, x): render as the child directly.
-        if (node->l == node->r) return edge_expr_raw(node->l);
-        const string l_str = edge_expr_paren(node->l);
-        const string r_str = edge_expr_paren(node->r);
-        is_compound = true;
-        return l_str + " & " + r_str;
-    };
-
-    for (const auto* node : topo_order) {
-        if (node->type != AIGT::t_and) continue;
-        bool is_compound = false;
-        string rhs = build_rhs(node, is_compound);
-        if (fanout[node] == 1) {
-            inline_expr[node] = rhs;
-            if (is_compound) inline_compound.insert(node);
-            continue;
-        }
-        const uint32_t id = node_to_id[node];
-        fout << "    wire _n" << id << ";\n";
-        fout << "    assign _n" << id << " = " << rhs << ";\n";
-    }
-
-    // Output assignments
-    for (const auto& v : outputs)
-        fout << "    assign x" << (v + 1) << " = " << edge_expr_raw(defs[v]) << ";\n";
-
-    fout << "endmodule\n";
+    write_verilog(fout, defs, orig_sampl_vars);
     fout.close();
     cout << "c o Wrote Verilog AIG: " << fname << endl;
+}
+
+// Only the functions and their inputs are in the file: there is no CNF
+DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_verilog(const string& fname) {
+    ifstream in(fname);
+    if (!in) {
+        cerr << "ERROR: Cannot open file for reading: " << fname << endl;
+        exit(EXIT_FAILURE);
+    }
+    *this = SimplifiedCNF(fg);
+    string err;
+    if (!read_verilog(in, defs, orig_sampl_vars, err)) {
+        cerr << "ERROR: " << fname << ": " << err << endl;
+        exit(EXIT_FAILURE);
+    }
+    need_aig = true;
+    orig_sampl_vars_set = true;
+    sampl_vars_set = true;
+    opt_sampl_vars_set = true;
+    cout << "c o Read Verilog AIG: " << fname << endl;
 }
 
 // Read AIG defs from file (opens file for you)
@@ -1784,11 +1829,12 @@ DLL_PUBLIC void SimplifiedCNF::set_all_clauses(vector<vector<CMSat::Lit>>&& cls,
 }
 
 DLL_PUBLIC void SimplifiedCNF::renumber_vars(const vector<uint32_t>& map_here_to_there, uint32_t new_nvars) {
-    assert(!need_aig && "not supported with AIG definitions");
     constexpr uint32_t m = numeric_limits<uint32_t>::max();
     assert(map_here_to_there.size() >= nvars);
     map<uint32_t, CMSat::Lit> upd_vmap;
     for(const auto& [o,n]: orig_to_new_var) {
+        // with AIGs, the defs are over the orig vars and stay: one that leaves the CNF needs one
+        if (need_aig && n != CMSat::lit_Undef && map_here_to_there[n.var()] == m) assert(defined(o));
         if (n == CMSat::lit_Undef || map_here_to_there[n.var()] == m) continue;
         upd_vmap[o] = CMSat::Lit(map_here_to_there[n.var()], n.sign());
     }
@@ -1815,6 +1861,62 @@ DLL_PUBLIC void SimplifiedCNF::renumber_vars(const vector<uint32_t>& map_here_to
     }
     nvars = new_nvars;
     defs.resize(std::max<size_t>(defs.size(), nvars));
+}
+
+DLL_PUBLIC uint32_t SimplifiedCNF::bce_2qbf(vector<vector<Lit>>& cls) const {
+    vector<char> univ(nVars(), 0);
+    for (const auto& [o, l] : orig_to_new_var) if (orig_sampl_vars.count(o)) univ[l.var()] = 1;
+    vector<vector<uint32_t>> occ(2*nVars());
+    for (uint32_t i = 0; i < cls.size(); i++) for (const auto& l : cls[i]) occ[l.toInt()].push_back(i);
+    vector<char> removed(cls.size(), 0), queued(cls.size(), 1), in_cl(2*nVars(), 0);
+    vector<uint32_t> todo(cls.size());
+    std::iota(todo.rbegin(), todo.rend(), 0);
+
+    // work is the literals looked at: the same on every machine
+    uint64_t work = 0;
+    const uint64_t max_work = 2000ULL*1000ULL*1000ULL;
+    auto taut_resolvent = [&](const uint32_t other, const Lit on) {
+        work += cls[other].size();
+        for (const auto& l : cls[other]) if (l != on && in_cl[(~l).toInt()]) return true;
+        return false;
+    };
+    uint32_t num_removed = 0;
+    while (!todo.empty() && work < max_work) {
+        const uint32_t at = todo.back();
+        todo.pop_back();
+        queued[at] = 0;
+        if (removed[at]) continue;
+        for (const auto& l : cls[at]) in_cl[l.toInt()] = 1;
+        bool blocked = false;
+        for (const auto& l : cls[at]) {
+            if (univ[l.var()]) continue;
+            blocked = true;
+            for (const auto& other : occ[(~l).toInt()]) if (!removed[other] && !taut_resolvent(other, ~l)) {
+                blocked = false;
+                break;
+            }
+            if (blocked) break;
+        }
+        for (const auto& l : cls[at]) in_cl[l.toInt()] = 0;
+        if (!blocked) continue;
+
+        // only a clause that resolved with this one can be blocked now
+        removed[at] = 1;
+        num_removed++;
+        for (const auto& l : cls[at]) for (const auto& other : occ[(~l).toInt()])
+            if (!removed[other] && !queued[other]) {
+                queued[other] = 1;
+                todo.push_back(other);
+            }
+    }
+
+    uint32_t j = 0;
+    for (uint32_t i = 0; i < cls.size(); i++) if (!removed[i]) {
+        if (i != j) cls[j] = std::move(cls[i]);
+        j++;
+    }
+    cls.resize(j);
+    return num_removed;
 }
 
 DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) const {
@@ -2109,7 +2211,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
     return true;
 }
 
-DLL_PUBLIC bool SimplifiedCNF::synth_done() const {
+DLL_PUBLIC bool SimplifiedCNF::all_ys_defined() const {
     if (!need_aig) return true;
     for(uint32_t v = 0; v < defs.size(); v++) {
         if (orig_sampl_vars.count(v)) continue;

@@ -212,14 +212,21 @@ static bool run_one(const aig_lit& orig, uint32_t num_vars,
     // 1. Rewrite. Balance is drawn at random so both modes are fuzzed.
     AIGRewriter rw;
     aig_lit simp = rw.rewrite(orig, rng() & 1);
-    if (!simp) simp = orig;
+    if (!simp) {
+        report_failure(orig, simp, num_vars, seed, iter, "rewrite returned null");
+        return false;
+    }
 
     // 1a. Idempotence: re-rewriting must stay equivalent and never grow.
     // Growth = non-confluent rule; mismatch = rule unsound on canonical input.
+    aig_lit simp2;
     {
         AIGRewriter rw2;
-        aig_lit simp2 = rw2.rewrite(simp, rng() & 1);
-        if (!simp2) simp2 = simp;
+        simp2 = rw2.rewrite(simp, rng() & 1);
+        if (!simp2) {
+            report_failure(orig, simp, num_vars, seed, iter, "second rewrite returned null");
+            return false;
+        }
         if (!random_check(simp, simp2, num_vars, rng, 40)) {
             report_failure(orig, simp2, num_vars, seed, iter,
                            "random_check(idempotence)");
@@ -265,7 +272,7 @@ static bool run_one(const aig_lit& orig, uint32_t num_vars,
     solver.set_verbosity(0);
     uint32_t mv_orig = max_var(orig);
     uint32_t mv_simp = max_var(simp);
-    uint32_t mv = std::max(mv_orig, mv_simp);
+    uint32_t mv = std::max({mv_orig, mv_simp, max_var(simp2)});
     solver.new_vars(mv + 1);
 
     Lit true_lit_unused;
@@ -276,6 +283,11 @@ static bool run_one(const aig_lit& orig, uint32_t num_vars,
     if (!sat_equivalent(solver, out_orig, out_simp)) {
         report_failure(orig, simp, num_vars, seed, iter, "sat_equivalent");
         cerr << "  out_orig=" << out_orig << "  out_simp=" << out_simp << endl;
+        return false;
+    }
+    Lit out_simp2 = naive_encode(simp2, solver, true_lit_unused, true_set);
+    if (!sat_equivalent(solver, out_orig, out_simp2)) {
+        report_failure(orig, simp2, num_vars, seed, iter, "sat_equivalent(second rewrite)");
         return false;
     }
 

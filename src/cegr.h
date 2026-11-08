@@ -298,7 +298,7 @@ class Cegr {
         }
 
         // error formula counting via ganak subprocess
-        void check_repair_monotonic();
+        void check_repair_monotonic(bool ctx_fixed);
         bool count_error_formula(mpz_class& out_count);
         CMSat::Lit tseitin_encode_aig(
             const ArjunNS::aig_lit& aig,

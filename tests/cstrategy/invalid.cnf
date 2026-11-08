@@ -1,0 +1,32 @@
+c A bad --cstrategy is refused before anything runs
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "bve,cover(ticks=5)" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "the last strategy must be a Cegr one" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "cover,bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "cover strategy needs ticks, e.g." %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "cover(ticks=0),bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "cover strategy needs ticks above 0, not '0'" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "cover(ticks=x),bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "cover strategy needs ticks above 0, not 'x'" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "cover(foo=1),bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "unknown cover strategy parameter 'foo'" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "const,bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "must set max_repairs" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "bve(max_repairs=10)" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "must not set max_repairs" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "foo" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "unknown strategy type 'foo'" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "const(nope=1),bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "unknown strategy parameter 'nope'" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "const(max_repairs=abc),bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "cannot parse value 'abc' for parameter 'max_repairs'" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "const(max_repairs=10" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "missing closing ')'" %t.log
+c RUN: %expect_exit 1 %arjun --synth --cstrategy "," %s %t.aig > %t.log 2>&1
+c RUN: grep -q "string is empty" %t.log
+p cnf 4 5
+-3 1 0
+-3 2 0
+3 -1 -2 0
+4 -3 0
+4 -2 0
+c p show 1 2 0

@@ -1,0 +1,7 @@
+c rejected: exists-forall
+c RUN: %expect_exit 1 %arjun --2qbf --cover 0 %s > %t.log
+c RUN: %expect_exit 1 %arjun --2qbf --cover 50 %s > %t.log
+p cnf 2 1
+e 1 0
+a 2 0
+1 2 0

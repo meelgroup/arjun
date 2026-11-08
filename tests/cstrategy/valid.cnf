@@ -1,0 +1,21 @@
+c The passes before the strategies are off and the 1st covering runs too short, so the strategies decide
+c RUN: %expect_exit 0 %arjun --verb 1 --synth --synthpuura 0 --extend 0 --backward 0 --unatedef 0 --bruteforcesynth 0 --autarky 0 --coverticks 0.000001 --coverlateticks 0.000001 --cstrategy "cover(ticks=100),bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "Running strategy 1/2 -- cover(ticks=100)" %t.log
+c RUN: grep -q "solved by covering" %t.log
+c RUN: %test_synth -u %s %t.aig > %t.check 2>&1
+c RUN: grep -q "SUCCESS" %t.check
+c RUN: %expect_exit 0 %arjun --verb 1 --synth --synthpuura 0 --extend 0 --backward 0 --unatedef 0 --bruteforcesynth 0 --autarky 0 --coverticks 0.000001 --coverlateticks 0.000001 --cstrategy "const(max_repairs=10),cover(ticks=100),bve" %s %t.aig > %t.log 2>&1
+c RUN: grep -q "Cegr finished with strategy 1/3" %t.log
+c RUN: %expect_exit 1 grep -q "Running strategy 2/3" %t.log
+c RUN: %test_synth -u %s %t.aig > %t.check 2>&1
+c RUN: grep -q "SUCCESS" %t.check
+c RUN: %expect_exit 0 %arjun --synth %s %t.aig > %t.log 2>&1
+c RUN: %test_synth -u %s %t.aig > %t.check 2>&1
+c RUN: grep -q "SUCCESS" %t.check
+p cnf 4 5
+-3 1 0
+-3 2 0
+3 -1 -2 0
+4 -3 0
+4 -2 0
+c p show 1 2 0

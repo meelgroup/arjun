@@ -93,6 +93,7 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     std::unordered_map<ArjunNS::AIG::AIGKey, ArjunNS::aig_lit, AigKeyHash> and_table;
     ArjunNS::aig_lit hash_and(const ArjunNS::aig_lit& l,
                               const ArjunNS::aig_lit& r);
+    void check_label(int64_t id) const;
     ArjunNS::aig_lit hash_or(const ArjunNS::aig_lit& l,
                              const ArjunNS::aig_lit& r);
 

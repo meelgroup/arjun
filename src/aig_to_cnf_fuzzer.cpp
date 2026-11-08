@@ -115,17 +115,21 @@ static bool sat_equivalent(SATSolver& s, Lit a, Lit b) {
 }
 
 // Per-assignment check: for each input assignment, fix inputs as assumptions,
-// solve, and verify the CNF model's output lit matches AIG::evaluate.
+// solve, and verify the CNF model's output lit matches AIG::evaluate. Over 12
+// vars, random assignments: sat_equivalent() can't see an encoding that wrongly
+// rules out inputs, only this can.
 static bool cnf_matches_aig(SATSolver& s, const aig_lit& aig, Lit out_lit,
-                             uint32_t num_vars)
+                             uint32_t num_vars, std::mt19937& rng)
 {
-    if (num_vars > 12) return true; // too expensive
+    const bool exhaustive = num_vars <= 12;
+    const uint64_t tries = exhaustive ? (1ULL << num_vars) : 256;
     vector<aig_lit> defs(num_vars, aig_lit());
-    for (uint32_t mask = 0; mask < (1u << num_vars); mask++) {
+    for (uint64_t t = 0; t < tries; t++) {
+        const uint64_t mask = exhaustive ? t : 0;
         vector<lbool> vals(num_vars);
         vector<Lit> assumps;
         for (uint32_t v = 0; v < num_vars; v++) {
-            bool b = (mask >> v) & 1;
+            bool b = exhaustive ? (mask >> v) & 1 : rng() & 1;
             vals[v] = b ? l_True : l_False;
             assumps.emplace_back(v, !b); // force var v = b
         }
@@ -202,7 +206,7 @@ static void report_failure(const aig_lit& aig, uint32_t num_vars,
 
 static bool run_one(const aig_lit& aig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, FuzzStats& fs,
-                    bool verbose)
+                    bool verbose, std::mt19937& rng)
 {
     (void)verbose;
     // Build a solver pre-populated with the input variables.
@@ -256,7 +260,7 @@ static bool run_one(const aig_lit& aig, uint32_t num_vars,
         cerr << "  naive_out=" << naive_out << "  opt_out=" << opt_out << endl;
         return false;
     }
-    if (!cnf_matches_aig(solver, aig, opt_out, num_vars)) {
+    if (!cnf_matches_aig(solver, aig, opt_out, num_vars, rng)) {
         report_failure(aig, num_vars, seed, iter, "cnf_matches_aig(opt)");
         return false;
     }
@@ -629,7 +633,7 @@ int main(int argc, char** argv) {
         if (!aig) continue;
 
         if (verbose) cout << "[" << iter << "] num_vars=" << num_vars << endl;
-        if (!run_one(aig, num_vars, seed, iter, fs, verbose)) return 1;
+        if (!run_one(aig, num_vars, seed, iter, fs, verbose, rng)) return 1;
 
         fs.iters++;
 

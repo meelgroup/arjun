@@ -52,7 +52,7 @@ using std::unique_ptr;
 Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
 
-void Puura::backbone(SimplifiedCNF& cnf) {
+void Puura::backbone(SimplifiedCNF& cnf, int64_t max_confl) {
     double my_time = cpuTime();
     if (cnf.get_weighted()) {
         for(const auto& v: cnf.get_opt_sampl_vars()) {
@@ -66,7 +66,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     solver->simplify(nullptr, &str);
     solver->set_verbosity(conf.verb);
     bool backbone_done = cnf.get_backbone_done();
-    solver->backbone_simpl(20*1000ULL, backbone_done);
+    solver->backbone_simpl(max_confl, backbone_done);
     cnf.set_backbone_done(backbone_done);
 
     auto lits = solver->get_zero_assigned_lits();
@@ -93,15 +93,6 @@ std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) const {
     return solver;
 }
 
-void Puura::reverse_bce(SimplifiedCNF& cnf) {
-    auto solver = fill_solver(cnf);
-    solver->set_renumber(false);
-    solver->set_scc(false);
-    set_up_sampl_vars_dont_elim(cnf);
-    solver->set_sampl_vars(cnf.get_sampl_vars());
-    solver->reverse_bce();
-}
-
 bool Puura::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<SATSolver>& solver) {
     if (!cnf.get_weighted()) return true;
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -123,7 +114,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         SLOW_DEBUG_DO(assert(cnf.defs_invariant()));
-        auto vt = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf");
+        auto vt = cnf.get_var_types(conf.verb, "start get_fully_simplified_renumbered_cnf");
         to_define = std::move(vt.to_define);
     }
     for(const auto& v: cnf.get_sampl_vars())
@@ -160,6 +151,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_varelim_occ_prod_cutoff(simp_conf.bve_occ_prod_cutoff);
     solver->set_varelim_max_cls_size(simp_conf.bve_cls_max_size);
     solver->set_varelim_sched_only_touched(simp_conf.bve_sched_only_touched);
+    solver->set_varelim_tie_min_occ(simp_conf.bve_tie_min_occ);
     solver->set_backbone_ccnr_mems_limitM(simp_conf.backbone_ccnr_mems_limitM);
 #endif
     if (!simp_conf.appmc) {
@@ -281,7 +273,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     print_cnf_shape("out", ret_cnf);
     ret_cnf.check_no_touch_mapping();
     if (cnf.get_need_aig()) {
-        auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | verbose_debug_enabled, "end get_fully_simplified_renumbered_cnf");
+        auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(conf.verb >= 2 ? conf.verb : 0, "end get_fully_simplified_renumbered_cnf");
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
             << " final cls: " << ret_cnf.get_clauses().size()
             << " defined: " << to_define.size() - to_define2.size()

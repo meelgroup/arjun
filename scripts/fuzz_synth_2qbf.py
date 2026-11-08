@@ -50,6 +50,7 @@ def fmt_cmd(command):
     return " ".join(shlex.quote(str(c)) for c in command)
 
 maxtimediff = 1
+CMS = "../../cryptominisat/build/cryptominisat5"
 Solver = namedtuple("Solver", "exe dir", defaults=[None, None])
 
 
@@ -81,7 +82,7 @@ def gen_fuzz_call_brummayer(fuzzer, fname):
     # call = "{0} -s {1} -i 2 -I 4 > {2}".format(fuzzer, seed, fname)
     return call
 
-def add_projection(fname) :
+def add_projection(fname, few=False, qdimacs=False) :
     vars = 0
     with open(fname, "r") as f:
         for line in f:
@@ -117,12 +118,26 @@ def add_projection(fname) :
     # Clamp to [1, vars-1] so the projection is a proper subset. If we
     # project all vars, arjun sets all_indep=true and aborts synthesis
     # with "CNF had no indep set" — a nonsense test case for synthesis.
+    # A 2QBF is rarely true with many universals, so keep them few
+    if few:
+        num = random.randint(1, 3)
     num = max(1, min(num, vars - 1))
     for i in range(num):
         proj_set[random.choice(all_vars)] = 1
 
     for a,_ in proj_set.items():
         proj.append(a)
+
+    if qdimacs:
+        # QDIMACS prefix: forall the projection, exists the rest
+        with open(fname, "r") as f:
+            lines = f.readlines()
+        at = next(i for i, l in enumerate(lines) if l.startswith("p cnf")) + 1
+        rest = [v for v in all_vars if v not in proj_set]
+        lines.insert(at, "a %s 0\ne %s 0\n" % (" ".join(map(str, proj)), " ".join(map(str, rest))))
+        with open(fname, "w") as f:
+            f.writelines(lines)
+        return proj
 
     with open(fname, "a") as f:
         f.write("c p show ")
@@ -157,7 +172,19 @@ def set_up_parser():
     return parser
 
 
-def run(command):
+def bug(msg, seed, output=None):
+    print(col("=" * 60, RED))
+    print(col("BUG: " + msg, RED))
+    if output is not None:
+        print("Full output was:")
+        print(output)
+    print("REPRODUCE with: python3 ../scripts/fuzz_synth_2qbf.py --seed %d --num 1" % seed)
+    print(col("=" * 60, RED))
+    exit(-1)
+
+
+def run(command, maxtime=None):
+    if maxtime is None: maxtime = options.maxtime
     print(col("--> Executing: ", BLUE) + fmt_cmd(command))
     if options.verbose:
         print("CPU limit of parent (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU))
@@ -166,11 +193,11 @@ def run(command):
           stdout=subprocess.PIPE, universal_newlines=True)
 
     try:
-        consoleOutput, err = p.communicate(timeout=options.maxtime)
+        consoleOutput, err = p.communicate(timeout=maxtime)
     except subprocess.TimeoutExpired:
         p.kill()
         consoleOutput, err = p.communicate()
-        consoleOutput = "TIMEOUT: Process killed after %d seconds\n" % options.maxtime + consoleOutput
+        consoleOutput = "TIMEOUT: Process killed after %d seconds\n" % maxtime + consoleOutput
 
     if options.verbose:
         print("CPU limit of parent (pid %d) after child finished executing" % os.getpid(),
@@ -193,48 +220,18 @@ def run_check(command, final, seed):
         print("Error string is: ", err)
         exit(-1)
 
-    # Negative returncode = killed by signal (segfault / SIGABRT from
-    # assertion). Anything other than 0 (CORRECT) or 1 (INCORRECT, handled
-    # below via output match) means test-synth crashed or hit an internal
-    # error — treat as a bug regardless of final/non-final.
-    if p.returncode < 0 or p.returncode > 1:
-        print(col("=" * 60, RED))
-        print(col("BUG: test-synth crashed with returncode %d" % p.returncode, RED))
-        print("Command was: %s" % fmt_cmd(command))
-        print("Full check output was:")
-        print(consoleOutput)
-        print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-        print(col("=" * 60, RED))
-        exit(-1)
-
+    cmd = fmt_cmd(command)
+    if p.returncode != 0:
+        bug("test-synth exited with %d on: %s" % (p.returncode, cmd), seed, consoleOutput)
     for line in consoleOutput.split("\n"):
         if "INCORRECT" in line:
-            print(col("=" * 60, RED))
-            print(col("BUG: test-synth reported AIGs are INCORRECT", RED))
-            print("Command was: %s" % fmt_cmd(command))
-            print("Full check output was:")
-            print(consoleOutput)
-            print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-            print(col("=" * 60, RED))
-            exit(-1)
-        # Match "CORRECT" but not "INCORRECT" — test-synth prints both on
-        # failure ("AIGs are INCORRECT") and success ("AIGs are CORRECT"),
-        # and plain substring matching accepts the failure text too.
+            bug("test-synth reported AIGs are INCORRECT on: %s" % cmd, seed, consoleOutput)
+        # "CORRECT" is a substring of "INCORRECT"
         if "CORRECT" in line and "INCORRECT" not in line:
             print(col("Check output: ", GREEN) + line)
             ok = True
-
-    # A sample that fails the check (how non-final AIGs are checked) makes
-    # test-synth exit with 1 without printing INCORRECT.
-    if p.returncode != 0 or (not ok and final):
-        print(col("=" * 60, RED))
-        print(col("BUG: check process failed or did not report CORRECT", RED))
-        print("Command was: %s" % fmt_cmd(command))
-        print("Full check output was:")
-        print(consoleOutput)
-        print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-        print(col("=" * 60, RED))
-        exit(-1)
+    if not ok and final:
+        bug("test-synth did not report CORRECT on: %s" % cmd, seed, consoleOutput)
 
 
 # Decision trees that never split leave recur()'s ITE construction untested, so
@@ -242,6 +239,7 @@ def run_check(command, final, seed):
 # not covered the learner, however many iterations it did. "verified" counts the
 # SLOW_DEBUG tree-vs-AIG equivalence checks, and stays 0 in non-SLOW_DEBUG builds.
 tree_depths = {"leaf": 0, "split": 0, "verified": 0}
+qbf2_res = {True: 0, False: 0}
 TREE_DEPTH_RE = re.compile(r"Training error:.*?depth:\s*(\d+)")
 
 
@@ -254,24 +252,25 @@ def note_tree_depth(line):
     tree_depths["split" if int(match.group(1)) > 0 else "leaf"] += 1
 
 
-def run_synth(solver, fname):
+def run_synth(solver, fname, out_fname, ok_codes):
     curr_time = time.time()
     toexec = solver.split()
     toexec.append(fname)
+    toexec.append(out_fname)
     out, err, returncode = run(toexec)
     if err is None:
         if options.verbose:
             print("No error.")
     else:
         print("Error string is: ", err)
-        return True, []
+        return True, [], out, returncode
     diff_time = time.time() - curr_time
     if diff_time > options.maxtime - maxtimediff:
         print("Too much time to solve with %s, aborted: " % solver)
-        return None, []
-    if returncode != 0 and not out.startswith("TIMEOUT"):
-        print("Solver crashed with exit code %d (signal %d)" % (returncode, -returncode))
-        return True, []
+        return None, [], out, returncode
+    if returncode not in ok_codes:
+        print("Solver exited with code %d, expected one of %s" % (returncode, ok_codes))
+        return True, [], out, returncode
 
     aigs = []
     for line in out.split("\n"):
@@ -282,14 +281,78 @@ def run_synth(solver, fname):
         if ("Training error" not in line) and ("[verify]" not in line):
             if ("ERROR" in line) or ("Error" in line) or ("error" in line):
                 print("Error line from solver %s: %s" % (solver, line))
-                return True, []
+                return True, [], out, returncode
             if ("assert" in line) or ("Assertion" in line):
                 print("Error line from solver %s: %s" % (solver, line))
-                return True, []
-        if line.startswith("c o Wrote AIG defs:"):
-            aigs.append(line[len("c o Wrote AIG defs:"):].strip())
+                return True, [], out, returncode
+        for wrote in ("c o Wrote AIG defs:", "c o Wrote Verilog AIG:"):
+            if line.startswith(wrote):
+                aigs.append(line[len(wrote):].strip())
 
-    return False, aigs
+    return False, aigs, out, returncode
+
+
+# The 2QBF verdict: True/False from the "s cnf" line, plus the "V" lits of
+# the universal counterexample when false. None if no verdict was printed.
+def qbf2_verdict(out):
+    verdict = None
+    cex = []
+    for line in out.split("\n"):
+        if line.startswith("s cnf "):
+            verdict = line.split()[2] == "1"
+        if line.startswith("V "):
+            cex.append(int(line.split()[1]))
+    return verdict, cex
+
+
+# A false 2QBF must come with universal values under which the CNF is UNSAT
+def check_qbf2_cex(fname, proj, cex):
+    if not set(abs(l) for l in cex) <= set(proj):
+        print("ERROR: 2QBF counterexample sets non-universal vars: %s" % cex)
+        return False
+    cex_fname = fname + "-cex.cnf"
+    with open(fname, "r") as f, open(cex_fname, "w") as f2:
+        for line in f:
+            if not line.startswith("p cnf"):
+                f2.write(line)
+                continue
+            _, _, nvars, ncls = line.split()
+            f2.write("p cnf %s %d\n" % (nvars, int(ncls) + len(cex)))
+            for l in cex:
+                f2.write("%d 0\n" % l)
+    ok = is_unsat(cex_fname)
+    os.unlink(cex_fname)
+    if ok is None:
+        print("Could not decide if the counterexample is UNSAT, not checked")
+        return True
+    return ok
+
+def qbf2_nofuns_verdict(fname, proj):
+    cmd = "./arjun --2qbf --verb 0 --cover %s" % random.choice([0, 0, 0.1, 50])
+    cmd += " --synthpuura %d" % random.choice([0, 1, 1, 1])
+    cmd += " --coverticks %s" % random.choice([-1, 0.01, 20])
+    cmd += " --coverminimsat %d" % random.randint(0, 1)
+    cmd += " --coversls %d --coverslsstall %d" % (random.choice([0, 0, 3, 100]), random.choice([0, 5, 30]))
+    cmd += " --coverbceticks %s" % random.choice([-1, 0.01, 20, 0])
+    cmd += " --coverorigticks %s" % random.choice([-1, 0.01, 2000])
+    cmd += " --iter1grow %d --iter2grow %d" % (random.randint(0, 5), random.choice([0, 10, 100]))
+    print(col("Running 2QBF with no functions: ", CYAN) + cmd)
+    out, _, code = run(cmd.split() + [fname], 2 * options.maxtime)
+    if out.startswith("TIMEOUT"):
+        print("--2qbf with no functions timed out, no verdict to compare")
+        return "timeout", out
+    if code not in (10, 20):
+        print("ERROR: --2qbf with no functions exited with %s" % code)
+        return None, out
+    verdict, cex = qbf2_verdict(out)
+    if verdict != (code == 10):
+        print("ERROR: --2qbf with no functions printed verdict %s but exited with %d" % (verdict, code))
+        return None, out
+    if not verdict and not check_qbf2_cex(fname, proj, cex):
+        print("ERROR: --2qbf with no functions gave a wrong counterexample")
+        return None, out
+    return verdict, out
+
 
 def check_core_files(prefix):
     # arjun writes core files as "<debug-synth-prefix>-core-N.cnf"; the
@@ -303,7 +366,7 @@ def check_core_files(prefix):
     for fname in items:
         # Check if it's a file (not a directory, symlink, etc.)
         if os.path.isfile(fname) and pattern.match(fname):
-            out, err, _ = run(["../../cryptominisat", fname])
+            out, err, _ = run([CMS, fname])
             if err:
                 print(f"ERROR: cannot run cryptominisat on {fname}: {err}")
                 exit(-1)
@@ -328,9 +391,9 @@ def check_core_files(prefix):
             print(f"Skipping non-matching item: {fname}")
 
 def is_unsat(fname) :
-    unsat_check = "../../cryptominisat/build/cryptominisat5"
+    unsat_check = CMS
     curr_time = time.time()
-    toexec = unsat_check.split()
+    toexec = [unsat_check]
     toexec.append(fname)
     out, err, _ = run(toexec)
     if err is None:
@@ -338,11 +401,11 @@ def is_unsat(fname) :
             print("No error.")
     else:
         print("Error string is: ", err)
-        return True
+        exit(-1)
     diff_time = time.time() - curr_time
     if diff_time > options.maxtime - maxtimediff:
         print("Too much time to solve with %s, aborted: " % unsat_check)
-        return True
+        return None
 
     for line in out.split("\n"):
         line = line.strip()
@@ -356,6 +419,26 @@ def is_unsat(fname) :
     print("ERROR: Could not determine if file %s is SAT or UNSAT" % fname)
     exit(-1)
 
+# fname becomes itself and other side by side, on disjoint vars: covering
+# then has clauses that share no existential
+def join_cnfs(fname, other):
+    def read(f):
+        num_vars, cls = 0, []
+        for line in open(f):
+            line = line.strip()
+            if line.startswith("p cnf"):
+                num_vars = int(line.split()[2])
+            elif line and line[0] not in "cp":
+                cls.append([int(x) for x in line.split()[:-1]])
+        return num_vars, cls
+    n1, cls1 = read(fname)
+    n2, cls2 = read(other)
+    cls1 += [[l + n1 if l > 0 else l - n1 for l in cl] for cl in cls2]
+    with open(fname, "w") as f:
+        f.write("p cnf %d %d\n" % (n1 + n2, len(cls1)))
+        for cl in cls1:
+            f.write(" ".join(map(str, cl)) + " 0\n")
+
 def gen_fuzz(seed) :
     fname = unique_file("fuzzTest")
     print(col("Seed: ", MAGENTA) + str(seed) + col("  checking fname: ", MAGENTA) + fname)
@@ -367,12 +450,21 @@ def gen_fuzz(seed) :
         exit(-1)
     else:
         print("Generated fuzz file %s with call: %s" % (fname, call))
+    if random.randint(0, 2) == 0:
+        other = fname + "-other"
+        call = gen_fuzz_call_brummayer("./cnf-fuzz-brummayer.py", other)
+        print("Calling: ", call)
+        if subprocess.call(call, shell=True) != 0:
+            print("Failed fuzzer file generator call: ", call)
+            exit(-1)
+        join_cnfs(fname, other)
+        os.unlink(other)
     return fname
 
 def cleanup(fname, prefix):
     os.unlink(fname)
     directory = "."
-    for file_path in glob.glob(os.path.join(directory, f"{prefix}*.aig")):
+    for file_path in glob.glob(os.path.join(directory, f"{prefix}*.aig")) + glob.glob(f"{prefix}*.v"):
         if os.path.isfile(file_path):
             os.remove(file_path)
             print(f"Deleted: {os.path.basename(file_path)}")
@@ -443,6 +535,9 @@ def gen_mstrategy():
     for i in range(n):
         strategies.append(gen_strategy(must_have_max_repairs=(i < n - 1),
                                        must_not_have_max_repairs=(i == n - 1)))
+    for _ in range(random.choice([0, 1, 1, 2])):
+        strategies.insert(random.randint(0, len(strategies) - 1),
+                          "cover(ticks=%s)" % random.choice([0.01, 5, 500]))
     return ",".join(strategies)
 
 
@@ -473,22 +568,35 @@ if __name__ == "__main__":
             seed = int.from_bytes(b)
             random.seed(seed)
         else:
-            seed = options.rnd_seed
+            seed = options.rnd_seed + i - 1
+            random.seed(seed)
 
         fname = gen_fuzz(seed)
-        if add_projection(fname) is None:
+        qbf2 = random.choice([True, False])
+        proj = add_projection(fname, few=qbf2 and random.choice([True, False]),
+                              qdimacs=qbf2 and random.choice([True, False]))
+        if proj is None:
             print("Generated file %s has <2 vars (no defined var possible), skipping" % fname)
             os.unlink(fname)
             continue
-        if is_unsat(fname):
-            print("Generated file %s is UNSAT, skipping synthesis" % fname)
+        if not qbf2 and is_unsat(fname) is not False:
+            print("Generated file %s is UNSAT (or undecided), skipping synthesis" % fname)
             os.unlink(fname)
             continue
         # solver = "./arjun --synth --debugsynth --verb 1"
         prefix = unique_file("fuzzTest")
         print(col("Using prefix ", YELLOW) + prefix + col(" for synthesis output files", YELLOW))
         solver = "./arjun --verb 2 --debugsynth %s " % prefix
-        solver += "--synth "
+        solver += "--2qbf " if qbf2 else "--synth "
+        solver += "--debugverilog %d " % random.randint(0, 1)
+        # covering solves most fuzz-sized CNFs, mostly keep it off to reach synthesis
+        solver += "--cover %s " % random.choice([0, 0, 0.1, 1, 50, 100000])
+        solver += "--coverticks %s " % random.choice([-1, 0, 0.001, 0.01, 5, 500])
+        solver += "--coverminimsat %d " % random.randint(0, 1)
+        solver += "--coversls %d --coverslsstall %d " % (random.choice([0, 0, 3, 100]), random.choice([0, 5, 30]))
+        solver += "--coverlateticks %s " % random.choice([-1, 0, 0.01, 100])
+        solver += "--coverorigticks %s " % random.choice([-1, 0, 0.01, 2000])
+        solver += "--coverorigbudget %s " % random.choice([0.1, 50, 100000])
 
         solver += "--bruteforcesynth %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
@@ -497,7 +605,7 @@ if __name__ == "__main__":
         solver += "--ctxlightinproc %d " % random.choice([0, 1, 2])
 
         opts = [
-            " --synthbve"
+            " --synthpuura"
             , " --extend"
             , " --backward"
             , " --minimconfl"
@@ -552,23 +660,35 @@ if __name__ == "__main__":
 
         solver += " --cstrategy " + gen_mstrategy()
 
-        err, aigs = run_synth(solver, fname)
+        out_fname = prefix + "-final-out" + random.choice([".aig", ".v"])
+        err, aigs, out, code = run_synth(solver, fname, out_fname, (10, 20) if qbf2 else (0,))
         if err is None:
             print("Synthesis timed out on file %s" % fname)
             cleanup(fname, prefix)
             continue
         if err:
-            print("Synthesis failed on file %s" % fname)
-            print(col("=" * 60, RED))
-            print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
-            print(col("=" * 60, RED))
-            exit(-1)
+            bug("synthesis failed on file %s" % fname, seed)
         print(col("Synthesis succeeded", GREEN) + " on file %s, produced files: %s" % (fname, str(aigs)))
         print("Decision trees so far: %d with splits, %d single-leaf, %d verified vs AIG"
               % (tree_depths["split"], tree_depths["leaf"], tree_depths["verified"]))
-        if len(aigs) == 0:
-            print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
-            exit(-1)
+        qbf2_true = None
+        if qbf2:
+            qbf2_true, cex = qbf2_verdict(out)
+            if qbf2_true is None:
+                bug("missing 2QBF verdict", seed)
+            if qbf2_true != (code == 10):
+                bug("2QBF verdict %s but exit code %d" % (qbf2_true, code), seed)
+            if not qbf2_true and not check_qbf2_cex(fname, proj, cex):
+                bug("wrong 2QBF counterexample", seed)
+            nofuns, nofuns_out = qbf2_nofuns_verdict(fname, proj)
+            if nofuns != "timeout" and nofuns != qbf2_true:
+                bug("--2qbf with no functions gave %s, with functions %s" % (nofuns, qbf2_true), seed, nofuns_out)
+            qbf2_res[qbf2_true] += 1
+            print(col("2QBF verdict: %s" % qbf2_true, GREEN) + " -- so far %d true, %d false"
+                  % (qbf2_res[True], qbf2_res[False]))
+        # only a false 2QBF may stop before the final AIG
+        if not any("final" in aig for aig in aigs) and qbf2_true is not False:
+            bug("synthesis produced no final AIG on file %s" % fname, seed)
         check_core_files(prefix)
 
         # A stage can run twice (the unate loop), overwriting its own AIG.
@@ -579,7 +699,9 @@ if __name__ == "__main__":
                 continue
             seen.add(aig)
             final = "final" in aig
-            if final:
+            if final and qbf2_true:
+                call = "./test-synth -u -q -v -s %d %s %s" % (seed, fname, aig)
+            elif final:
                 call = "./test-synth -u -v -s %d %s %s" % (seed, fname, aig)
             else:
                 call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)

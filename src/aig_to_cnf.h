@@ -1032,10 +1032,16 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
     std::vector<aig_lit> leaves;
     std::set<std::pair<int, uint64_t>> distinct_slots;
     bool abort_flag = false;
+    // a chain of fanout-1 ANDs can be 100k deep: the stack
+    uint32_t num_interior = 0;
     std::function<void(const aig_lit&)> dfs = [&](const aig_lit& m) {
         if (abort_flag) return;
         const bool is_interior_and = m->type == AIGT::t_and
             && (m.node == n.node || can_consume(m.get()));
+        if (is_interior_and && ++num_interior > 64) {
+            abort_flag = true;
+            return;
+        }
         if (!is_interior_and) {
             if (leaf_idx.count(m)) return;
             const std::pair<int, uint64_t> slot_key =

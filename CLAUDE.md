@@ -30,11 +30,15 @@ If cmake needs to be re-run, use `scripts/build_norm.sh` or
 From `build/`:
 
 ```
-./arjun --verb 2 --synth --synthbve 1 --extend 1 --backward 1 --debugsynth --samples 1 out/fuzzTest_596.cnf
+./arjun --verb 2 --synth --synthpuura 1 --extend 1 --backward 1 --samples 1 out/fuzzTest_596.cnf out/funs.aig
 ```
+
+`--synth` needs the 2nd file: the Skolem functions, as `.aig` or `.v`. `--2qbf`
+takes it too, and then keeps the functions instead of only giving the verdict.
 
 Useful top-level flags:
 - `--synth` — enable synthesis (cegr)
+- `--2qbf` — solve the forall-exists 2QBF instead (see "2QBF" below)
 - `--debugsynth` — emit intermediate AIGs (`*-simplified_cnf.aig`,
   `*-autarky.aig`, `*-cegr.aig`, `*-final.aig`) for debugging
 - `--verb N` — verbosity (0–2)
@@ -45,12 +49,127 @@ NEVER run full benchmark sweeps on this machine -- the cluster does that. Here,
 run small experiments only: ~16 instances (one per core), in parallel, each
 short. Pick them from existing cluster results instead of guessing:
 
-- `build/data/out-synth-<jobid>-<n>/` -- per-instance cluster logs.
+Every cluster run (started from `../pbs-scripts/`) lands in `build/data/`,
+logs and DB both, for `--synth` and `--2qbf` alike:
+
+- `build/data/out-{synth,2qbf}-<jobid>-<n>/` -- per-instance cluster logs
+  (`.out_solve` is arjun's log for 2QBF runs). Grep these for anything not in
+  the DB (e.g. `[cover]` lines).
 - `build/data/data.sqlite3`, table `arjun` -- parsed results (`dirname`,
   `fname`, `timeout_call`, `arjun_time`, `cegr_time`, `start_to_define_vars`,
-  `last_stage`, ...). E.g. short instances that reach CEGR:
+  `last_stage`, 2QBF: `verdict`, `decided_by`, ...). If a run is missing from
+  it, run `./get_data_arjun.py` in `build/data/`. E.g. short instances that reach CEGR:
   `select fname, arjun_time from arjun where dirname='out-synth-...' and cegr_time>0 order by arjun_time limit 16;`
 - Benchmarks: `build/benchmarks-qdimacs/*.qdimacs.gz`.
+
+Cluster runs are set up in `../pbs-scripts/`: `creator_synth.sh` +
+`run-synth-trillium.slurm` (`--synth`), `creator_2qbf.sh` +
+`run-2qbf-trillium.slurm` (`--2qbf`). The creator holds the binary name
+(`arjun_<arjun>_<sbva>_<cms>`, 8-char SHAs), `opts_arr` of configs, benchmark
+set, per-job timeout; the slurm `--time` must cover configs x files / cores x
+timeout. When a change wants a cluster run, propose edits to these, keeping
+their patterns -- never change them without asking.
+
+## 2QBF (`--2qbf`)
+
+`arjun --2qbf file.qdimacs` decides forall X exists Y. F, with X the `a`
+block (or `c p show`). Exit code 10 = true, 20 = false plus `V` lines giving
+an X that has no Y. All of it is in `do_synth_2qbf()` in `main.cpp`,
+`cover.{h,cpp}` and the `*2qbf*` methods of `SimplifiedCNF`:
+
+1. `cover()` — budgeted model covering (`--cover`, 0 = off, and
+   `--coverticks`, million ticks of SAT work per run, 200 by default): a
+   model of F settles every X that satisfies the universal parts of the
+   clauses its Y leaves unsatisfied; repeat until all X are covered. Wins
+   when its refinements are short (sortnetsort, the `query*` files), gives
+   up otherwise. What keeps them short:
+   - the models of F it refines with are the decide-false ones, except that
+     an existential that satisfies more clauses when true is decided true
+     (the counterexample heuristic of the AReQS paper);
+   - `--coverminimsat` (on): further SAT calls for a model of the same X
+     whose existentials satisfy more clauses, on selectors, dropping the
+     cores;
+   - a clause of outer vars only gets no helper, and clauses that share no
+     existential are covered apart;
+   - `--synth` only: after the first X with no Y, abs gets the clauses, so
+     it only picks an X that has a Y. Their cubes were most of the rounds;
+   - the defs `cnf` already has are followed: a model is the values of the
+     vars with no def, see `cover.h`.
+   When it finishes, its models give the Skolem functions. `--synth` skips
+   the X that have no Y instead of stopping at the first one. It runs on
+   the simplified CNF, and again after extend/backward/unate if they
+   defined something. That last run
+   takes a handful of rounds when it works, so it has its own, lower limit
+   (`--coverlateticks`, 100): a failing one is slow. These runs are SHORT:
+   most of what covering solves takes under 100M ticks, and a failing run
+   is paid by every file. The long run (`cover(ticks=5000)` in
+   `--cstrategy`, on the CNF with the functions of the passes) comes before
+   the last, unlimited strategy: only once the repair-limited ones did not
+   finish either. NEVER make the 1st runs long instead. On the CNF as it
+   was after Puura it was slower: of 55 files at 90 s, 3 more done on the
+   one with the functions, none fewer. Only `--2qbf` also
+   runs it on the orig clauses first, while the refinements
+   are short: that is where an X with no Y is found
+   (`--coverorigticks`, 2000: sortnetsort10.008 takes 1800M there).
+   NEVER add that run to `--synth`: all it covered
+   there is covered after Puura too, and it cost 7 s per file. NEVER build AIGs per round in it: the functions are made once,
+   at the end, from the stored models.
+   `--verb 1` prints a `[cover]` stats line (rounds, refinement size,
+   ticks and time per solver) at the end and every 1000 rounds.
+2. The normal synthesis pipeline. Synthesis only promises F(X, f(X)) for the
+   X that have a Y, so:
+3. `get_2qbf_cex()` — SAT call for an X with ~F(X, f(X)), on `cnf`'s
+   clauses. Like cover, it works in the CNF's numbering
+   (`cover_problem.h`): `OrigTranslation` turns the defs into a
+   `CoverProblem` over it once, at the entrance, and the results back to orig
+   vars at the exit. Nothing in between translates.
+
+Everything works from `cnf`, never from the orig clauses (`orig_clauses` is
+for debugging, e.g. `is_2qbf_cex()`). That is sound because simplification
+defines a universal only by what F implies: a unit (`get_fixed_values()`) or
+an equivalence with another universal. Right after each Puura run,
+`get_2qbf_def_cex()` turns such a def into an X that breaks it: false, no SAT
+call. With no universal defined, `cnf`'s clauses are the 2QBF and the
+universals gone from them are free.
+
+Testing: `fuzz_synth_2qbf.py` runs `--2qbf` on half of its iterations. A true
+verdict is checked with `test-synth -u -q` (the final AIG must be a total
+Skolem function), a false one by checking the CNF is UNSAT under the `V`
+lines. It then runs `--2qbf` with no output file (the blocked clause path
+below) and compares the verdicts. `tests/2qbf/*.qdimacs` are `lit` tests (ctest `test-2qbf`, or `lit .`
+in `build/tests/2qbf`): tiny files with their `RUN:` lines in comments.
+`scripts/bench_2qbf.py` compares against `../cadet/cadet`; benchmarks
+are in `~/media/qbf/2qbf/qbfeval16` (QBFEVAL'16 2QBF track).
+
+More 2QBF benchmarks: `~/media/qbf/2qbf/2010-comp`,
+`~/media/qbf/2qbf_combo` (the `ctrl` family is there),
+`~/media/qbf/abdst-paper/robots2d`, `~/media/qbf/qbflib/<family>/` (one
+directory per QBFLIB family), `~/media/qbf/qbfeval17/2QBF` and
+`~/media/qbf/qbfeval20/PCNF` (mixed prefixes there:
+`~/media/qbf/qbflib/qbf_prefix.py` prints `KEEP ae` for the forall-exists
+ones). All of these but the first are `.qdimacs.gz`.
+
+### Blocked clauses: on a copy only
+
+With no output file, after the cover run after Puura, `try_bce_cover()` in
+`main.cpp` removes the clauses blocked on a Y (`bce_2qbf()`), redoes BVE
+on that (a light Puura: no oracle, no backbone, they cost minutes), up to 3
+times, and covers the result (`--coverbceticks`, 5000; -1 = off). Only its
+verdict is used: BCE keeps, for every X, whether it has a Y, but not the
+Skolem functions. If it does not decide, the copy is dropped and `cnf` goes
+on unchanged. Replacing `cnf` with it instead (removed 2026-10-25) lost 16
+files, mostly fixpoints, to win 7 `ctrl`. The copy solves 16 of the 35
+ctrl/ci that nothing else did at 300 s, 19 with no tick limit: their
+refinements are ~14 lits, but they take 20k-200k rounds.
+
+## Other QBF solvers and preprocessors: `qbf_solvers/`
+
+Sources of the tools to compare against and to lift ideas from are in
+`qbf_solvers/` of this repo (untracked), one directory each: `areqs`,
+`bloqqer`, `cadet`, `caqe`, `cqesto`, `depqbf`, `miniQU`, `pedant-solver`
+(DQBF), `qesto`, `qfun`, `qratpreplus` (preprocessor), `quabs`, `qute`,
+`rareqs`; `dl/` has the tarballs. They are built in place. All benchmarks
+are described in `~/media/qbf/README.md`.
 
 ## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
 
@@ -69,18 +188,32 @@ Extra args are forwarded to `arjun`. The simplified CNF is written to
 workflow: run it on the same CNF before and after a change and diff the
 output lines.
 
-## After every build ALWAYS run the fuzzers, in parallel if possible
+## After every build ALWAYS run the fuzzers, 16 wide
 
-From `build/`:
+From `build/`, on all 16 cores, for a fixed time, NEVER one `--num 400`
+process (that loads one core):
 
 ```
-./fuzz_synth.py --num 400
-./fuzz_aig_to_cnf --num 1000
-./fuzz_aig_rewrite --num 1000
+(echo aig_rewrite; echo aig_to_cnf; seq 1 14) | xargs -P16 -I{} bash -c 'ulimit -v 2500000;
+  case {} in aig_*) ./fuzz_{} --num 1000 > fz_{}.log 2>&1;;
+  *) timeout 300 ./fuzz_synth_2qbf.py --num 100000 > fz_{}.log 2>&1;; esac; echo "{} $?"'
 ```
 
-They are independent, so with enough cores run all three at once (e.g. three
-parallel tool calls in the same message) instead of sequentially.
+The synth ones exit 124 when the time is up, anything else is a failure.
+Many `fuzz_synth_2qbf.py` at once in one directory is safe: `unique_file()`
+claims each name with `O_EXCL`, and every other file is named after it.
+The AIG fuzzers write no files and pick a random seed each.
+A killed run leaves its `out/fuzzTest_*` files behind; `unique_file()`
+gives up after 2700 names, so clear `out/` now and then.
+Verification loops (`test-synth` over several files) go through `xargs -P`
+too.
+
+For changes to the counting side (Puura for counting, `--coverdrop`), also
+run `../count_fuzzer/fuzz.py`, 16 wide the same way, from `../count_fuzzer`
+(`--proj` for projected counting, which `--coverdrop` needs). It counts
+with several counters, through `../arjun/build/arjun` and
+`../ganak/build/ganak` with random `--coverdrop` options, and compares. About
+half of its brummayer CNFs give coverdrop components to drop or replace.
 
 All must pass before reporting a change as complete.
 
@@ -93,6 +226,13 @@ All must pass before reporting a change as complete.
   non-deterministic across runs).
 - `cegr.{h,cpp}`, `cegr_learn.{h,cpp}` — counterexample-guided
   synthesis / repair loop. Hot path for large benchmarks.
+- `cover.{h,cpp}` — model covering (see "2QBF"). `Cover` splits the clauses
+  into components by the ys they share, `CoverComponent` covers one:
+  `x_solver` picks an X, `y_solver` finds a Y for it. Config:
+  `Arjun::CoverConf` in `arjun.h`, like `CegrConf`.
+- `verilog.{h,cpp}` — `write_verilog()` / `read_verilog()` of AIG defs as
+  one module of single-bit nets (port `xN` is var N-1). Behind
+  `SimplifiedCNF::write_aig_def_to_verilog()` / `read_aig_defs_from_verilog()`.
 - `aig_rewrite.{h,cpp}` — structural hashing, CSE, absorption, ITE
   flattening. Runs before cegr and between repair rounds.
 - `interpolant.{h,cpp}` — definition extraction by Craig interpolation
@@ -125,7 +265,12 @@ When `--debugsynth` is passed, intermediate AIGs are written next to the
 input CNF with suffixes `-simplified_cnf.aig`, `-autarky.aig`,
 `-minim_idep_synt.aig`, `-cegr.aig`, `-final.aig`. `test-synth` verifies
 each stage's AIG against the original CNF and is invoked automatically by
-`fuzz_synth.py`.
+`fuzz_synth_2qbf.py`.
+
+`--debugverilog 1` writes the final one as `-final.v` instead. `test-synth`
+reads a `.v` like an `.aig`, but it has the functions only, so it must be a
+finished synthesis. `fuzz_synth_2qbf.py` does this on half of its iterations;
+`tests/verilog/*.v` are `lit` tests of the reader (ctest `test-verilog`).
 
 ## Debugging issues
 
@@ -133,7 +278,7 @@ When debugging a bug (assertion, wrong answer, crash, non-determinism), use
 the full toolbox — don't stop at the first technique that gives a hint.
 Expected workflow:
 
-1. **Fuzzing** — reproduce / narrow down with `fuzz_synth.py`,
+1. **Fuzzing** — reproduce / narrow down with `fuzz_synth_2qbf.py`,
    `fuzz_aig_to_cnf`, `fuzz_aig_rewrite` (see "After every build"). Fuzzers
    generate minimal failing inputs much faster than reasoning from a large
    user-supplied CNF.

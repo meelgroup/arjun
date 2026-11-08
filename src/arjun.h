@@ -570,17 +570,13 @@ private:
     // written with (the value of the POSITIVE node; edge signs applied by
     // the reader).
     mutable uint8_t eval_val = 0;
-    static uint64_t next_visit_epoch() {
-        static uint64_t counter = 0;
-        return ++counter;
-    }
+    static uint64_t next_visit_epoch();
 
     // Counter backing `nid`. A plain static counter suffices: construction is
-    // single-threaded, and each run starts from 0.
-    static uint64_t next_nid() {
-        static uint64_t counter = 0;
-        return ++counter;
-    }
+    // single-threaded, and each run starts from 0. Both counters are defined
+    // in arjun.cpp: inline here, a library built with -fvisibility=hidden and
+    // the program using it would each have one, and hand out the same nids
+    static uint64_t next_nid();
 };
 
 // Deterministic aig_lit ordering: keyed on the node's monotonic nid, not its
@@ -643,6 +639,18 @@ private:
     // pointer-equal). A convenience — AIG::new_const can make other TRUE nodes.
     aig_node_ptr const_true_node = nullptr;
 };
+
+// What a malloc(n) really takes from the heap. The cache budgets memory with
+// bytes_used(), and a count is 1-5 tiny allocations, so ignoring the allocator's
+// header and minimum block size undercounts them by 2x.
+inline uint64_t heap_bytes(const uint64_t n) {
+    if (n == 0) return 0;
+    return std::max<uint64_t>(32, (n + 8 + 15) & ~15ULL);
+}
+
+inline uint64_t heap_bytes(const mpz_class& v) {
+    return heap_bytes(v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t));
+}
 
 class FMpz final : public CMSat::Field {
 public:
@@ -712,12 +720,8 @@ public:
         return check_end_of_weight(str, at, line_no);
     }
 
-    uint64_t helper(const mpz_class& v) const {
-      return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
-    }
-
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(FMpz) + helper(val);
+      return heap_bytes(sizeof(FMpz)) + heap_bytes(val);
     }
 };
 
@@ -823,13 +827,9 @@ public:
     void set_zero() final { val = 0; }
     void set_one() final { val = 1; }
 
-    [[nodiscard]] inline uint64_t helper(const mpz_class& v) const {
-      return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
-    }
-
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(FMpq) +
-          helper(val.get_num()) + helper(val.get_den());
+      return heap_bytes(sizeof(FMpq)) +
+          heap_bytes(val.get_num()) + heap_bytes(val.get_den());
     }
 
     bool parse_mpq(const std::string& str, uint32_t& at, const uint32_t line_no) {
@@ -927,14 +927,9 @@ inline unsigned int mpfr_memory_usage(const mpfr_t& x) {
     // Calculate the number of limbs required for the significand
     size_t num_limbs = (precision + limb_size - 1) / limb_size;
 
-    // Base size of mpfr_t structure
-    unsigned int base_size = sizeof(__mpfr_struct);
-
-    // Size of the mantissa (significand) data
-    unsigned int mantissa_size = num_limbs * sizeof(mp_limb_t);
-
-    // Total memory usage
-    return base_size + mantissa_size;
+    // The mpfr_t struct itself is a member of the Field object, only the
+    // significand is a separate allocation (with a one-limb header)
+    return heap_bytes((num_limbs + 1) * sizeof(mp_limb_t));
 }
 
 class FMpfr final : public CMSat::Field {
@@ -1048,7 +1043,7 @@ public:
 
 
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(FMpfr) + mpfr_memory_usage(val);
+      return heap_bytes(sizeof(FMpfr)) + mpfr_memory_usage(val);
     }
 };
 
@@ -1189,14 +1184,10 @@ public:
     void set_zero() final { real = 0; imag = 0; }
     void set_one() final { real = 1; imag = 0; }
 
-    uint64_t helper(const mpz_class& v) const {
-      return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
-    }
-
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(FComplex) +
-          helper(imag.get_num()) + helper(imag.get_den()) +
-          helper(real.get_num()) + helper(real.get_den());
+      return heap_bytes(sizeof(FComplex)) +
+          heap_bytes(imag.get_num()) + heap_bytes(imag.get_den()) +
+          heap_bytes(real.get_num()) + heap_bytes(real.get_den());
     }
 
     bool parse(const std::string& str, const uint32_t line_no) final {
@@ -1396,7 +1387,7 @@ public:
     }
 
     [[nodiscard]] uint64_t bytes_used() const final {
-      return sizeof(MPFComplex) + mpfr_memory_usage(real) + mpfr_memory_usage(imag);
+      return heap_bytes(sizeof(MPFComplex)) + mpfr_memory_usage(real) + mpfr_memory_usage(imag);
     }
 
     bool parse(const std::string& str, const uint32_t line_no) final {
@@ -1466,6 +1457,7 @@ struct SimpConf {
     int64_t bve_occ_prod_cutoff = 10000;
     int64_t bve_cls_max_size = 0;
     int bve_sched_only_touched = 0;
+    int bve_tie_min_occ = 0;
     int64_t backbone_ccnr_mems_limitM = 300;
 };
 
@@ -1523,6 +1515,10 @@ public:
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
         n_no_touch = other.n_no_touch;
+        num_quant_blocks = other.num_quant_blocks;
+        exists_block_seen = other.exists_block_seen;
+        bad_quant_block = other.bad_quant_block;
+        quant_vars = other.quant_vars;
         if (!other.need_aig) {
             for(const auto& d: other.defs)
                 assert(d == nullptr);
@@ -1562,6 +1558,17 @@ public:
     // ORIG vars 0..n_no_touch-1 must end up as CNF vars 0..n_no_touch-1
     void set_no_touch_vars(const std::vector<uint32_t>& vars);
     [[nodiscard]] uint32_t get_num_no_touch() const { return n_no_touch; }
+
+    // QDIMACS 'a'/'e' blocks, in file order. Called by the DIMACS parser
+    void add_quant_block(bool forall, const std::vector<uint32_t>& vars) {
+        num_quant_blocks++;
+        if (!forall) exists_block_seen = true;
+        else if (exists_block_seen && bad_quant_block == 0) bad_quant_block = num_quant_blocks;
+        quant_vars.insert(vars.begin(), vars.end());
+    }
+    [[nodiscard]] uint32_t get_num_quant_blocks() const { return num_quant_blocks; }
+    [[nodiscard]] uint32_t get_bad_quant_block() const { return bad_quant_block; }
+    [[nodiscard]] const auto& get_quant_vars() const { return quant_vars; }
     // no-touch set in CNF numbering
     [[nodiscard]] std::set<uint32_t> get_no_touch_cur() const {
         std::set<uint32_t> ret;
@@ -1582,7 +1589,7 @@ public:
     void check_no_touch_sanity() const;
     void check_no_touch_mapping() const;
     void restore_no_touch(std::unique_ptr<CMSat::SATSolver>& solver, const SimplifiedCNF& prev);
-    [[nodiscard]] bool synth_done() const;
+    [[nodiscard]] bool all_ys_defined() const;
     [[nodiscard]] bool is_projected() const { return proj; }
 
     template<class T>
@@ -1822,6 +1829,9 @@ public:
                          std::vector<std::vector<CMSat::Lit>>&& red);
 
     void write_simpcnf(const std::string& fname, bool red = true) const;
+    // Removes the clauses blocked on an existential literal. Keeps, for every
+    // X, whether it has a Y, but not the Skolem functions. Returns the number removed
+    uint32_t bce_2qbf(std::vector<std::vector<CMSat::Lit>>& cls) const;
 
     [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);
@@ -1867,8 +1877,9 @@ public:
     // human-readable writing
     void write_aig_defs_to_file_txt(const std::string& fname) const;
 
-    // Verilog writing
+    // Verilog: only the functions over the orig sampl vars, no CNF
     void write_aig_def_to_verilog(const std::string& fname) const;
+    void read_aig_defs_from_verilog(const std::string& fname);
 
     [[nodiscard]] std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
@@ -1897,6 +1908,19 @@ public:
     // def is wrong. Expensive; intended for debugging BVE/synthesis issues.
     [[nodiscard]] int check_synth_funs_sat() const;
 
+    // An X with ~F(X, defs(X)) for the clauses, or empty. Over orig vars
+    [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_cex() const;
+    // No Y extends X to a model of the orig clauses. For debugging
+    [[nodiscard]] bool is_2qbf_cex(const std::vector<CMSat::lbool>& cex) const;
+    // cls, over the CNF's vars, over orig vars instead
+    [[nodiscard]] std::vector<std::vector<CMSat::Lit>> to_orig_cls(
+            const std::vector<std::vector<CMSat::Lit>>& cls) const;
+    // Simplification defines an orig sampl var only by what F implies: a unit,
+    // or an equivalence with another one. An X that breaks that def has no Y.
+    // Empty if no orig sampl var is defined: then the clauses are the 2QBF,
+    // and the orig sampl vars not in them are free
+    [[nodiscard]] std::vector<CMSat::lbool> get_2qbf_def_cex() const;
+
     void set_backbone_done(const bool bb_done) {
         backbone_done = bb_done;
     }
@@ -1906,21 +1930,6 @@ public:
     // Used after SBVA to replace clauses
     void replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses);
 
-    // Used after BCE to replace clauses
-    // DELETES ALL REDUNDANT CLAUSES!!!
-    struct BCEClause {
-        uint32_t at = std::numeric_limits<uint32_t>::max();
-        std::vector<CMSat::Lit> lits;
-        bool to_remove = false;
-    };
-    void replace_clauses_with(std::vector<BCEClause>& cls) {
-        clauses.clear();
-        red_clauses.clear(); // Yes, it's necessary
-        for(const auto& cl: cls) {
-            if (cl.to_remove) continue;
-            add_clause(cl.lits);
-        }
-    }
     void set_after_backward_round_synth() {
         assert(!after_backward_round_synth && "Should only be set once");
         after_backward_round_synth = true;
@@ -1949,6 +1958,11 @@ public:
         AIG::simplify_aigs(verb, defs);
     }
     void rewrite_aigs(const uint32_t verb = 0, bool balance = false);
+    [[nodiscard]] size_t num_def_nodes() const {
+        std::vector<aig_lit> roots;
+        for (const auto& d : defs) if (d != nullptr) roots.push_back(d);
+        return AIG::count_aig_nodes_fast(roots);
+    }
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void check_red_cls_deriveable() const;
 
@@ -1985,7 +1999,11 @@ private:
     std::map<uint32_t, Weight> weights;
     std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
                                                     // does NOT map to vars NOT in the CNF
-    uint32_t n_no_touch = 0;
+    uint32_t n_no_touch = 0; // 'c p no-touch': ORIG vars 0..n_no_touch-1 keep their numbers in the CNF
+    uint32_t num_quant_blocks = 0;
+    bool exists_block_seen = false;
+    uint32_t bad_quant_block = 0; // 1st 'a' block after an 'e' one, counted from 1. 0: forall-exists
+    std::set<uint32_t> quant_vars;
     AIGManager aig_mng; // only for const true/false
     std::vector<aig_lit> defs; //Definition of variables in terms of AIG. ORIGINAL number space.
                                //Size is the original number of variables, ALWAYS
@@ -2026,6 +2044,13 @@ public:
         uint32_t sbva_max_new_vars = 1000;
         bool do_renumber = true;
         bool do_autarky = true;
+        double cover_drop_mticks = 0; // see standalone_cover_drop. 0 = off
+        uint32_t cover_drop_max_cubes = 0;
+        bool cover_drop_weighted_as_x = true;
+        bool cover_drop_sat_minim = true;
+        uint32_t cover_drop_sls_flips = 0;
+        uint32_t cover_drop_sls_stall = 30;
+        bool cover_drop_minim_cubes = true;
     };
     struct InterpConf {
         uint32_t interp_rebuild_every = 50;
@@ -2094,6 +2119,20 @@ public:
         }
     };
 
+    // Model covering, see cover.h
+    struct CoverConf {
+        double budget = 100000; // a refinement naming fraction f of the helpers costs f^2: next to nothing while it converges
+        uint64_t max_ticks = 0; // of SAT solver work, 0 = no limit
+        bool stop_at_cex = false; // return the first X with no Y, instead of skipping its cube
+        bool need_funs = true; // false: l_True comes with no Skolem functions, only the verdict
+        bool sat_minim = true; // shorten a refinement: a model, of the same X, whose existentials satisfy more clauses
+        uint32_t max_minim_calls = 50; // per round, for sat_minim
+        uint32_t max_minim_wait = 7; // a helper that a core kept out of the model sits out 1, 3, 7.. of its next tries
+        uint32_t sls_flips = 0; // before sat_minim, per round: flips of a local search that keeps every clause true, for fewer helpers with a false y part
+        uint32_t sls_stall = 30; // sls stops after this many flips with no better model
+        uint32_t stats_every = 1000; // rounds
+    };
+
     struct IndepInfo {
         std::vector<std::pair<CMSat::Lit, CMSat::Lit>> eq_lits;
         std::vector<CMSat::Lit> backbone;
@@ -2112,7 +2151,7 @@ public:
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
-    void standalone_backbone(SimplifiedCNF& cnf);
+    void standalone_backbone(SimplifiedCNF& cnf, int64_t max_confl = 20000);
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
@@ -2120,6 +2159,13 @@ public:
     SimplifiedCNF standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& cegr_conf);
     SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
+    CMSat::lbool standalone_cover(SimplifiedCNF& cnf, const CoverConf& cover_conf, std::vector<CMSat::lbool>& cex);
+    // Projected counting: removes the clauses over non-sampling vars that,
+    // together, have a model for every X the sampling-only clauses allow.
+    // max_cubes != 0: also replaces them by at most this many clauses over X
+    // that rule out the X with no model. weighted_as_x: the weighted opt
+    // sampling vars are taken as sampling ones. Returns the clauses removed, net
+    int64_t standalone_cover_drop(SimplifiedCNF& cnf, const ElimToFileConf& etof_conf);
 
     //Set config
     void set_verb(uint32_t verb);

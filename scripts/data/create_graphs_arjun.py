@@ -24,12 +24,14 @@ VER_EXPR = "COALESCE(arjun_sha1, solver)"
 
 # Per-solver solve time: arjun reports it on the "All done." line; CADET has
 # no equivalent, so we use timeout_t (wall-clock user time, already nulled
-# by the parser when killed by signal).
-SOLVE_TIME_EXPR = "(CASE WHEN solver='cadet' THEN timeout_t ELSE arjun_time END)"
+# by the parser when killed by signal). 2QBF runs (solver is e.g.
+# 'arjun-pre+cadet', 'arjun-2qbf', 'caqe') have preprocessing + solving
+# wall-clock time in timeout_t, NULL without a verdict.
+SOLVE_TIME_EXPR = "(CASE WHEN solver='arjun' THEN arjun_time ELSE timeout_t END)"
 
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
-    # "out-synth-1587721-6", # CADET
+    "out-synth-1587721-6", # CADET
 
     # "out-synth-1068169-0",
     # "out-synth-1296625-", # lots of memory (9GB)
@@ -57,7 +59,7 @@ only_dirs = [
     # "out-synth-1595974-0", # old system where interpolant was with picosat and MyTracer
     # "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
     # "out-synth-1903613-2", # restarts between cegr & ITE chain rewrite
-    "out-synth-1903613-1", # restarts between cegr & ITE chain rewrite
+    # "out-synth-1903613-1", # restarts between cegr & ITE chain rewrite
     # "out-synth-1903613-2", # restarts between cegr & ITE chain rewrite
     # "out-synth-1914059-0", # more rewrite
     # "out-synth-1925733-0", # faster y_hat recompute, persistent conflict minim SAT solver
@@ -75,7 +77,27 @@ only_dirs = [
     # "out-synth-2263789-0", # fixing up the distill with new cadical
     # "out-synth-2263789-2", # fixing up the distill with new cadical
     # "out-synth-2272478-4", # even better maybe
-    "out-synth-2273894-3", # limit unate
+    # "out-synth-2273894-3", # limit unate
+    # "out-synth-2535088-1", # CEGAR for Y->X skolem and also testing 2QBF
+    # "out-synth-2535088-2", # CEGAR for Y->X skolem and also testing 2QBF
+    # "out-synth-2538628-", # improved cover
+    # "out-synth-2539107-0", # improved cover
+    # "out-synth-2539107-3", # improved cover
+
+    # synth
+    # "out-synth-2539107-4", # improved cover
+    "out-synth-2669714-2", # cleanup of cover
+    "out-synth-2791167-", # improved cover
+
+    # "out-2qbf-2544900-4", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    # "out-2qbf-2544900-9", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    # "out-2qbf-2544900-6", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    # "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    # "out-2qbf-2554015-4", # improved cover + multi-run puura in qbf
+    # "out-2qbf-2669713-5",
+    # "out-2qbf-2669713-3", # after cover cleanup
+    # "out-2qbf-2680942",
+    # "out-2qbf-2717062",
 
     # "out-synth-1367674-0", # before unate-eq
 ]
@@ -111,7 +133,7 @@ def _dir_call_label(call: str) -> str:
     """Strip binary name and CNF/QDIMACS filename from a raw timeout_call string."""
     call = re.sub(r'^(?:\./)+arjun\S*\s+', '', call)
     call = re.sub(r'^(?:\./)+cadet\S*\s+', '', call)
-    call = re.sub(r'\s+\S+\.(?:qdimacs\.cnf|qdimacs|cnf)\S*\s*$', '', call)
+    call = re.sub(r'\s+\S+\.(?:qdimacs\.cnf|qdimacs|cnf)\S*(?:\s+/dev/null)?\s*$', '', call)
     return call.strip()
 
 
@@ -454,6 +476,40 @@ def print_stuck_top_table(table_todo, fname_like, top=5):
     con.close()
 
 
+def print_cover_runs_table(table_todo, fname_like):
+    """--2qbf only: per covering run, what it decided and what giving up cost.
+    'gaveup T on solved' is time lost on files the run did not decide but the
+    config solved anyway; max ticks of a decided run shows if its limit binds."""
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    str_rows = []
+    for dir, ver in table_todo:
+        for run in ("orig", "simp", "late", "long"):
+            p = f"cover_{run}_"
+            cur.execute(
+                f"SELECT COUNT({p}res), SUM({p}res!='gaveup'),"
+                f" SUM(CASE WHEN {p}res!='gaveup' THEN {p}t END),"
+                f" SUM(CASE WHEN {p}res='gaveup' THEN {p}t END),"
+                f" SUM(CASE WHEN {p}res='gaveup' AND {SOLVE_TIME_EXPR} IS NOT NULL THEN {p}t END),"
+                f" SUM({p}res='gaveup' AND {p}t>30),"
+                f" MAX(CASE WHEN {p}res!='gaveup' THEN {p}ticks END),"
+                f" MAX(CASE WHEN {p}res!='gaveup' THEN {p}t END)"
+                f" FROM {TABLE} WHERE dirname=? AND {VER_EXPR}=?{fname_like}", (dir, ver))
+            n, dec, tdec, tfail, tfail_solved, slow, maxticks, maxt = cur.fetchone()
+            if not n:
+                continue
+            f = lambda x: f"{x:.0f}" if x is not None else ""
+            str_rows.append([dir, run, str(n), str(dec or 0), f(tdec), f(tfail),
+                             f(tfail_solved), str(slow or 0), f(maxticks), f(maxt)])
+    con.close()
+    if not str_rows:
+        return
+    print(f"\n{BLUE}2QBF covering runs{RESET}")
+    _print_table(["dirname", "run", "ran", "decided", "T decided", "T gaveup",
+                  "T gaveup solved", "gaveup >30s", "max Mticks dec", "max T dec"],
+                 str_rows)
+
+
 def print_signal_warnings(table_todo, fname_like):
     dirs = ",".join("'" + d + "'" for d, _ in table_todo)
     vers = ",".join("'" + v + "'" for _, v in table_todo)
@@ -636,6 +692,17 @@ def generate_cdf(fname2_s):
             lines.append(f'"{fn}" u 2:1 with linespoints title "{label}"')
         return ",\\\n".join(lines)
 
+    times = []
+    for fn, *_ in fname2_s:
+        with open(fn) as f:
+            times += [float(line.split()[1]) for line in f if line.strip()]
+    xmax = max(times)
+    xmin = 1.0 if xmax > 2 else max(min(times), 0.01)
+    # log axis: tics at 1-2-5 per decade, and one at the last point
+    tics = [m * 10.0 ** e for e in range(-2, 7) for m in (1, 2, 5)]
+    tics = [t for t in tics if xmin <= t and t * 1.25 < xmax]
+    xtics = ", ".join(f'"{t:.4g}" {t:g}' for t in tics + [xmax])
+
     with open(gnuplotfn, "w") as f:
         for term, out in [
             ('pdfcairo size 15cm,12cm background "#d0d0d0"', pdf_file),
@@ -647,11 +714,14 @@ def generate_cdf(fname2_s):
             f.write('set key bottom right font ",6"\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
-            f.write(f'set xrange [10.0:{TIMEOUT}]\n')
+            # a tic exactly on the edge of a log axis is dropped
+            f.write(f'set xrange [{xmin * 0.999:g}:{xmax * 1.001:g}]\n')
+            f.write(f'set xtics ({xtics})\n')
+            f.write('set mxtics 10\n')
             # f.write('set yrange [0:]\n')
             f.write('set ylabel "Instances synthesised"\n')
             f.write('set xlabel "Time (s)"\n')
-            f.write('set grid\n')
+            f.write('set grid xtics mxtics ytics\n')
             f.write('set pointsize 0.2\n')
             f.write('plot \\\n')
             f.write(plot_lines())
@@ -767,6 +837,9 @@ def main():
 
     versions = get_versions()
     matched_dirs = get_matching_dirs(only_dirs)
+    if matched_dirs and all(d.startswith("out-2qbf-") for d in matched_dirs):
+        global TIMEOUT
+        TIMEOUT = 900
     if args.verbose:
         print(f"Found {len(versions)} version(s) in database")
         print(f"Matched {len(matched_dirs)} dir(s): {matched_dirs}")
@@ -828,6 +901,7 @@ def main():
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)
+    print_cover_runs_table(table_todo, fname_like)
     print_slower_tables(matched_dirs, fname_like, verbose=args.verbose)
     print_solve_diff_tables(matched_dirs, fname_like, verbose=args.verbose)
 

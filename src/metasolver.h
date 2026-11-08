@@ -30,6 +30,8 @@
 #include <memory>
 #include <vector>
 #include <cassert>
+#include <algorithm>
+#include <limits>
 
 namespace ArjunInt {
 
@@ -71,6 +73,28 @@ public:
         cadical->set("congruence", 0);
         cadical->set("sweep", 0);
         cadical->set("factor", 0);
+    }
+
+    // Lucky phases sweep the whole formula on every solve()
+    void set_no_lucky() {
+        if (solver_type != SolverType::cadical) return;
+        cadical->set("lucky", 0);
+        cadical->set("luckyassumptions", 0);
+    }
+
+    // Congruence closure took 9 GB on cover's x_solver, of a cofactor per round
+    void set_no_congruence() {
+        if (solver_type == SolverType::cadical) cadical->set("congruence", 0);
+    }
+
+    void set_decide(const bool phase) {
+        if (solver_type != SolverType::cadical) return;
+        cadical->set("forcephase", 1);
+        cadical->set("phase", phase);
+    }
+
+    void set_phase(const CMSat::Lit l) {
+        if (solver_type == SolverType::cadical) cadical->phase(lit_to_cadical(l));
     }
 
     // Variable management
@@ -135,6 +159,12 @@ public:
         return static_cast<uint64_t>(cadical->conflicts());
     }
 
+    // Work done by all solve() calls: the same on every machine
+    uint64_t get_sum_ticks() const {
+        if (solver_type == SolverType::cms) return cms->get_sum_propagations();
+        return static_cast<uint64_t>(cadical->get_statistic_value("ticks"));
+    }
+
     void simplify(std::vector<CMSat::Lit>* assumps) {
         if (solver_type == SolverType::cms) cms->simplify(assumps);
     }
@@ -147,6 +177,12 @@ public:
     void set_max_confl(int64_t max_confl) {
         if (solver_type == SolverType::cms) cms->set_max_confl(max_confl);
         else cadical->limit("conflicts", static_cast<int>(max_confl));
+    }
+
+    // Next solve() only. CMS has no ticks, it is not limited
+    void set_max_ticks(int64_t max_ticks) {
+        if (solver_type == SolverType::cadical)
+            cadical->limit("ticks", static_cast<int>(std::min<int64_t>(max_ticks, std::numeric_limits<int>::max())));
     }
 
 private:

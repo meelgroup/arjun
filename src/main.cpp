@@ -66,11 +66,21 @@ ArjunNS::Arjun::InterpConf iconf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
-int do_synth_bve = true;
+int do_puura = true;
 int do_pre_backbone = 0;
-string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rnd(max_repairs=400),bve";
+string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_guess=1),rnd(max_repairs=400),cover(ticks=5000),bve";
 
 int synthesis = false;
+int qbf2 = false;
+size_t qbf2_num_cls = 0;
+int debug_verilog = 0;
+ArjunNS::Arjun::CoverConf cover_conf;
+double cover_ticks = 200;
+double cover_late_ticks = 100;
+double cover_orig_ticks = 2000;
+double cover_bce_ticks = 5000;
+double cover_orig_budget = 50;
+bool cover_done = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
 int do_backward = true;
@@ -161,8 +171,18 @@ void add_arjun_options() {
 
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
+    myflag("--2qbf", qbf2, "Solve the 2QBF: forall the 'a' (or 'c p show') vars, exists the rest. Exits with 10 (true) or 20 (false). If an output file is given, the Skolem functions are written to it");
+    myopt("--cover", cover_conf.budget, "Before synthesis, try to cover all inputs with a few models of the CNF. Its budget: a refinement that names fraction f of the helper variables costs f^2. 0 = off");
+    myopt("--coverlateticks", cover_late_ticks, "As --coverticks, for the covering run after the definition passes");
+    myopt("--coverbceticks", cover_bce_ticks, "--2qbf with no output file: as --coverticks, for the covering run on a copy of the CNF with the blocked clauses removed and BVE redone. -1 = no such copy");
+    myopt("--coverorigticks", cover_orig_ticks, "As --coverticks, for the covering run of --2qbf on the original clauses");
+    myopt("--coverorigbudget", cover_orig_budget, "As --cover, for the covering run of --2qbf on the original clauses, at most --cover");
+    myopt("--coversls", cover_conf.sls_flips, "Covering shortens a refinement by local search before --coverminimsat: at most this many flips of existentials per round, every clause staying satisfied. 0 = off");
+    myopt("--coverslsstall", cover_conf.sls_stall, "--coversls stops after this many flips that find no better model");
+    myopt("--coverminimsat", cover_conf.sat_minim, "Covering shortens a refinement by SAT calls for a model of the same input whose existentials satisfy more clauses");
+    myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit, negative = no such run. The 1st runs are short, the long one is cover(ticks=N) of --cstrategy");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
-    myopt("--synthbve", do_synth_bve,"Perform BVE for synthesis");
+    myopt("--synthpuura", do_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict,"Minimize conflict size when repairing");
     myopt("--unatedef", do_unate_def,"Perform definition-aware unate analysis");
@@ -179,7 +199,13 @@ void add_arjun_options() {
           "L in t = L. Inputs are still tried first; non-inputs only after the "
           "input list is exhausted. 0 = inputs only");
     myopt("--autarky", etof_conf.do_autarky,"Perform autarky analysis");
-    // CNF rewrite via AIG lifting
+    myopt("--coverdrop", etof_conf.cover_drop_mticks, "After Puura, remove the clauses of non-sampling vars that every allowed sampling assignment can satisfy, checked by model covering (2QBF). Its budget in millions of SAT solver ticks, 0 = off");
+    myopt("--coverdropcubes", etof_conf.cover_drop_max_cubes, "With --coverdrop, also replace the clauses by at most this many clauses over the sampling vars that rule out the assignments with no model of them. 0 = only remove");
+    myopt("--coverdropw", etof_conf.cover_drop_weighted_as_x, "With --coverdrop, take the weighted defined vars as sampling ones, so that the parts with them can also be removed or replaced");
+    myopt("--coverdropminimsat", etof_conf.cover_drop_sat_minim, "With --coverdrop, shorten a refinement by SAT calls for a model of the same input whose existentials satisfy more clauses");
+    myopt("--coverdropsls", etof_conf.cover_drop_sls_flips, "With --coverdrop, shorten a refinement by local search before --coverdropminimsat: at most this many flips per round. 0 = off");
+    myopt("--coverdropslsstall", etof_conf.cover_drop_sls_stall, "--coverdropsls stops after this many flips that find no better model");
+    myopt("--coverdropminimcubes", etof_conf.cover_drop_minim_cubes, "With --coverdropcubes, shorten each kept cube by SAT calls");
 
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
@@ -188,6 +214,7 @@ void add_arjun_options() {
         "Comma-separated synthesis strategy list, e.g. "
         "\"learn(samples=1,max_repairs=100),learn(max_repairs=800),bve\". "
         "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
+        "cover(ticks=N) is a covering run of N million ticks, never the last. "
         "Params: max_repairs, samples, seed, min_gain_split, "
         "max_depth, sampler_fixed_conflicts, and other CegrConf fields.");
 
@@ -235,7 +262,8 @@ void add_arjun_options() {
     myopt("--czthreshlow", mconf.cz_threshold_low, "Consecutive cost-zero break count when low cz ratio");
     // synth -- debug
     myopt("--cegrcnf", mconf.write_cegr_cnf, "Write Cegr CNF to this file");
-    myopt("--debugsynth", conf.debug_synth,"Debug synthesis, prefix with this fname");
+    myopt("--debugsynth", conf.debug_synth,"Debug synthesis or 2QBF (with an output file): write each stage's functions to files with this prefix");
+    myopt("--debugverilog", debug_verilog, "With --debugsynth: write the final functions as Verilog (-final.v) instead of -final.aig");
     myopt("--interprebuildevery", iconf.interp_rebuild_every,
           "Rebuild the doubled-CNF interpolation solver every N interpolants "
           "(bounds tracer maps; smaller = exercise the rebuild path more).");
@@ -323,6 +351,7 @@ void add_arjun_options() {
     myopt("--bveprodlim", simp_conf.bve_occ_prod_cutoff, "BVE: refuse a var whose pos*neg occurrence product is over this. This is the bound on resolution work");
     myopt("--bveclsmaxsz", simp_conf.bve_cls_max_size, "BVE: refuse a var that occurs in a clause longer than this. 0 = no limit");
     myopt("--bveschedtouched", simp_conf.bve_sched_only_touched, "BVE: only schedule vars whose clauses changed since BVE last looked. 0 = schedule every eligible var");
+    myopt("--bvetieminocc", simp_conf.bve_tie_min_occ, "BVE: among equal-size clauses, take first the one whose rarest var occurs the least. 0 = order them by clause ID");
     myopt("--ccnrbudget", simp_conf.backbone_ccnr_mems_limitM, "Mems budget, in millions, for each CCNR local search try that pre-filters backbone candidates. If no model is found, cadiback must test every variable");
     myopt("--puuradistill", simp_conf.puura_distill, "Distillation inside Puura's simplification strategy. 1 = as scheduled, 0 = drop every distill token, 2 = drop only the ones that run before the first occ-bve");
     myopt("--distillremlevel", simp_conf.distill_rem_level, "Clause removal during Puura's distillation. 0 = never, 1 = only on a real conflict, 2 = also when a literal is positively implied. Levels below 2 keep gate clauses that BVE needs to recover definitions");
@@ -334,6 +363,8 @@ void add_arjun_options() {
     myopt("--backward", do_backward,"Run the backward pass to minimize the independent set");
     myopt("--debugminim", debug_minim,"Create this file that is the CNF after indep set minimization");
     myopt("--cmsmult", conf.cms_glob_mult,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
+    myopt("--cmsabsbudget", conf.cms_abs_budget, "CMS: absolute intree/distill budgets instead of search-relative ones");
+    myopt("--cmssweep", conf.cms_sweep, "CMS: SAT sweeping (occ-sweep)");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
@@ -362,6 +393,8 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
     arj->set_cms_glob_mult(conf.cms_glob_mult);
+    arj->set_cms_abs_budget(conf.cms_abs_budget);
+    arj->set_cms_sweep(conf.cms_sweep);
     if (do_gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);
@@ -391,6 +424,56 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
+[[noreturn]] void qbf2_result(const ArjunNS::SimplifiedCNF& cnf, const bool is_true,
+        const vector<CMSat::lbool>& cex = {}) {
+    cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
+        << (cpuTime() - start_time) << endl;
+    cout << "s cnf " << is_true << " " << cnf.get_orig_num_vars() << " " << qbf2_num_cls << endl;
+    if (!is_true) {
+        vector<CMSat::lbool> full(cnf.get_orig_num_vars(), CMSat::l_False);
+        for (uint32_t v = 0; v < cex.size() && v < full.size(); v++) if (cex[v] == CMSat::l_True) full[v] = CMSat::l_True;
+        SLOW_DEBUG_DO(assert(cnf.is_2qbf_cex(full)));
+        for(const auto& v: cnf.get_orig_sampl_vars())
+            cout << "V " << (full[v] == CMSat::l_True ? "" : "-") << v+1 << " 0" << endl;
+    }
+    exit(is_true ? 10 : 20);
+}
+
+void check_2qbf_prefix(const ArjunNS::SimplifiedCNF& cnf) {
+    if (cnf.get_bad_quant_block()) {
+        cout << "ERROR: --2qbf needs a forall-exists quantifier prefix, but block "
+            << cnf.get_bad_quant_block() << " of the file is an 'a' block after an 'e' one" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (cnf.get_num_quant_blocks() == 0) return;
+    for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl) if (!cnf.get_quant_vars().count(l.var())) {
+        cout << "ERROR: variable " << l.var()+1 << " is free, i.e. existential "
+            "BEFORE the universals, so this is not a forall-exists 2QBF" << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
+// the orig lit of each var of the CNF
+vector<CMSat::Lit> new_to_orig(const ArjunNS::SimplifiedCNF& cnf) {
+    vector<CMSat::Lit> ret(cnf.nVars(), CMSat::lit_Undef);
+    for (const auto& [n, o] : cnf.get_new_to_orig_var()) ret[n] = o;
+    return ret;
+}
+
+void check_2qbf_univ_clause(const ArjunNS::SimplifiedCNF& cnf) {
+    const auto to_orig = new_to_orig(cnf);
+    for(const auto& cl: cnf.get_clauses()) {
+        if (!std::all_of(cl.begin(), cl.end(), [&](const CMSat::Lit l) {
+                return cnf.get_orig_sampl_vars().count(to_orig[l.var()].var()); })) continue;
+        vector<CMSat::lbool> cex(cnf.num_defs(), CMSat::l_Undef);
+        for(const auto& l: cl) {
+            const CMSat::Lit o = to_orig[l.var()] ^ l.sign();
+            cex[o.var()] = CMSat::boolToLBool(o.sign());
+        }
+        qbf2_result(cnf, false, cex);
+    }
+}
+
 void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     CMSat::SATSolver solver;
     solver.set_verbosity(0);
@@ -400,12 +483,163 @@ void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& cl: cnf.get_red_clauses()) solver.add_red_clause(cl);
     CMSat::lbool ret = solver.solve();
     if (ret == CMSat::l_False) {
+        if (qbf2) qbf2_result(cnf, false);
         cout << "c o [arjun] Input CNF is UNSAT!" << endl;
         exit(EXIT_FAILURE);
     }
 }
 
-void do_synthesis() {
+bool has_univ(const ArjunNS::SimplifiedCNF& cnf) {
+    const auto to_orig = new_to_orig(cnf);
+    for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl)
+        if (cnf.get_orig_sampl_vars().count(to_orig[l.var()].var())) return true;
+    return false;
+}
+
+bool has_defined(const ArjunNS::SimplifiedCNF& cnf) {
+    const auto to_orig = new_to_orig(cnf);
+    for(const auto& cl: cnf.get_clauses()) for(const auto& l: cl) {
+        const uint32_t o = to_orig[l.var()].var();
+        if (!cnf.get_orig_sampl_vars().count(o) && cnf.defined(o)) return true;
+    }
+    return false;
+}
+
+// SLOW_DEBUG: SAT-check defs after each stage; names the offending pass.
+void check_stage(ArjunNS::SimplifiedCNF& cnf, const std::string& stage) {
+    int bad = cnf.check_synth_funs_sat();
+    if (bad >= 0) {
+        cout << "c o [check_stage] WRONG def after stage '" << stage
+             << "' for var " << (bad+1) << endl;
+        assert(false && "wrong synth def after stage");
+    }
+}
+
+void try_cover(ArjunNS::SimplifiedCNF& cnf, const bool need_funs, const double budget, const double ticks) {
+    if (ticks < 0) return;
+    vector<CMSat::lbool> cex;
+    auto my_conf = cover_conf;
+    my_conf.budget = budget;
+    my_conf.max_ticks = ticks * 1e6;
+    my_conf.stop_at_cex = qbf2;
+    my_conf.need_funs = need_funs;
+    const auto ret = arjun->standalone_cover(cnf, my_conf, cex);
+    if (ret != CMSat::l_Undef) verb_print(1, "[arjun] solved by covering");
+    SLOW_DEBUG_DO(if (need_funs && ret != CMSat::l_False) check_stage(cnf, "cover"));
+    // the functions are in place, and get written out by do_synth_2qbf()
+    cover_done = ret == CMSat::l_True;
+    if (ret == CMSat::l_False || (cover_done && !need_funs)) qbf2_result(cnf, cover_done, cex);
+}
+
+// The 2QBF of cls, over orig vars, as a new problem
+ArjunNS::SimplifiedCNF cnf_of_2qbf_cls(const ArjunNS::SimplifiedCNF& cnf,
+        const vector<vector<CMSat::Lit>>& cls) {
+    ArjunNS::SimplifiedCNF ret(fg);
+    ret.set_need_aig();
+    ret.new_vars(cnf.get_orig_num_vars());
+    for(const auto& cl: cls) ret.add_clause(cl);
+    ret.set_sampl_vars(vector<uint32_t>(cnf.get_orig_sampl_vars().begin(), cnf.get_orig_sampl_vars().end()));
+    ret.set_orig_clauses(ret.get_clauses());
+    ret.set_orig_sampl_vars(ret.get_sampl_vars());
+    return ret;
+}
+
+size_t num_lits(const vector<vector<CMSat::Lit>>& cls) {
+    size_t ret = 0;
+    for(const auto& cl: cls) ret += cl.size();
+    return ret;
+}
+
+// Only the verdict comes back: the functions of the copy are not ones of cnf.
+// BCE and BVE of Ys keep, for every X, whether it has a Y
+void try_bce_cover(const ArjunNS::SimplifiedCNF& cnf) {
+    auto puura_conf = simp_conf;
+    puura_conf.bve_grow_iter1 = 16;
+    puura_conf.bve_grow_iter2 = 100;
+    puura_conf.bve_grow_iter2_large = -1;
+    // BVE is what BCE unlocks: the rest costs minutes on big CNFs
+    puura_conf.do_backbone_puura = false;
+    puura_conf.oracle_vivify = puura_conf.oracle_sparsify = puura_conf.oracle_extra = false;
+    puura_conf.iter1 = puura_conf.iter2 = 1;
+    const ArjunNS::SimplifiedCNF* at = &cnf;
+    ArjunNS::SimplifiedCNF copy(fg);
+    auto cls = cnf.get_clauses();
+    uint32_t removed = cnf.bce_2qbf(cls);
+    verb_print(1, "[2qbf-bce] blocked cls removed: " << removed);
+    // with none removed the copy is cnf, and its long cover the one not to do
+    if (!removed) return;
+    for (int round = 0; round < 3 && removed && !cls.empty(); round++) {
+        auto next = arjun->standalone_get_simplified_cnf(cnf_of_2qbf_cls(cnf, at->to_orig_cls(cls)), puura_conf);
+        if (!next.get_2qbf_def_cex().empty() || num_lits(next.get_clauses()) >= num_lits(cls)) break;
+        copy = std::move(next);
+        at = &copy;
+        cls = copy.get_clauses();
+        removed = copy.bce_2qbf(cls);
+    }
+    verb_print(1, "[2qbf-bce] cls: " << cnf.get_clauses().size() << " -> " << cls.size()
+            << " T: " << (cpuTime() - start_time));
+    if (cls.empty()) {
+        verb_print(1, "[arjun] solved by blocked clauses");
+        qbf2_result(cnf, true);
+    }
+    auto bce_cnf = cnf_of_2qbf_cls(cnf, at->to_orig_cls(cls));
+    vector<CMSat::lbool> cex;
+    auto my_conf = cover_conf;
+    my_conf.max_ticks = cover_bce_ticks * 1e6;
+    my_conf.stop_at_cex = true;
+    my_conf.need_funs = false;
+    const auto ret = arjun->standalone_cover(bce_cnf, my_conf, cex);
+    if (ret == CMSat::l_Undef) return;
+    verb_print(1, "[arjun] solved by covering the blocked clause copy");
+    if (ret == CMSat::l_False) {
+        vector<CMSat::lbool> full(cnf.get_orig_num_vars(), CMSat::l_False);
+        for (uint32_t v = 0; v < cex.size() && v < full.size(); v++) if (cex[v] == CMSat::l_True) full[v] = CMSat::l_True;
+        release_assert(cnf.is_2qbf_cex(full) && "The X with no Y of the blocked clause copy must have none in the input");
+    }
+    qbf2_result(cnf, ret == CMSat::l_True, cex);
+}
+
+void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) {
+    cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+    verb_print(1, "[2qbf-puura] cls: " << cnf.get_clauses().size() << " T: " << (cpuTime() - start_time));
+    if (qbf2) {
+        const auto cex = cnf.get_2qbf_def_cex();
+        if (!cex.empty()) {
+            verb_print(1, "[arjun] simplification defined a universal: false");
+            qbf2_result(cnf, false, cex);
+        }
+        check_2qbf_univ_clause(cnf);
+    }
+    if (!need_funs && !has_univ(cnf)) {
+        verb_print(1, "[arjun] no universal left, and the CNF is satisfiable");
+        qbf2_result(cnf, true);
+    }
+    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
+    SLOW_DEBUG_DO(check_stage(cnf, "simplified_cnf"));
+}
+
+void check_synth_2qbf_input(const ArjunNS::SimplifiedCNF& cnf) {
+    if (cnf.get_num_no_touch()) {
+        cout << "ERROR: synthesis with 'c p no-touch' is not supported" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (qbf2) {
+        check_2qbf_prefix(cnf);
+        if (cnf.get_weighted() || !cnf.get_multiplier_weight()->is_one()) {
+            cout << "ERROR: --2qbf does not take weights or a multiplier" << endl;
+            exit(EXIT_FAILURE);
+        }
+    } else if (etof_conf.all_indep) {
+        // No projection (or it covers all vars) => no defined vars to synth.
+        cout << "ERROR: no defined vars to synthesize "
+                "(no projection set, or projection covers all vars)" << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
+void do_synth_2qbf() {
+    SynthRunner synth_runner(conf, arjun);
+    const auto strategies = synth_runner.parse_mstrategy(mstrategy);
     if (etof_conf.all_indep) {
         cout << "ERROR: synthesis with --allindep makes no sense" << endl;
         exit(EXIT_FAILURE);
@@ -413,107 +647,112 @@ void do_synthesis() {
     ArjunNS::SimplifiedCNF cnf(fg);
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
-    if (cnf.get_num_no_touch()) {
-        cout << "ERROR: synthesis with 'c p no-touch' is not supported" << endl;
-        exit(EXIT_FAILURE);
-    }
-    if (etof_conf.all_indep) {
-        // No projection (or it covers all vars) => no defined vars to synth.
-        cout << "ERROR: no defined vars to synthesize "
-                "(no projection set, or projection covers all vars)" << endl;
-        exit(EXIT_FAILURE);
+    check_synth_2qbf_input(cnf);
+    if (qbf2 && !cnf.get_sampl_vars_set()) {
+      // neither 'a' nor 'c p show': no universals, a plain SAT problem
+      cnf.set_sampl_vars(vector<uint32_t>(), true);
     }
     cnf.clean_idiotic_mccomp_weights();
     cnf.check_cnf_sampl_sanity();
     cnf.check_cnf_vars();
     cnf.set_orig_clauses(cnf.get_clauses());
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
+    qbf2_num_cls = cnf.get_clauses().size();
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     check_cnf_sat(cnf);
-    if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
-    if (conf.verb)
-        cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
-
-    // SLOW_DEBUG: SAT-check defs after each stage; names the offending pass.
-    [[maybe_unused]] auto check_stage = [&](const std::string& stage) {
-        int bad = cnf.check_synth_funs_sat();
-        if (bad >= 0) {
-            cout << "c o [check_stage] WRONG def after stage '" << stage
-                 << "' for var " << (bad+1) << endl;
-            assert(false && "wrong synth def after stage");
-        }
-    };
-
-    if (do_synth_bve && !cnf.synth_done()) {
-        cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
-        SLOW_DEBUG_DO(check_stage("simplified_cnf"));
+    if (qbf2) {
+        if (cnf.get_sampl_vars().empty()) qbf2_result(cnf, true);
+        check_2qbf_univ_clause(cnf);
     }
+    const bool need_funs = !qbf2 || !output_file.empty();
+    if (!need_funs && !conf.debug_synth.empty()) {
+        cout << "ERROR: --debugsynth needs the functions to be kept: give an output file for them" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (conf.verb) cnf.get_var_types(conf.verb, "start do_synthesis");
 
-    if (etof_conf.do_autarky && !cnf.synth_done()) {
+    // Only 2QBF: an X with no Y ends it early here, synthesis has no such early exit to win
+    if (qbf2 && !cnf.all_ys_defined())
+        try_cover(cnf, need_funs, std::min(cover_conf.budget, cover_orig_budget), cover_orig_ticks);
+
+    if (do_puura && !cnf.all_ys_defined())
+        simplify_for_synth_2qbf(cnf, need_funs);
+
+    if (!cnf.all_ys_defined())
+        try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
+
+    if (qbf2 && !need_funs && cover_bce_ticks >= 0 && !cnf.all_ys_defined()) try_bce_cover(cnf);
+
+    if (etof_conf.do_autarky && !cnf.all_ys_defined()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
-        SLOW_DEBUG_DO(check_stage("autarky"));
+        SLOW_DEBUG_DO(check_stage(cnf, "autarky"));
     }
 
-    if (etof_conf.do_extend_indep && !cnf.synth_done()) {
+    if (etof_conf.do_extend_indep && !cnf.all_ys_defined()) {
         arjun->standalone_extend_synth(cnf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
-        SLOW_DEBUG_DO(check_stage("extend_synth"));
+        SLOW_DEBUG_DO(check_stage(cnf, "extend_synth"));
     }
 
-    if (do_backward && !cnf.synth_done()) {
+    if (do_backward && !cnf.all_ys_defined()) {
         arjun->standalone_backward_round_synth(cnf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
-        SLOW_DEBUG_DO(check_stage("minim_idep_synt"));
+        SLOW_DEBUG_DO(check_stage(cnf, "minim_idep_synt"));
     }
 
-    if (do_unate_def && !cnf.synth_done()) {
+    if (do_unate_def && !cnf.all_ys_defined()) {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
-        SLOW_DEBUG_DO(check_stage("unate_def"));
+        SLOW_DEBUG_DO(check_stage(cnf, "unate_def"));
     }
 
+    if (!cnf.all_ys_defined() && has_defined(cnf))
+        try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
+
     cnf.rewrite_aigs(conf.verb);
-    if (use_brute_force_synth && !cnf.synth_done()) {
-        // Brute-force: enumerate consistent X assignments, build per-y
-        // decision trees. Declines (CNF unchanged) if the enum set is too
-        // large; Cegr below then finishes the job.
+    SLOW_DEBUG_DO(check_stage(cnf, "rewrite_aigs"));
+    if (use_brute_force_synth && !cnf.all_ys_defined()) {
         verb_print(1, "[arjun] Synthesis: brute-force decision trees");
         cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
-        SLOW_DEBUG_DO(check_stage("brute_force_synth"));
+        SLOW_DEBUG_DO(check_stage(cnf, "brute_force_synth"));
     }
-    if (!cnf.synth_done()) {
-        SynthRunner synth_runner(conf, arjun);
-        auto strategies = synth_runner.parse_mstrategy(mstrategy);
-        synth_runner.run_cegr_strategies(cnf, mconf, strategies);
 
-        release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
+    if (!cnf.all_ys_defined()) {
+        synth_runner.run_strategies(cnf, mconf, strategies, [&](const double ticks) {
+            try_cover(cnf, need_funs, cover_conf.budget, ticks);
+        });
+
+        release_assert(cnf.all_ys_defined() && "All Ys should have functions by now (synthesis or 2QBF), but some do not!");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cegr.aig");
-        SLOW_DEBUG_DO(check_stage("cegr"));
+        SLOW_DEBUG_DO(check_stage(cnf, "cegr"));
     }
+
     // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
     cnf.rewrite_aigs(conf.verb, true);
+    auto final_cnf = cnf;
+    final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
     if (!output_file.empty()) {
-        if (output_file.ends_with(".aig")) cnf.write_aig_defs_to_file(output_file);
-        else if (output_file.ends_with(".v")) cnf.write_aig_def_to_verilog(output_file);
-        else {
-            cout << "ERROR: output file must end with .aig or .v" << endl;
-            exit(EXIT_FAILURE);
-        }
-        cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
+        if (!output_file.ends_with(".v")) final_cnf.write_aig_defs_to_file(output_file);
+        else final_cnf.write_aig_def_to_verilog(output_file);
+        cout << "c o [arjun] dumped synthesized functions to '" << output_file << "'" << endl;
     }
     if (!conf.debug_synth.empty()) {
-        auto final_cnf = cnf;
-        final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
-        final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
+        const string final_fname = conf.debug_synth + (debug_verilog ? "-final.v" : "-final.aig");
+        if (debug_verilog) final_cnf.write_aig_def_to_verilog(final_fname);
+        else final_cnf.write_aig_defs_to_file(final_fname);
         cout << "c o [arjun] you can check correctness by running: " << endl;
-        cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
+        cout << "./test-synth -u -v 1 " << input_file << " " << final_fname << endl;
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
+    }
+    if (qbf2) {
+        if (cover_done) qbf2_result(cnf, true);
+        const auto cex = cnf.get_2qbf_cex();
+        qbf2_result(cnf, cex.empty(), cex);
     }
 }
 
@@ -577,7 +816,7 @@ int main(int argc, char** argv) {
     }
 
     if (simp_conf.appmc) {
-        if (synthesis) {
+        if (synthesis || qbf2) {
             cout << "ERROR: Cannot use synthesis and appmc simplification at the same time" << endl;
             exit(EXIT_FAILURE);
         }
@@ -670,8 +909,17 @@ int main(int argc, char** argv) {
     cout << "c o [arjun] Input file: " << input_file << endl;
     if (!output_file.empty())
         cout << "c o [arjun] Output file: " << output_file << endl;
-    if (synthesis) {
-        do_synthesis();
+    if (synthesis && !qbf2 && output_file.empty()) {
+        cout << "ERROR: --synth needs an output file for the functions, ending in .aig or .v, or /dev/null" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if ((synthesis || qbf2) && !output_file.empty() && output_file != "/dev/null"
+            && !output_file.ends_with(".aig") && !output_file.ends_with(".v")) {
+        cout << "ERROR: the output file for the functions must end in .aig or .v, or be /dev/null" << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (synthesis || qbf2) {
+        do_synth_2qbf();
     } else {
         do_backward_pass();
     }

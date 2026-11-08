@@ -227,6 +227,122 @@ def find_cadet_time(fname):
     }
 
 
+MEM_OUT_RE = re.compile(
+    r"bad_alloc|out of memory|OutOfMemoryException|memory allocation of"
+    r"|realloc failed|memory manager can't handle the load"
+    r"|while reallocating clause space")
+
+
+def has_mem_out(fname):
+    with open(fname, "r", errors="replace") as f:
+        return any(MEM_OUT_RE.search(line) for line in f)
+
+
+def tool_of(cmd):
+    name = os.path.basename(cmd.split()[0])
+    return "arjun" if name.startswith("arjun") else name
+
+
+def clean_cmd(cmd):
+    cmd = re.sub(r'^\./', '', cmd)
+    cmd = re.sub(r'^arjun\S*', 'arjun', cmd)
+    cmd = re.sub(r' --verb \S+', '', cmd)
+    return re.sub(r' %[io]', '', cmd).strip()
+
+
+# What gave arjun's verdict: the Nth covering run, CEGR's functions, or
+# neither (simplification)
+def arjun_decided_by(fname):
+    with open(fname, "r", errors="replace") as f:
+        txt = f.read()
+    covers = re.findall(r"\[cover\] (all X covered|gave up|X with no Y)", txt)
+    if covers and covers[-1] != "gave up" and "[cegr]" not in txt[txt.rindex("[cover] " + covers[-1]):]:
+        return "cover%d-%s" % (len(covers), "covered" if covers[-1] == "all X covered" else "cex")
+    return "cegr" if "[cegr]" in txt else "simplification"
+
+
+COVER_RUNS = ("orig", "simp", "late", "long")
+COVER_FIN = re.compile(r"\[cover\] (all X covered|gave up|X with no Y) rounds: (\d+).*"
+                       r"ticks\(M\) x: ([0-9.]+) y: ([0-9.]+) y-def: ([0-9.]+).* T: ([0-9.]+) \(")
+COVER_LATE = re.compile(r"start (find_autarkies|extend_synth|backward_round_synth|do_unate_def) ")
+
+
+# The 2QBF covering runs of do_synth_2qbf(), told apart by what the log prints
+# between them; a run split into components has a [cover] line per component
+def arjun_cover_runs(fname):
+    ret = {}
+    run = "orig"
+    with open(fname, "r", errors="replace") as f:
+        for line in f:
+            if "[2qbf-puura]" in line:
+                run = "simp"
+            elif run == "simp" and COVER_LATE.search(line):
+                run = "late"
+            elif "Running strategy" in line and "cover(" in line:
+                run = "long"
+            elif "Running Cegr strategy" in line and run == "long":
+                run = None
+            m = COVER_FIN.search(line)
+            if not m or run is None:
+                continue
+            res = {"all X covered": "covered", "X with no Y": "cex", "gave up": "gaveup"}[m.group(1)]
+            p = "cover_" + run
+            ret[p + "_t"] = ret.get(p + "_t", 0) + float(m.group(6))
+            ret[p + "_ticks"] = ret.get(p + "_ticks", 0) + sum(float(m.group(i)) for i in (3, 4, 5))
+            ret[p + "_rounds"] = ret.get(p + "_rounds", 0) + int(m.group(2))
+            if res != "gaveup" or p + "_res" not in ret:
+                ret[p + "_res"] = res
+    return ret
+
+
+# One 2QBF run (creator_2qbf.sh) is a preprocessor and a solver, each with its
+# own log and time file; .out_res has the commands and the RESULT line.
+def finalize_2qbf(entry):
+    parts = entry.pop("_2qbf")
+    if "out_res" not in parts:
+        return
+    with open(parts["out_res"], "r") as f:
+        lines = f.read().splitlines()
+    pre = lines[0][len("pre: "):]
+    solver = lines[1][len("solver: "):]
+    res = [l for l in lines if l.startswith("RESULT")]
+    if not res:
+        return
+    res = dict(x.split("=") for x in res[0].split()[1:])
+    has_pre = pre != "none"
+
+    names = []
+    if has_pre:
+        names.append("arjun-pre" if tool_of(pre) == "arjun" else tool_of(pre))
+    names.append("arjun-2qbf" if tool_of(solver) == "arjun" else tool_of(solver))
+    entry["solver"] = "+".join(names)
+    entry["timeout_call"] = " + ".join(clean_cmd(c) for c in ([pre] if has_pre else []) + [solver])
+
+    tos = [timeout_parse(parts[k]) for k in ("timeout_pre", "timeout_solve") if k in parts]
+    entry["timeout_call_full"] = " ; ".join(t["timeout_call_full"] for t in tos)
+    entry["timeout_mem"] = max((t["timeout_mem"] for t in tos), default=None)
+    entry["page_faults"] = sum(t["page_faults"] or 0 for t in tos)
+    entry["signal"] = tos[-1]["signal"] if tos else 0
+
+    total = int(res["total_ms"]) / 1000
+    entry["verdict"] = res["verdict"] if res["verdict"] != "UNKNOWN" else None
+    entry["res_by"] = res["by"]
+    entry["pre_time"] = int(res["pre_ms"]) / 1000 if has_pre else None
+    entry["timeout_t_nonnull"] = total
+    entry["timeout_t"] = total if entry["verdict"] else None
+
+    arjun_log = "out_pre" if has_pre and tool_of(pre) == "arjun" else \
+        "out_solve" if tool_of(solver) == "arjun" else None
+    if arjun_log in parts:
+        data = find_arjun_time(parts[arjun_log])
+        entry.update({k: v for k, v in data.items() if k not in ("solved", "mem_out")})
+        if arjun_log == "out_solve":
+            entry.update(arjun_cover_runs(parts[arjun_log]))
+        if entry["verdict"] and res["by"] == ("pre" if arjun_log == "out_pre" else "solver"):
+            entry["decided_by"] = arjun_decided_by(parts[arjun_log])
+    entry["mem_out"] = int(any(has_mem_out(parts[k]) for k in ("out_pre", "out_solve") if k in parts))
+
+
 def timeout_parse(fname):
     t = None
     signal = None
@@ -323,6 +439,11 @@ def read_file(fname, files, existing=None):
     files[base]["dirname"] = dirname
     files[base]["fname"] = basename
 
+    kind = parts[1][len(basename) + 1:]
+    if kind in ("out_res", "out_pre", "out_solve", "timeout_pre", "timeout_solve"):
+        files[base].setdefault("_2qbf", {})[kind] = fname
+        return
+
     if ".timeout_" in fname:
         data = timeout_parse(fname)
         files[base].update(data)
@@ -381,7 +502,18 @@ COLUMNS = [
     ("last_stage",              "TEXT"),
     ("last_stage_done",         "TEXT"),
     ("mem_out",                 "INTEGER"),
-]
+    # 2QBF runs only: TRUE/FALSE, who ended the run (pre, solver, pre_failed,
+    # no_time_left) and the preprocessor's wall-clock time
+    ("verdict",                 "TEXT"),
+    ("res_by",                  "TEXT"),
+    ("pre_time",                "REAL"),
+    # arjun's own verdicts: coverN-covered, coverN-cex, cegr, simplification
+    ("decided_by",              "TEXT"),
+    # --2qbf covering runs (orig: orig clauses, simp: after Puura, late: after
+    # the def passes, long: cover(ticks=N) of --cstrategy). NULL = did not run.
+    # res: covered/cex/gaveup, ticks: x+y+y-def M ticks
+] + [("cover_%s_%s" % (r, k), t) for r in COVER_RUNS
+     for k, t in (("res", "TEXT"), ("t", "REAL"), ("ticks", "REAL"), ("rounds", "INTEGER"))]
 
 
 def open_db(db_path, recreate):
@@ -393,6 +525,10 @@ def open_db(db_path, recreate):
     conn = sqlite3.connect(db_path)
     col_defs = ", ".join(f"{name} {typ}" for name, typ in COLUMNS)
     conn.execute(f"CREATE TABLE IF NOT EXISTS arjun ({col_defs})")
+    have = {row[1] for row in conn.execute("PRAGMA table_info(arjun)")}
+    for name, typ in COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE arjun ADD COLUMN {name} {typ}")
     conn.commit()
     return conn
 
@@ -422,6 +558,8 @@ if __name__ == "__main__":
     parser.add_argument("--recreate", action="store_true",
                         help="Empty the database first and parse only the given files "
                              "(default: accumulate, skipping already-parsed entries)")
+    parser.add_argument("--reparse", action="store_true",
+                        help="Parse the directories of the given files again, replacing their entries")
     args = parser.parse_args()
 
     file_list = glob.glob(args.files)
@@ -432,6 +570,10 @@ if __name__ == "__main__":
 
     db_path = "data.sqlite3"
     conn = open_db(db_path, args.recreate)
+    if args.reparse:
+        for d in sorted({os.path.basename(os.path.dirname(f)) for f in file_list}):
+            conn.execute("DELETE FROM arjun WHERE dirname = ?", (d,))
+        conn.commit()
     existing = get_existing_keys(conn)
     if existing:
         print(f"Database already has {len(existing)} benchmark entries")
@@ -439,10 +581,19 @@ if __name__ == "__main__":
     files = {}
     for f in file_list:
         read_file(f, files, existing)
+    for entry in files.values():
+        if "_2qbf" in entry:
+            finalize_2qbf(entry)
 
     print(f"Parsed {len(files)} new benchmark entries")
 
     insert_rows(conn, files)
+    bad = conn.execute("""SELECT a.fname, a.dirname, b.dirname FROM arjun a JOIN arjun b ON a.fname = b.fname
+        WHERE a.verdict = 'TRUE' AND b.verdict = 'FALSE'
+        AND rtrim(a.dirname, '0123456789') = rtrim(b.dirname, '0123456789')""").fetchall()
+    for fname, d_true, d_false in bad:
+        print(f"ERROR: verdicts differ on {fname}: TRUE in {d_true}, FALSE in {d_false}")
+    print(f"2QBF verdict disagreements between the runs of a job: {len(bad)}")
     conn.close()
 
     print(f"Database written to {db_path}")
