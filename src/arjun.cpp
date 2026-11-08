@@ -122,7 +122,11 @@ DLL_PUBLIC string Arjun::get_version_sha1() {
 DLL_PUBLIC string Arjun::get_thanks_info(const char* prefix) {
     stringstream ss;
     ss << prefix << "Using ideas by JM Lagniez, and Pierre Marquis" << endl;
-    ss << prefix << "    from paper: Improving Model Counting [..] IJCAI 2016";
+    ss << prefix << "    from paper: Improving Model Counting [..] IJCAI 2016" << endl;
+    ss << prefix << "Using ideas by M. Janota and J. Marques-Silva" << endl;
+    ss << prefix << "    from paper: Abstraction-Based Algorithm for 2QBF, SAT 2011" << endl;
+    ss << prefix << "Using ideas by J. Brauer, A. King, and J. Kriener" << endl;
+    ss << prefix << "    from paper: Existential Quantification as Incremental SAT, CAV 2011";
     return ss.str();
 }
 
