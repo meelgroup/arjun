@@ -32,7 +32,7 @@ SOLVE_TIME_EXPR = "(CASE WHEN solver='arjun' THEN arjun_time ELSE timeout_t END)
 
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
-    "out-synth-1587721-6", # CADET
+    # "out-synth-1587721-6", # CADET
 
     # "out-synth-1068169-0",
     # "out-synth-1296625-", # lots of memory (9GB)
@@ -83,14 +83,14 @@ only_dirs = [
     # "out-synth-2535088-2", # CEGAR for Y->X skolem and also testing 2QBF
     # "out-synth-2538628-", # improved cover
     # "out-synth-2539107-0", # improved cover
-    # "out-synth-2539107-3", # improved cover
+    "out-synth-2539107-3", # improved cover
 
     # synth
     # "out-synth-2539107-4", # improved cover
-    "out-synth-2669714-2", # cleanup of cover
-    "out-synth-2791167-", # improved cover
+    # "out-synth-2669714-2", # cleanup of cover
+    # "out-synth-2791167-", # improved cover
 
-    # "out-2qbf-2544900-4", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
+    # "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
     # "out-2qbf-2544900-9", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
     # "out-2qbf-2544900-6", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
     # "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
@@ -99,6 +99,7 @@ only_dirs = [
     # "out-2qbf-2669713-3", # after cover cleanup
     # "out-2qbf-2680942",
     # "out-2qbf-2717062",
+    # "out-2qbf-2791631-0",
 
     # "out-synth-1367674-0", # before unate-eq
 ]
