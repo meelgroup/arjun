@@ -330,6 +330,55 @@ def arjun_cover_runs(fname):
     return ret
 
 
+DEF_STEPS = ("iter1-0", "iter1-1", "backbone", "oracle", "iter2-0", "iter2-1", "final-bve",
+             "puura", "cover-simp", "autarky", "extend", "backward", "unate_def",
+             "cover-late", "brute_force", "cegr", "cover-long")
+PUURA_STAGE = re.compile(r"\[puura-stage\] (\S+) .*to-define-left: *(\d+)/")
+
+
+def def_col(step):
+    return "left_" + step.replace("-", "_")
+
+
+# --synth: to-define vars left after each step (NULL: it did not run). Covering,
+# brute force and a CEGR strategy define all or nothing; cegr/cover-long are
+# the --cstrategy ones
+def arjun_def_steps(fname):
+    ret = {}
+    run = "orig"
+    left = None
+    with open(fname, "r", errors="replace") as f:
+        for line in f:
+            line = strip_ansi(line)
+            run = cover_run_step(run, line)
+            m = PUURA_STAGE.search(line)
+            if m and m.group(1) in DEF_STEPS:
+                left = ret[def_col(m.group(1))] = int(m.group(2))
+                continue
+            m = STAGE_DONE.search(line)
+            if m:
+                left = ret[def_col(STAGE_NAME.get(m.group(1), m.group(1)))] = int(m.group(2))
+                continue
+            if left is None:
+                continue
+            step = None
+            if COVER_FIN.search(line) and run in ("simp", "late", "long"):
+                step = "cover-" + run
+            elif "[brute_force_synth] partition:" in line:
+                step = "brute_force"
+            elif "Running Cegr strategy" in line:
+                step = "cegr"
+            if step:
+                ret.setdefault(def_col(step), left)
+            elif "[arjun] solved by covering" in line and run in ("simp", "late", "long"):
+                left = ret[def_col("cover-" + run)] = 0
+            elif "[brute_force_synth] done —" in line:
+                left = ret[def_col("brute_force")] = 0
+            elif line.startswith("c o [arjun] All done.") and left:
+                ret[def_col("cegr")] = left = 0
+    return ret
+
+
 CEGR_T = re.compile(r"\[cegr\].* T: *([0-9.]+)")
 CEGR_REP = re.compile(r"\[cegr\] rep: *(\d+)")
 
@@ -529,6 +578,7 @@ def read_file(fname, files, existing=None):
         files[base].update(arjun_cover_runs(fname))
         files[base]["solved_by"] = arjun_solved_by(fname)
         files[base]["cegr_runs"] = arjun_cegr_runs(fname)
+        files[base].update(arjun_def_steps(fname))
         return
 
     if fname.endswith(".out_cadet"):
@@ -590,7 +640,8 @@ COLUMNS = [
     # the def passes, long: cover(ticks=N) of --cstrategy). NULL = did not run.
     # res: covered/cex/gaveup, ticks: x+y+y-def M ticks
 ] + [("cover_%s_%s" % (r, k), t) for r in COVER_RUNS
-     for k, t in (("res", "TEXT"), ("t", "REAL"), ("ticks", "REAL"), ("rounds", "INTEGER"))]
+     for k, t in (("res", "TEXT"), ("t", "REAL"), ("ticks", "REAL"), ("rounds", "INTEGER"))
+] + [(def_col(s), "INTEGER") for s in DEF_STEPS]
 
 
 def open_db(db_path, recreate):

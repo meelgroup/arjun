@@ -84,12 +84,13 @@ only_dirs = [
     # "out-synth-2535088-2", # CEGAR for Y->X skolem and also testing 2QBF
     # "out-synth-2538628-", # improved cover
     # "out-synth-2539107-0", # improved cover
-    "out-synth-2539107-3", # improved cover
+    # "out-synth-2539107-3", # improved cover
 
     # synth
     # "out-synth-2539107-4", # improved cover
     # "out-synth-2669714-2", # cleanup of cover
     # "out-synth-2791167-", # improved cover
+    "out-synth-2791167-2",
 
     # "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
     # "out-2qbf-2544900-9", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
@@ -542,6 +543,63 @@ def print_solved_by_table(table_todo, fname_like):
                 _families_str([fn for fn, _ in rows])])
         print(f"\n{BLUE}Solved by (what defined the last var): {dir} [{ver[:10]}]{RESET}")
         _print_table(["solved by", "n", "%", "avg T", "max T", "families"], str_rows)
+    con.close()
+
+
+DEF_STEPS = ("iter1-0", "iter1-1", "backbone", "oracle", "iter2-0", "iter2-1", "final-bve",
+             "puura", "cover-simp", "autarky", "extend", "backward", "unate_def",
+             "cover-late", "brute_force", "cegr", "cover-long")
+
+
+def print_def_steps_table(table_todo, fname_like):
+    """--synth: the to-define vars each step of the pipeline defined. The
+    iter*/backbone/oracle/final-bve rows are Puura's stages, its own row is
+    what it did after them. avg % is of each file's to-define vars."""
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    cols = ", ".join("left_" + s.replace("-", "_") for s in DEF_STEPS)
+    for dir, ver in table_todo:
+        for title, cond in (("all", ""), ("solved", f" AND {SOLVE_TIME_EXPR} IS NOT NULL")):
+            cur.execute(
+                f"SELECT start_to_define_vars, {cols} FROM {TABLE}"
+                f" WHERE dirname=? AND {VER_EXPR}=? AND solver='arjun' AND verdict IS NULL"
+                f" AND start_to_define_vars > 0{cond}{fname_like}", (dir, ver))
+            rows = cur.fetchall()
+            if not rows or all(v is None for r in rows for v in r[1:]):
+                continue
+            tot = sum(r[0] for r in rows)
+            ran = [0] * len(DEF_STEPS)
+            nz = [0] * len(DEF_STEPS)
+            sdef = [0] * len(DEF_STEPS)
+            sfrac = [0.0] * len(DEF_STEPS)
+            left_end = 0
+            for start, *lefts in rows:
+                prev = start
+                for i, l in enumerate(lefts):
+                    if l is None:
+                        continue
+                    # cover-long gives up between CEGR strategies: a later one may still solve
+                    d = max(prev - l, 0)
+                    ran[i] += 1
+                    nz[i] += d != 0
+                    sdef[i] += d
+                    sfrac[i] += d / start
+                    prev = min(prev, l)
+                left_end += prev
+            str_rows = []
+            cum = 0
+            for i, s in enumerate(DEF_STEPS):
+                if not ran[i]:
+                    continue
+                cum += sdef[i]
+                str_rows.append([s, str(ran[i]), str(nz[i]), str(sdef[i]),
+                                 f"{100.0 * sdef[i] / tot:.2f}", f"{100.0 * cum / tot:.2f}",
+                                 f"{100.0 * sfrac[i] / len(rows):.2f}"])
+            str_rows.append(["(left)", "", "", str(left_end), f"{100.0 * left_end / tot:.2f}", "", ""])
+            print(f"\n{BLUE}Vars defined per step, {title} files ({len(rows)}, "
+                  f"{tot} to-define): {dir} [{ver[:10]}]{RESET}")
+            _print_table(["step", "ran", "defined >0", "defined", "% of all", "cum %",
+                          "avg % per file"], str_rows)
     con.close()
 
 
@@ -1009,6 +1067,7 @@ def main():
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)
     print_solved_by_table(table_todo, fname_like)
+    print_def_steps_table(table_todo, fname_like)
     print_cover_runs_table(table_todo, fname_like)
     print_cegr_runs_table(table_todo, fname_like)
     print_slower_tables(matched_dirs, fname_like, verbose=args.verbose)
