@@ -552,30 +552,37 @@ DEF_STEPS = ("iter1-0", "iter1-1", "backbone", "oracle", "iter2-0", "iter2-1", "
 
 
 def print_def_steps_table(table_todo, fname_like):
-    """--synth: the to-define vars each step of the pipeline defined. The
-    iter*/backbone/oracle/final-bve rows are Puura's stages, its own row is
-    what it did after them. avg % is of each file's to-define vars."""
+    """--synth: the to-define vars each step of the pipeline defined, and its
+    time. The iter*/backbone/oracle/final-bve rows are Puura's stages, its own
+    row is what it did after them. avg % is of each file's to-define vars. A
+    killed step has no time, so over all files the times are lower bounds."""
     con = sqlite3.connect(DB)
     cur = con.cursor()
-    cols = ", ".join("left_" + s.replace("-", "_") for s in DEF_STEPS)
+    col = lambda s, w: w + "_" + s.replace("-", "_")
+    cols = ", ".join([col(s, "left") for s in DEF_STEPS] + [col(s, "t") for s in DEF_STEPS])
+    n = len(DEF_STEPS)
     for dir, ver in table_todo:
         for title, cond in (("all", ""), ("solved", f" AND {SOLVE_TIME_EXPR} IS NOT NULL")):
             cur.execute(
-                f"SELECT start_to_define_vars, {cols} FROM {TABLE}"
+                f"SELECT start_to_define_vars, arjun_time, t_aig_rw, {cols} FROM {TABLE}"
                 f" WHERE dirname=? AND {VER_EXPR}=? AND solver='arjun' AND verdict IS NULL"
                 f" AND start_to_define_vars > 0{cond}{fname_like}", (dir, ver))
             rows = cur.fetchall()
-            if not rows or all(v is None for r in rows for v in r[1:]):
+            if not rows or all(v is None for r in rows for v in r[3:3 + n]):
                 continue
             tot = sum(r[0] for r in rows)
-            ran = [0] * len(DEF_STEPS)
-            nz = [0] * len(DEF_STEPS)
-            sdef = [0] * len(DEF_STEPS)
-            sfrac = [0.0] * len(DEF_STEPS)
+            ran = [0] * n
+            nz = [0] * n
+            sdef = [0] * n
+            sfrac = [0.0] * n
+            st = [0.0] * n
             left_end = 0
-            for start, *lefts in rows:
+            aig_rw_t = sum(r[2] or 0 for r in rows)
+            for start, _, _, *rest in rows:
+                lefts, ts = rest[:n], rest[n:]
                 prev = start
                 for i, l in enumerate(lefts):
+                    st[i] += ts[i] or 0
                     if l is None:
                         continue
                     # cover-long gives up between CEGR strategies: a later one may still solve
@@ -588,18 +595,29 @@ def print_def_steps_table(table_todo, fname_like):
                 left_end += prev
             str_rows = []
             cum = 0
+            cum_t = 0.0
             for i, s in enumerate(DEF_STEPS):
                 if not ran[i]:
                     continue
                 cum += sdef[i]
+                cum_t += st[i]
                 str_rows.append([s, str(ran[i]), str(nz[i]), str(sdef[i]),
                                  f"{100.0 * sdef[i] / tot:.2f}", f"{100.0 * cum / tot:.2f}",
-                                 f"{100.0 * sfrac[i] / len(rows):.2f}"])
-            str_rows.append(["(left)", "", "", str(left_end), f"{100.0 * left_end / tot:.2f}", "", ""])
+                                 f"{100.0 * sfrac[i] / len(rows):.2f}",
+                                 f"{st[i]:.1f}", f"{cum_t:.1f}",
+                                 f"{1000.0 * st[i] / sdef[i]:.3f}" if sdef[i] else "-"])
+            cum_t += aig_rw_t
+            str_rows.append(["aig-rw", "", "", "", "", "", "", f"{aig_rw_t:.1f}", f"{cum_t:.1f}", ""])
+            if title == "solved":
+                other = sum(r[1] for r in rows) - cum_t
+                str_rows.append(["other", "", "", "", "", "", "", f"{other:.1f}",
+                                 f"{cum_t + other:.1f}", ""])
+            str_rows.append(["(left)", "", "", str(left_end), f"{100.0 * left_end / tot:.2f}",
+                             "", "", "", "", ""])
             print(f"\n{BLUE}Vars defined per step, {title} files ({len(rows)}, "
                   f"{tot} to-define): {dir} [{ver[:10]}]{RESET}")
             _print_table(["step", "ran", "defined >0", "defined", "% of all", "cum %",
-                          "avg % per file"], str_rows)
+                          "avg % per file", "T", "cum T", "ms/var"], str_rows)
     con.close()
 
 

@@ -336,46 +336,84 @@ DEF_STEPS = ("iter1-0", "iter1-1", "backbone", "oracle", "iter2-0", "iter2-1", "
 PUURA_STAGE = re.compile(r"\[puura-stage\] (\S+) .*to-define-left: *(\d+)/")
 
 
-def def_col(step):
-    return "left_" + step.replace("-", "_")
+def def_col(step, what="left"):
+    return what + "_" + step.replace("-", "_")
 
 
-# --synth: to-define vars left after each step (NULL: it did not run). Covering,
-# brute force and a CEGR strategy define all or nothing; cegr/cover-long are
-# the --cstrategy ones
+STEP_T = re.compile(r"\bT: *([0-9.]+)")
+AIG_RW_T = re.compile(r"\[aig-rw\] T: *([0-9.]+)")
+
+
+# --synth: to-define vars left after each step (NULL: it did not run), and its
+# time. Covering, brute force and a CEGR strategy define all or nothing;
+# cegr/cover-long are the --cstrategy ones. A killed step has no time
 def arjun_def_steps(fname):
     ret = {}
     run = "orig"
     left = None
+    stages_t = 0.0
+    cegr_t = None
+
+    def add_t(step, t):
+        ret[def_col(step, "t")] = ret.get(def_col(step, "t"), 0.0) + t
+
     with open(fname, "r", errors="replace") as f:
         for line in f:
             line = strip_ansi(line)
             run = cover_run_step(run, line)
+            m = AIG_RW_T.search(line)
+            if m:
+                ret["t_aig_rw"] = ret.get("t_aig_rw", 0.0) + float(m.group(1))
+                continue
+            if "Running" in line and "strategy" in line and cegr_t is not None:
+                add_t("cegr", cegr_t)
+                cegr_t = None
             m = PUURA_STAGE.search(line)
             if m and m.group(1) in DEF_STEPS:
                 left = ret[def_col(m.group(1))] = int(m.group(2))
+                t = float(STEP_T.search(line).group(1))
+                stages_t += t
+                add_t(m.group(1), t)
                 continue
             m = STAGE_DONE.search(line)
             if m:
-                left = ret[def_col(STAGE_NAME.get(m.group(1), m.group(1)))] = int(m.group(2))
+                step = STAGE_NAME.get(m.group(1), m.group(1))
+                left = ret[def_col(step)] = int(m.group(2))
+                t = float(STEP_T.search(line).group(1))
+                add_t(step, max(t - stages_t, 0.0) if step == "puura" else t)
                 continue
             if left is None:
                 continue
+            if "Running Cegr strategy" in line:
+                cegr_t = 0.0
+            elif cegr_t is not None:
+                m = CEGR_T.search(line)
+                if m:
+                    cegr_t = max(cegr_t, float(m.group(1)))
+            if "[brute_force_synth] minim shrank" in line or "[brute_force_synth] done —" in line:
+                add_t("brute_force", float(STEP_T.search(line).group(1)))
             step = None
-            if COVER_FIN.search(line) and run in ("simp", "late", "long"):
+            m = COVER_FIN.search(line)
+            if m and run in ("simp", "late", "long"):
                 step = "cover-" + run
+                add_t(step, float(m.group(4)))
             elif "[brute_force_synth] partition:" in line:
                 step = "brute_force"
             elif "Running Cegr strategy" in line:
                 step = "cegr"
             if step:
                 ret.setdefault(def_col(step), left)
+                ret.setdefault(def_col(step, "t"), 0.0)
             elif "[arjun] solved by covering" in line and run in ("simp", "late", "long"):
                 left = ret[def_col("cover-" + run)] = 0
             elif "[brute_force_synth] done —" in line:
                 left = ret[def_col("brute_force")] = 0
-            elif line.startswith("c o [arjun] All done.") and left:
-                ret[def_col("cegr")] = left = 0
+            elif line.startswith("c o [arjun] All done."):
+                if cegr_t is not None:
+                    add_t("cegr", cegr_t)
+                    cegr_t = None
+                if left:
+                    ret[def_col("cegr")] = left = 0
     return ret
 
 
@@ -641,7 +679,7 @@ COLUMNS = [
     # res: covered/cex/gaveup, ticks: x+y+y-def M ticks
 ] + [("cover_%s_%s" % (r, k), t) for r in COVER_RUNS
      for k, t in (("res", "TEXT"), ("t", "REAL"), ("ticks", "REAL"), ("rounds", "INTEGER"))
-] + [(def_col(s), "INTEGER") for s in DEF_STEPS]
+] + [(def_col(s), "INTEGER") for s in DEF_STEPS] + [(def_col(s, "t"), "REAL") for s in DEF_STEPS] + [("t_aig_rw", "REAL")]
 
 
 def open_db(db_path, recreate):
