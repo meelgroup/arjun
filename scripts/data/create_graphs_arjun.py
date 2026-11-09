@@ -3,6 +3,7 @@
 import argparse
 import base64
 import itertools
+import json
 import os
 import sqlite3
 import sys
@@ -572,10 +573,48 @@ def print_cover_runs_table(table_todo, fname_like):
     con.close()
     if not str_rows:
         return
-    print(f"\n{BLUE}2QBF covering runs{RESET}")
+    print(f"\n{BLUE}Covering runs{RESET}")
     _print_table(["dirname", "run", "ran", "decided", "T decided", "T gaveup",
                   "T gaveup solved", "gaveup >30s", "max Mticks dec", "max T dec"],
                  str_rows)
+
+
+def print_cegr_runs_table(table_todo, fname_like):
+    """--synth: per CEGR strategy, what it solved and what giving up cost.
+    A killed run (timeout/memout) has no time: its [cegr] T lags the kill."""
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    str_rows = []
+    for dir, ver in table_todo:
+        cur.execute(
+            f"SELECT cegr_runs, {SOLVE_TIME_EXPR} IS NOT NULL FROM {TABLE}"
+            f" WHERE dirname=? AND {VER_EXPR}=? AND cegr_runs IS NOT NULL{fname_like}",
+            (dir, ver))
+        strats = {}
+        for runs, solved in cur.fetchall():
+            for r in json.loads(runs):
+                st = strats.setdefault((r["i"], r["n"], r["name"]), defaultdict(list))
+                st[r["res"]].append(r)
+                if r["res"] == "gaveup" and solved:
+                    st["gaveup_solved"].append(r)
+        f = lambda x: f"{x:.0f}" if x is not None else ""
+        tsum = lambda rs: sum(r["t"] for r in rs) if rs else None
+        for (i, n, name), st in sorted(strats.items()):
+            sol, gu = st["solved"], st["gaveup"]
+            str_rows.append([
+                dir, f"{i}/{n} {name}", str(len(sol) + len(gu) + len(st["killed"])),
+                str(len(sol)), str(len(gu)), str(len(st["killed"])),
+                f(tsum(sol)), f(tsum(gu)), f(tsum(st["gaveup_solved"])),
+                str(sum(r["t"] > 30 for r in gu)),
+                f(max((r["rep"] for r in sol), default=None)),
+                f(max((r["t"] for r in sol), default=None))])
+    con.close()
+    if not str_rows:
+        return
+    print(f"\n{BLUE}CEGR strategies{RESET}")
+    _print_table(["dirname", "strategy", "ran", "solved", "gaveup", "killed", "T solved",
+                  "T gaveup", "T gaveup solved", "gaveup >30s", "max rep solved",
+                  "max T solved"], str_rows)
 
 
 def print_signal_warnings(table_todo, fname_like):
@@ -971,6 +1010,7 @@ def main():
     print_instance_stats_table(table_todo, fname_like)
     print_solved_by_table(table_todo, fname_like)
     print_cover_runs_table(table_todo, fname_like)
+    print_cegr_runs_table(table_todo, fname_like)
     print_slower_tables(matched_dirs, fname_like, verbose=args.verbose)
     print_solve_diff_tables(matched_dirs, fname_like, verbose=args.verbose)
 

@@ -2,6 +2,7 @@
 
 import os
 import glob
+import json
 import re
 import sqlite3
 import argparse
@@ -329,6 +330,41 @@ def arjun_cover_runs(fname):
     return ret
 
 
+CEGR_T = re.compile(r"\[cegr\].* T: *([0-9.]+)")
+CEGR_REP = re.compile(r"\[cegr\] rep: *(\d+)")
+
+
+# --synth CEGR strategies, as JSON [{i, n, name, res, t, rep}]: res is
+# solved/gaveup (the next strategy ran)/killed (timeout or memout), t is the
+# largest T of its [cegr] lines, which restart at every strategy
+def arjun_cegr_runs(fname):
+    runs = []
+    with open(fname, "r", errors="replace") as f:
+        for line in f:
+            line = strip_ansi(line)
+            m = STRAT.search(line)
+            if m:
+                if runs and runs[-1]["res"] == "killed":
+                    runs[-1]["res"] = "gaveup"
+                i, n = m.group(1).split("/")
+                runs.append({"i": int(i), "n": int(n), "name": m.group(2), "res": "killed",
+                             "t": 0.0, "rep": 0, "cegr": "Cegr" in line})
+                continue
+            if not runs:
+                continue
+            if line.startswith("c o [arjun] All done."):
+                runs[-1]["res"] = "solved"
+                break
+            m = CEGR_T.search(line)
+            if m:
+                runs[-1]["t"] = max(runs[-1]["t"], float(m.group(1)))
+            m = CEGR_REP.search(line)
+            if m:
+                runs[-1]["rep"] = int(m.group(1))
+    runs = [{k: v for k, v in r.items() if k != "cegr"} for r in runs if r["cegr"]]
+    return json.dumps(runs) if runs else None
+
+
 # One 2QBF run (creator_2qbf.sh) is a preprocessor and a solver, each with its
 # own log and time file; .out_res has the commands and the RESULT line.
 def finalize_2qbf(entry):
@@ -492,6 +528,7 @@ def read_file(fname, files, existing=None):
         files[base].update({k: v for k, v in data.items() if k != "solved"})
         files[base].update(arjun_cover_runs(fname))
         files[base]["solved_by"] = arjun_solved_by(fname)
+        files[base]["cegr_runs"] = arjun_cegr_runs(fname)
         return
 
     if fname.endswith(".out_cadet"):
@@ -547,6 +584,8 @@ COLUMNS = [
     ("decided_by",              "TEXT"),
     # --synth: what defined the last var, see arjun_solved_by()
     ("solved_by",               "TEXT"),
+    # --synth: JSON of the CEGR strategies that ran, see arjun_cegr_runs()
+    ("cegr_runs",               "TEXT"),
     # covering runs (orig, --2qbf only: orig clauses, simp: after Puura, late: after
     # the def passes, long: cover(ticks=N) of --cstrategy). NULL = did not run.
     # res: covered/cex/gaveup, ticks: x+y+y-def M ticks
