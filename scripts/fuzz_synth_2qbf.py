@@ -610,7 +610,6 @@ if __name__ == "__main__":
             , " --backward"
             , " --minimconfl"
             , " --filtersamples"
-            , " --uniqsamp"
             , " --ctxsolver"
             , " --repairsolver"
             , " --unatedef"

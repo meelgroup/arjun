@@ -237,7 +237,6 @@ void add_arjun_options() {
 
     // Cegr learn synth -- sampling
     myopt("--samples", mconf.samples,"Number of samples");
-    myopt("--uniqsamp", mconf.do_unique_input_samples, "Unique samples on input vars");
     myopt("--filtersamples", mconf.filter_samples,"Filter samples from useless ones");
     myopt("--fixedconf", mconf.sampler_fixed_conflicts,"Restart conflict limit in CMSGen");
 

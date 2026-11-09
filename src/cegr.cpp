@@ -2438,21 +2438,20 @@ void Cegr::sort_all_samples(vector<sample>& samples) {
             return false; // equal
         });
 
-    if (mconf.do_unique_input_samples) {
-        vector<sample> samples2;
-        samples2.push_back(samples[0]);
-        for(size_t i = 1; i < samples.size(); i++) {
-            for(const auto& v: input) {
-                if (samples[i][v] != samples2.back()[v]) {
-                    samples2.push_back(samples[i]);
-                    break;
-                }
+    // always: same input, different y is a contradicting label for a function of the input
+    vector<sample> samples2;
+    samples2.push_back(samples[0]);
+    for(size_t i = 1; i < samples.size(); i++) {
+        for(const auto& v: input) {
+            if (samples[i][v] != samples2.back()[v]) {
+                samples2.push_back(samples[i]);
+                break;
             }
         }
-        verb_print(1, "[sort_all_samples] Reduced samples from " << samples.size()
-                << " to " << samples2.size() << " by removing duplicates on input vars.");
-        samples = samples2;
     }
+    verb_print(1, "[sort_all_samples] Reduced samples from " << samples.size()
+            << " to " << samples2.size() << " by removing duplicates on input vars.");
+    samples = std::move(samples2);
 }
 
 bool Cegr::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const {

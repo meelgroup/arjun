@@ -2073,7 +2073,6 @@ public:
         int minimize_conflict = 1;
         std::string write_cegr_cnf;
         int maxsat_better_ctx = 0;
-        int do_unique_input_samples = 1;
         int ctx_solver_type = 1;
         int ctx_light_inproc = 2; // cex_solver: 1 = no lucky-under-assumptions, 2 = also no inprobing/congruence/sweep/factor
         int repair_solver_type = 1;
