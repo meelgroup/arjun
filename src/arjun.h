@@ -2102,11 +2102,6 @@ public:
         uint32_t cz_threshold_mid = 2;      // consecutive cost-zero break threshold (medium ratio)
         uint32_t cz_threshold_low = 3;      // consecutive cost-zero break threshold (low ratio)
 
-        // Brute-force synthesis (--bruteforcesynth 1). Max |orig_sampl_cnf|; each undet y allocates a 2^N table, so >~20 OOMs.
-        uint32_t brute_force_synth_threshold = 16;
-        int brute_force_synth_minim = 1;         // dry-run backward minim to shrink the enum domain before enumerating
-        uint32_t brute_force_synth_minim_max = 40; // only try the minim pre-pass when |orig_sampl_cnf| is at most this
-
         std::string cegr_base_str() const {
             switch (cegr_base) {
                 case 0: return "[LEARN]";
@@ -2116,6 +2111,12 @@ public:
                 default: return "[UNKNOWN]";
             }
         }
+    };
+
+    struct BruteForceConf {
+        uint32_t threshold = 16; // max |orig_sampl_cnf|: each undet y allocates a 2^N table, so >~20 OOMs
+        int minim = 1; // dry-run backward minim to shrink the enum domain before enumerating
+        uint32_t minim_max = 40; // only try minim when |orig_sampl_cnf| is at most this
     };
 
     // Model covering, see cover.h
@@ -2156,7 +2157,7 @@ public:
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_cegr(SimplifiedCNF&& cnf, const CegrConf& cegr_conf);
-    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& cegr_conf, const InterpConf& iconf);
+    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const BruteForceConf& bf_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
     CMSat::lbool standalone_cover(SimplifiedCNF& cnf, const CoverConf& cover_conf, std::vector<CMSat::lbool>& cex);
     // Projected counting: removes the clauses over non-sampling vars that,

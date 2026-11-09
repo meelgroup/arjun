@@ -35,10 +35,10 @@ using CMSat::Lit;
 namespace ArjunInt {
 
 BruteForceSynth::BruteForceSynth(const ArjunInt::Config& _conf,
-                           const ArjunNS::Arjun::CegrConf& _mconf,
+                           const ArjunNS::Arjun::BruteForceConf& _bf_conf,
                            const ArjunNS::Arjun::InterpConf& _iconf,
                            ArjunNS::SimplifiedCNF&& _cnf)
-    : conf(_conf), mconf(_mconf), iconf(_iconf), cnf(std::move(_cnf))
+    : conf(_conf), bf_conf(_bf_conf), iconf(_iconf), cnf(std::move(_cnf))
 {}
 
 template<typename S>
@@ -75,11 +75,11 @@ aig_lit BruteForceSynth::build_decision_tree(const vector<bool>& table,
 }
 
 void BruteForceSynth::maybe_minimize_enum_set() {
-    if (!mconf.brute_force_synth_minim) return;
+    if (!bf_conf.minim) return;
     if (orig_sampl_cnf.empty()) return;
-    if (orig_sampl_cnf.size() > mconf.brute_force_synth_minim_max) {
+    if (orig_sampl_cnf.size() > bf_conf.minim_max) {
         verb_print(1, "[brute_force_synth] enum set " << orig_sampl_cnf.size()
-            << " > minim cap " << mconf.brute_force_synth_minim_max << "; skipping minim");
+            << " > minim cap " << bf_conf.minim_max << "; skipping minim");
         return;
     }
 
@@ -100,7 +100,7 @@ void BruteForceSynth::maybe_minimize_enum_set() {
 }
 
 void BruteForceSynth::synth_complete_with_models() {
-    assert(orig_sampl_cnf.size() <= mconf.brute_force_synth_threshold);
+    assert(orig_sampl_cnf.size() <= bf_conf.threshold);
 
     vector<uint32_t> undet(to_define.begin(), to_define.end());
     if (undet.empty()) return;
@@ -200,9 +200,9 @@ SimplifiedCNF BruteForceSynth::do_synth() {
     maybe_minimize_enum_set();
 
     // Decline (don't abort) above the threshold: caller falls back to Cegr.
-    if (orig_sampl_cnf.size() > mconf.brute_force_synth_threshold) {
+    if (orig_sampl_cnf.size() > bf_conf.threshold) {
         verb_print(1, "[brute_force_synth] enum set " << orig_sampl_cnf.size()
-            << " > threshold " << mconf.brute_force_synth_threshold
+            << " > threshold " << bf_conf.threshold
             << "; declining — Cegr will synthesize");
         return std::move(cnf);
     }

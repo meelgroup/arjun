@@ -75,6 +75,7 @@ int qbf2 = false;
 size_t qbf2_num_cls = 0;
 int debug_verilog = 0;
 ArjunNS::Arjun::CoverConf cover_conf;
+ArjunNS::Arjun::BruteForceConf bf_conf;
 double cover_ticks = 200;
 double cover_late_ticks = 100;
 double cover_orig_ticks = 2000;
@@ -283,15 +284,15 @@ void add_arjun_options() {
           "--bruteforcesynththresh (after the minim pre-pass); above that it "
           "declines and Cegr takes over. 0=Cegr only, 1=try brute-force "
           "first (default).");
-    myopt("--bruteforcesynththresh", mconf.brute_force_synth_threshold,
+    myopt("--bruteforcesynththresh", bf_conf.threshold,
           "Cap: brute_force_synth runs only when |orig_sampl_cnf| ≤ this "
           "(after the minim pre-pass); above it it declines to Cegr. Each y "
           "allocates 2^N truth-table entries, so raising past ~20 OOMs.");
-    myopt("--bruteforcesynthminim", mconf.brute_force_synth_minim,
+    myopt("--bruteforcesynthminim", bf_conf.minim,
           "Dry-run backward minim on orig_sampl_cnf before enumeration: prunes "
           "sampling vars that the post-preproc CNF defines from the rest, "
           "shrinking the 2^N truth tables. 0=off, 1=on (default).");
-    myopt("--bruteforcesynthminimmax", mconf.brute_force_synth_minim_max,
+    myopt("--bruteforcesynthminimmax", bf_conf.minim_max,
         "Only attempt the minim pre-pass when |orig_sampl_cnf| ≤ this (default "
         "40). Above it the doubled-CNF minim is too expensive and unlikely to "
         "shrink below --bruteforcesynththresh, so it is skipped.");
@@ -715,7 +716,7 @@ void do_synth_2qbf() {
     SLOW_DEBUG_DO(check_stage(cnf, "rewrite_aigs"));
     if (use_brute_force_synth && !cnf.all_ys_defined()) {
         verb_print(1, "[arjun] Synthesis: brute-force decision trees");
-        cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf, iconf);
+        cnf = arjun->standalone_brute_force_synth(std::move(cnf), bf_conf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "brute_force_synth"));
     }

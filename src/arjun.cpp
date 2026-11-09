@@ -257,9 +257,9 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_cegr(SimplifiedCNF&& cnf, const CegrC
     return cnf;
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const CegrConf& mconf, const InterpConf& iconf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const BruteForceConf& bf_conf, const InterpConf& iconf)
 {
-    BruteForceSynth ss(arjdata->conf, mconf, iconf, std::move(cnf));
+    BruteForceSynth ss(arjdata->conf, bf_conf, iconf, std::move(cnf));
     return ss.do_synth();
 }
 
