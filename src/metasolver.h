@@ -65,10 +65,9 @@ public:
     // solve() calls on one big growing formula pay for formula-wide
     // propagation sweeps every call -- 56% of runtime on query52_query25_1344n.
     // set() on an unknown option is a no-op, so this is safe on older CaDiCaL.
-    void set_light_inprocessing(int level) {
-        if (solver_type != SolverType::cadical || level <= 0) return;
+    void set_light_inprocessing() {
+        if (solver_type != SolverType::cadical) return;
         cadical->set("luckyassumptions", 0);
-        if (level < 2) return;
         cadical->set("inprobing", 0);
         cadical->set("congruence", 0);
         cadical->set("sweep", 0);

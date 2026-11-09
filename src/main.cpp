@@ -230,9 +230,6 @@ void add_arjun_options() {
 
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
-    myopt("--ctxlightinproc", mconf.ctx_light_inproc,
-        "Cegr context solver CaDiCaL inprocessing: 0 = stock, 1 = no lucky phases under "
-        "assumptions, 2 = also no inprobing/congruence/sweep/factor");
     myopt("--repairsolver", mconf.repair_solver_type,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repaircache", mconf.repair_cache_size,"Repair cache size. 0 = no cache");
 
@@ -246,7 +243,6 @@ void add_arjun_options() {
     myopt("--minleaf", mconf.min_leaf_size,"Minimum leaf size in decision tree");
     myopt("--mingainsplit", mconf.min_gain_split,"Minimum gain for a split in decision tree");
     // synth -- cutoff/tuning constants
-    myopt("--coneperloop", mconf.one_repair_per_loop,"One repair per CEX loop");
     myopt("--cinvertguessed", mconf.inv_guess,"Invert guessed functions");
     myopt("--statsevery", mconf.stats_every, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, "Print detailed stats every N repair loops");

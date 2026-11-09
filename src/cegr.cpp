@@ -1395,7 +1395,6 @@ SimplifiedCNF Cegr::do_cegr() {
                 num_repaired++;
                 stats.tot_repaired++;
                 consecutive_cost_zero = 0;
-                if (mconf.one_repair_per_loop) break;
             } else {
                 stats.repair_failed++;
                 consecutive_cost_zero++;
@@ -1527,11 +1526,9 @@ bool Cegr::repair(const uint32_t y_rep, sample& ctx) {
         perform_repair(y_rep, ctx, conflict);
         t_perform_repair += cpuTime() - t_pr0;
 
-        if (!mconf.one_repair_per_loop) {
-            ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-            inject_formulas_into_solver();
-            recompute.run(*this, ctx, y_rep);
-        }
+        ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+        inject_formulas_into_solver();
+        recompute.run(*this, ctx, y_rep);
 
         // Track conflict type
         bool is_input_only = true;

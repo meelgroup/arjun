@@ -491,7 +491,7 @@ def gen_mstrategy():
     int_params  = ["filter_samples", "minimize_conflict",
                    # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
                    "repair_cache_size",
-                   "one_repair_per_loop", "force_bw_equal",
+                   "force_bw_equal",
                    "inv_guess", "seed", "learn_input_only"]
     #  "ctx_solver_type", "repair_solver_type",
     double_params = ["min_gain_split"]
@@ -602,7 +602,6 @@ if __name__ == "__main__":
         solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
         solver += "--bruteforcesynthminimmax %d " % random.choice([0, 8, 40, 9999])
         solver += "--distillremlevel %d " % random.choice([0, 1, 2])
-        solver += "--ctxlightinproc %d " % random.choice([0, 1, 2])
 
         opts = [
             " --synthpuura"
