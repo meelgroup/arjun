@@ -264,15 +264,15 @@ def arjun_decided_by(fname):
 COVER_RUNS = ("orig", "simp", "late", "long")
 STAGE_DONE = re.compile(r"\[(puura|autarky|synth-extend|backward SYNTH|unate_def)\] Done\..*still to-define: (\d+)")
 STAGE_NAME = {"synth-extend": "extend", "backward SYNTH": "backward"}
-CEGR_STRAT = re.compile(r"Running Cegr strategy \d+/\d+ -- (\S+)")
+STRAT = re.compile(r"Running (?:Cegr )?strategy (\d+/\d+) -- (\S+)")
 
 
 # What defined the last to-define var of a finished --synth run:
 # a pass (puura, autarky, extend, backward, unate_def), cover-<run>,
-# brute_force or cegr-<strategy>
+# brute_force, or "cegr <i>/<n> <strategy>" / "cover-long <i>/<n>" of --cstrategy
 def arjun_solved_by(fname):
     run = "orig"
-    by = cegr = None
+    by = strat = None
     with open(fname, "r", errors="replace") as f:
         for line in f:
             line = strip_ansi(line)
@@ -281,14 +281,14 @@ def arjun_solved_by(fname):
             if m and m.group(2) == "0" and by is None:
                 by = STAGE_NAME.get(m.group(1), m.group(1))
             elif "[arjun] solved by covering" in line and by is None:
-                by = "cover-" + (run or "long")
+                by = "cover-" + run if run != "long" else "cover-long " + strat[0]
             elif "[brute_force_synth] done" in line and by is None:
                 by = "brute_force"
-            m = CEGR_STRAT.search(line)
+            m = STRAT.search(line)
             if m and by is None:
-                cegr = m.group(1)
+                strat = m.groups()
             if line.startswith("c o [arjun] All done."):
-                return by or ("cegr-" + cegr if cegr else "unknown")
+                return by or ("cegr %s %s" % strat if strat else "unknown")
     return None
 # ticks(M) is followed by x/y/y-def (older binaries) or abs/f/deep: their sum
 COVER_FIN = re.compile(r"\[cover\] (all X covered|gave up|X with no Y) rounds: (\d+).*"

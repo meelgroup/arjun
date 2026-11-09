@@ -7,6 +7,7 @@ import os
 import sqlite3
 import sys
 import re
+from collections import Counter, defaultdict
 
 BLUE  = "\033[94m"
 GREEN = "\033[92m"
@@ -476,6 +477,72 @@ def print_stuck_top_table(table_todo, fname_like, top=5):
     con.close()
 
 
+SOLVED_BY_ORDER = ["puura", "cover-simp", "autarky", "extend", "backward",
+                   "unate_def", "cover-late", "brute_force"]
+FAMILY_RES = [
+    (re.compile(r"_all_bit_differing_from_cycle"), "all_bit_differing"),
+    (re.compile(r"-fixpoint-\d+$"), "fixpoint"),
+    (re.compile(r"_1344n$"), "query"),
+    (re.compile(r"Service"), "Service"),
+    (re.compile(r"^driver_"), "driver"),
+]
+
+
+def family(fname):
+    base = re.sub(r"(\.sat|\.unsat)?\.q?dimacs(\.gz)?$|\.cnf(\.gz)?$", "", fname)
+    for r, fam in FAMILY_RES:
+        if r.search(base):
+            return fam
+    m = re.match(r"[A-Za-z]+(?:[_-][A-Za-z]+)*", base)
+    return m.group(0) if m else base
+
+
+def _solved_by_key(by):
+    if by is None:
+        return (2, 0, "")
+    if by in SOLVED_BY_ORDER:
+        return (0, SOLVED_BY_ORDER.index(by), by)
+    # "cegr <i>/<n> <strat>" or "cover-long <i>/<n>": the --cstrategy order
+    m = re.search(r" (\d+)/\d+", by)
+    return (1, int(m.group(1)), by) if m else (3, 0, by)
+
+
+def _families_str(fnames, top=6):
+    c = Counter(family(f) for f in fnames).most_common()
+    s = " ".join(f"{f}:{n}" for f, n in c[:top])
+    return s + (f" +{len(c) - top} more" if len(c) > top else "")
+
+
+def print_solved_by_table(table_todo, fname_like):
+    """--synth: what defined the last var of each solved file, in pipeline order."""
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    for dir, ver in table_todo:
+        cur.execute(
+            f"SELECT solved_by, fname, arjun_time FROM {TABLE}"
+            f" WHERE dirname=? AND {VER_EXPR}=? AND solver='arjun'"
+            f" AND verdict IS NULL{fname_like}", (dir, ver))
+        groups = defaultdict(list)
+        for by, fn, t in cur.fetchall():
+            groups[by].append((fn, t))
+        if not any(by is not None for by in groups):
+            continue
+        total = sum(len(v) for v in groups.values())
+        str_rows = []
+        for by in sorted(groups, key=_solved_by_key):
+            rows = groups[by]
+            ts = [t for _, t in rows if t is not None]
+            str_rows.append([
+                by if by is not None else "(unsolved)", str(len(rows)),
+                f"{100.0 * len(rows) / total:.0f}%",
+                f"{sum(ts) / len(ts):.1f}" if ts else "",
+                f"{max(ts):.1f}" if ts else "",
+                _families_str([fn for fn, _ in rows])])
+        print(f"\n{BLUE}Solved by (what defined the last var): {dir} [{ver[:10]}]{RESET}")
+        _print_table(["solved by", "n", "%", "avg T", "max T", "families"], str_rows)
+    con.close()
+
+
 def print_cover_runs_table(table_todo, fname_like):
     """--2qbf only: per covering run, what it decided and what giving up cost.
     'gaveup T on solved' is time lost on files the run did not decide but the
@@ -901,6 +968,7 @@ def main():
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)
+    print_solved_by_table(table_todo, fname_like)
     print_cover_runs_table(table_todo, fname_like)
     print_slower_tables(matched_dirs, fname_like, verbose=args.verbose)
     print_solve_diff_tables(matched_dirs, fname_like, verbose=args.verbose)
