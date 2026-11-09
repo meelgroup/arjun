@@ -262,33 +262,67 @@ def arjun_decided_by(fname):
 
 
 COVER_RUNS = ("orig", "simp", "late", "long")
+STAGE_DONE = re.compile(r"\[(puura|autarky|synth-extend|backward SYNTH|unate_def)\] Done\..*still to-define: (\d+)")
+STAGE_NAME = {"synth-extend": "extend", "backward SYNTH": "backward"}
+CEGR_STRAT = re.compile(r"Running Cegr strategy \d+/\d+ -- (\S+)")
+
+
+# What defined the last to-define var of a finished --synth run:
+# a pass (puura, autarky, extend, backward, unate_def), cover-<run>,
+# brute_force or cegr-<strategy>
+def arjun_solved_by(fname):
+    run = "orig"
+    by = cegr = None
+    with open(fname, "r", errors="replace") as f:
+        for line in f:
+            line = strip_ansi(line)
+            run = cover_run_step(run, line)
+            m = STAGE_DONE.search(line)
+            if m and m.group(2) == "0" and by is None:
+                by = STAGE_NAME.get(m.group(1), m.group(1))
+            elif "[arjun] solved by covering" in line and by is None:
+                by = "cover-" + (run or "long")
+            elif "[brute_force_synth] done" in line and by is None:
+                by = "brute_force"
+            m = CEGR_STRAT.search(line)
+            if m and by is None:
+                cegr = m.group(1)
+            if line.startswith("c o [arjun] All done."):
+                return by or ("cegr-" + cegr if cegr else "unknown")
+    return None
+# ticks(M) is followed by x/y/y-def (older binaries) or abs/f/deep: their sum
 COVER_FIN = re.compile(r"\[cover\] (all X covered|gave up|X with no Y) rounds: (\d+).*"
-                       r"ticks\(M\) x: ([0-9.]+) y: ([0-9.]+) y-def: ([0-9.]+).* T: ([0-9.]+) \(")
+                       r"ticks\(M\)(.*?) confl .* T: ([0-9.]+) \(")
 COVER_LATE = re.compile(r"start (find_autarkies|extend_synth|backward_round_synth|do_unate_def) ")
 
 
 # The 2QBF covering runs of do_synth_2qbf(), told apart by what the log prints
 # between them; a run split into components has a [cover] line per component
+def cover_run_step(run, line):
+    if "[2qbf-puura]" in line or (run == "orig" and "[puura] Done." in line):
+        return "simp"
+    if run == "simp" and COVER_LATE.search(line):
+        return "late"
+    if "Running strategy" in line and "cover(" in line:
+        return "long"
+    if "Running Cegr strategy" in line and run == "long":
+        return None
+    return run
+
+
 def arjun_cover_runs(fname):
     ret = {}
     run = "orig"
     with open(fname, "r", errors="replace") as f:
         for line in f:
-            if "[2qbf-puura]" in line:
-                run = "simp"
-            elif run == "simp" and COVER_LATE.search(line):
-                run = "late"
-            elif "Running strategy" in line and "cover(" in line:
-                run = "long"
-            elif "Running Cegr strategy" in line and run == "long":
-                run = None
+            run = cover_run_step(run, line)
             m = COVER_FIN.search(line)
             if not m or run is None:
                 continue
             res = {"all X covered": "covered", "X with no Y": "cex", "gave up": "gaveup"}[m.group(1)]
             p = "cover_" + run
-            ret[p + "_t"] = ret.get(p + "_t", 0) + float(m.group(6))
-            ret[p + "_ticks"] = ret.get(p + "_ticks", 0) + sum(float(m.group(i)) for i in (3, 4, 5))
+            ret[p + "_t"] = ret.get(p + "_t", 0) + float(m.group(4))
+            ret[p + "_ticks"] = ret.get(p + "_ticks", 0) + sum(map(float, re.findall(r"[0-9.]+", m.group(3))))
             ret[p + "_rounds"] = ret.get(p + "_rounds", 0) + int(m.group(2))
             if res != "gaveup" or p + "_res" not in ret:
                 ret[p + "_res"] = res
@@ -456,6 +490,8 @@ def read_file(fname, files, existing=None):
         if not data["solved"]:
             files[base]["timeout_t"] = None
         files[base].update({k: v for k, v in data.items() if k != "solved"})
+        files[base].update(arjun_cover_runs(fname))
+        files[base]["solved_by"] = arjun_solved_by(fname)
         return
 
     if fname.endswith(".out_cadet"):
@@ -509,7 +545,9 @@ COLUMNS = [
     ("pre_time",                "REAL"),
     # arjun's own verdicts: coverN-covered, coverN-cex, cegr, simplification
     ("decided_by",              "TEXT"),
-    # --2qbf covering runs (orig: orig clauses, simp: after Puura, late: after
+    # --synth: what defined the last var, see arjun_solved_by()
+    ("solved_by",               "TEXT"),
+    # covering runs (orig, --2qbf only: orig clauses, simp: after Puura, late: after
     # the def passes, long: cover(ticks=N) of --cstrategy). NULL = did not run.
     # res: covered/cex/gaveup, ticks: x+y+y-def M ticks
 ] + [("cover_%s_%s" % (r, k), t) for r in COVER_RUNS
