@@ -26,15 +26,12 @@
 #pragma once
 
 #include "arjun.h"
-#include "config.h"
 #include "metasolver.h"
 #include "aig_to_cnf.h"
 #include "cover_problem.h"
 #include "time_mem.h"
 #include <limits>
-#include <map>
 #include <random>
-#include <set>
 #include <functional>
 #include <unordered_map>
 
