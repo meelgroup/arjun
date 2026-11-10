@@ -697,17 +697,24 @@ void do_synth_2qbf() {
         SLOW_DEBUG_DO(check_stage(cnf, "minim_idep_synt"));
     }
 
-    if (do_unate_def && !cnf.all_ys_defined()) {
+    auto unate_def = [&] {
+        if (!do_unate_def || cnf.all_ys_defined()) return;
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
         SLOW_DEBUG_DO(check_stage(cnf, "unate_def"));
-    }
+    };
+    // extend and backward are cheap, a failing cover of the copy is not, and
+    // unate_def can take minutes to define nothing
+    const bool bce_copy = qbf2 && !need_funs && cover_bce_ticks >= 0;
+    if (!bce_copy) unate_def();
 
     if (!cnf.all_ys_defined() && has_defined(cnf))
         try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
 
-    // after the passes: they are cheap, a failing cover of the copy is not
-    if (qbf2 && !need_funs && cover_bce_ticks >= 0 && !cnf.all_ys_defined()) try_bce_cover(cnf);
+    if (bce_copy) {
+        if (!cnf.all_ys_defined()) try_bce_cover(cnf);
+        unate_def();
+    }
 
     cnf.rewrite_aigs(conf.verb);
     SLOW_DEBUG_DO(check_stage(cnf, "rewrite_aigs"));

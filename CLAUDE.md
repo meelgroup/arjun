@@ -151,10 +151,10 @@ ones). All of these but the first are `.qdimacs.gz`.
 
 ### Blocked clauses: on a copy only
 
-With no output file, after extend/backward/unate and the cover run after
-them (a failing cover of the copy takes all 5000M ticks, the passes are
-cheap: stmt2_976_999 lost 135 s to it before extend, which then took
-0.06 s), `try_bce_cover()` in
+With no output file, after extend/backward and the cover run after them,
+but before unate_def (a failing cover of the copy takes all 5000M ticks:
+stmt2_976_999 lost 135 s to it before extend, which then took 0.06 s; and
+unate_def can take minutes to define nothing), `try_bce_cover()` in
 `main.cpp` removes the clauses blocked on a Y (`bce_2qbf()`), redoes BVE
 on that (a light Puura: no oracle, no backbone, they cost minutes), up to 3
 times, and covers the result (`--coverbceticks`, 5000; -1 = off). Only its
