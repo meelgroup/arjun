@@ -677,8 +677,6 @@ void do_synth_2qbf() {
     if (!cnf.all_ys_defined())
         try_cover(cnf, need_funs, cover_conf.budget, cover_ticks);
 
-    if (qbf2 && !need_funs && cover_bce_ticks >= 0 && !cnf.all_ys_defined()) try_bce_cover(cnf);
-
     if (etof_conf.do_autarky && !cnf.all_ys_defined()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
@@ -707,6 +705,9 @@ void do_synth_2qbf() {
 
     if (!cnf.all_ys_defined() && has_defined(cnf))
         try_cover(cnf, need_funs, cover_conf.budget, cover_late_ticks);
+
+    // after the passes: they are cheap, a failing cover of the copy is not
+    if (qbf2 && !need_funs && cover_bce_ticks >= 0 && !cnf.all_ys_defined()) try_bce_cover(cnf);
 
     cnf.rewrite_aigs(conf.verb);
     SLOW_DEBUG_DO(check_stage(cnf, "rewrite_aigs"));
