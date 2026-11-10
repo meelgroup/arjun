@@ -100,6 +100,9 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     if (unknown.empty()) return;
 
     sort_unknown(unknown, incidence);
+    // Highest incidence first: on AR-fixpoint-2, extend took half the time,
+    // and the interpolants were 1.7M nodes instead of 11M
+    if (iconf.extend_order == 1) std::reverse(unknown.begin(), unknown.end());
     verb_print(1,"[synth-extend] Start unknown size: " << unknown.size()
                     << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     uint32_t num_sat = 0;

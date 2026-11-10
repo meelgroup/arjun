@@ -2097,6 +2097,7 @@ public:
         uint32_t interp_rebuild_every = 50;
         uint32_t interp_max_confl = 30000;
         uint64_t interp_rebuild_max_confl = 500000;
+        int extend_order = 1;
     };
     struct CegrConf {
         CegrConf() = default;

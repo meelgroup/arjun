@@ -263,6 +263,8 @@ void add_arjun_options() {
     myopt("--interprebuildevery", iconf.interp_rebuild_every,
           "Rebuild the doubled-CNF interpolation solver every N interpolants "
           "(bounds tracer maps; smaller = exercise the rebuild path more).");
+    myopt("--extendorder", iconf.extend_order,
+          "Order of synth-extend: 0 = lowest incidence first, 1 = highest first");
     myopt("--interpmaxconfl", iconf.interp_max_confl,
           "Per-interpolant conflict budget; over this, skip the var. 0 = unlimited.");
     myopt("--interprebuildmaxconfl", iconf.interp_rebuild_max_confl,
