@@ -120,23 +120,26 @@ lbool CoverSynth::run(vector<lbool>& cex) {
     if (ret == l_False) assert(!cex_internal.empty());
     else assert(cex_internal.empty());
     if (ret == l_True && cconf.need_funs) set_funs({});
-    if (ret == l_Undef && cconf.need_funs) keep_covered(removable);
+    if (ret == l_Undef) keep_covered(removable);
     if (ret == l_False) cex = trans.x_to_orig(cnf, cex_internal);
     return ret;
 }
 
 // A component covered with no X-cube blocked and no function of X has a Y
 // for every X, so its clauses go, and its functions, whatever the ys of the
-// others are, become defs. Any other stays: its clauses may restrict X. The
-// rest is left to the passes after. The clauses of X only stay
+// others are, become defs if asked for. With no functions the verdict is that
+// of the rest. Any other stays: its clauses may restrict X. The rest is left
+// to the passes after. The clauses of X only stay
 void CoverSynth::keep_covered(const vector<char>& removable) {
-    assert(cconf.need_funs);
     assert(removable.empty() || removable.size() == comps.comps.size());
     if (std::none_of(removable.begin(), removable.end(), [](const char c) { return c; })) return;
-    set_funs(removable);
+    if (cconf.need_funs) set_funs(removable);
     vector<char> gone(problem.size(), 0);
     for (uint32_t i = 0; i < comps.comps.size(); i++) if (removable[i])
         for (const auto& cl : comps.comps[i]) for (const auto& l : cl) if (!comps.on_x_side[l.var()]) gone[l.var()] = 1;
+    // no functions: nothing reads these, but a var leaving the CNF needs a def
+    if (!cconf.need_funs) for (const auto& [o, n] : cnf.get_orig_to_new_var())
+        if (gone[n.var()] && !cnf.defined(o)) cnf.set_def(o, cnf.get_aig_mng().new_const(false));
     const int64_t removed = rewrite_cnf_with_cubes(cnf, gone, {});
     // the ys leave the CNF as BVE's do: the passes after take a defined var in it as one its clauses define
     constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
