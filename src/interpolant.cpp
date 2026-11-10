@@ -88,7 +88,12 @@ void Interpolant::load_solver(bool is_rebuild) {
     // Fresh CaDiCaL + tracer, (re)load the effective doubled CNF.
     const double my_time = cpuTime();
     solver = std::make_unique<Solver>();
-    tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, *input_vars);
+    // As MetaSolver::set_light_inprocessing(), plus lucky: every solve here is
+    // UNSAT, and lucky's sweeps of the doubled CNF were 40% of extend on
+    // AR-fixpoint-1
+    for (const char* o : {"lucky", "luckyassumptions", "inprobing",
+            "congruence", "sweep", "factor"}) solver->set(o, 0);
+    tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, *input_vars, aig_hash);
     tracer->b_local_from = orig_num_vars;
     solver->connect_proof_tracer(tracer.get(), true);
 
@@ -351,10 +356,8 @@ aig_lit InterpTracerMcMillan::original_label(int64_t id) {
 }
 
 void InterpTracerMcMillan::reset_per_solve() {
-    // cls / antec / b_clause_ids persist across solves; labels and the
-    // and-table don't (they depend on input_vars, which may have grown).
+    // Labels depend on input_vars, which may have grown
     labels.clear();
-    and_table.clear();
     empty_id = INT64_MAX;
     conclusion_type = 0;
     conclusion_root = INT64_MAX;

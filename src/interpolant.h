@@ -52,14 +52,23 @@ struct AigKeyHash {
     }
 };
 
+// Structural hashing of the interpolants' nodes. Owned by Interpolant: it
+// outlives the solves and the rebuilds, so the interpolants share their nodes
+// (33M nodes on AR-fixpoint-1 otherwise, 2M after CSE)
+struct InterpAigHash {
+    std::unordered_map<ArjunNS::AIG::AIGKey, ArjunNS::aig_lit, AigKeyHash> and_table;
+    std::unordered_map<CMSat::Lit, ArjunNS::aig_lit, LitHash> lit_to_aig;
+};
+
 // McMillan labelled interpolation for A = clauses inside copy 1, B = the rest.
 // A clauses label = OR of their shared lits, B clauses = TRUE. Pivot on a
 // shared/B-local var → AND of children, on an A-local var → OR.
 struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     InterpTracerMcMillan(const Config& _conf,
         const ArjunNS::AIGManager& _aig_mng,
-        const std::set<uint32_t>& _input_vars)
-        : conf(_conf), aig_mng(_aig_mng), input_vars(_input_vars) {}
+        const std::set<uint32_t>& _input_vars, InterpAigHash& _hash)
+        : conf(_conf), aig_mng(_aig_mng), input_vars(_input_vars),
+          and_table(_hash.and_table), lit_to_aig(_hash.lit_to_aig) {}
 
     const Config& conf;
     const ArjunNS::AIGManager& aig_mng;
@@ -81,16 +90,14 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     std::unordered_map<int64_t, std::vector<CMSat::Lit>> cls;
     std::unordered_map<int64_t, ArjunNS::aig_lit> labels;
     std::unordered_map<int64_t, std::vector<int64_t>> antec;
-    std::unordered_map<CMSat::Lit, ArjunNS::aig_lit, LitHash> lit_to_aig;
+    std::unordered_map<ArjunNS::AIG::AIGKey, ArjunNS::aig_lit, AigKeyHash>& and_table;
+    std::unordered_map<CMSat::Lit, ArjunNS::aig_lit, LitHash>& lit_to_aig;
 
     // Resolvent membership scratch for resolve_chain, indexed by Lit::toInt().
     // res_stamp[i] == res_gen means literal i is in the resolvent.
     std::vector<uint64_t> res_stamp;
     uint64_t res_gen = 0;
 
-    // Structural-hash table over t_and nodes, keyed on canonicalised child
-    // edges so equal cones across proof clauses share one sub-DAG.
-    std::unordered_map<ArjunNS::AIG::AIGKey, ArjunNS::aig_lit, AigKeyHash> and_table;
     ArjunNS::aig_lit hash_and(const ArjunNS::aig_lit& l,
                               const ArjunNS::aig_lit& r);
     void check_label(int64_t id) const;
@@ -124,7 +131,7 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     void conclude_unsat(CaDiCaL::ConclusionType type,
             const std::vector<int64_t>& ids) override;
 
-    // Drop per-solve scratch (labels, and-table, refutation root); cls /
+    // Drop per-solve scratch (labels, refutation root); cls /
     // antec / b_clause_ids outlive a solve. Caller must call it, not
     // solve_query(): cadical can derive the empty clause before solve().
     void reset_per_solve();
@@ -191,6 +198,7 @@ private:
     std::unordered_map<uint32_t, uint32_t> indic_to_defvar;
 
     std::unique_ptr<CaDiCaL::Solver> solver;
+    InterpAigHash aig_hash;
     std::unique_ptr<InterpTracerMcMillan> tracer;
     const std::set<uint32_t>* input_vars = nullptr;
     uint32_t solves_since_rebuild = 0;

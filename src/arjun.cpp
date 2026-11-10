@@ -2043,33 +2043,88 @@ DLL_PUBLIC VarTypes
     set<uint32_t> bve_defined_vars_orig;
     set<uint32_t> forced_vars_orig;
     set<uint32_t> scc_vars_orig;
-    DepCache cache;
+    // The transitive dep sets would be up to #inputs long for every var: only
+    // their size up to 2 and whether all of them are inputs are needed.
+    struct DepSum {
+        uint8_t num = 0;
+        uint32_t single = 0;
+        bool only_input = true;
+        bool done = false;
+    };
+    vector<DepSum> sums(num_defs());
+    {
+        vector<char> is_dep;
+        vector<uint32_t> dep_list;
+        vector<const AIG*> ag_stack;
+        vector<vector<uint32_t>> imm(num_defs());
+        vector<std::pair<uint32_t, uint32_t>> st;
+        auto add_leaf = [](DepSum& s, uint32_t u) {
+            if (s.num == 0) { s.num = 1; s.single = u; }
+            else if (s.num == 1 && s.single != u) s.num = 2;
+        };
+        for (uint32_t root = 0; root < num_defs(); root++) {
+            if (!defined(root) || sums[root].done) continue;
+            st.push_back({root, 0});
+            while (!st.empty()) {
+                auto& [v, idx] = st.back();
+                if (idx == 0 && imm[v].empty()) {
+                    dep_list.clear();
+                    AIG::get_dependent_vars(defs[v], is_dep, dep_list, ag_stack, v);
+                    for (uint32_t d : dep_list) is_dep[d] = 0;
+                    imm[v] = dep_list;
+                }
+                if (idx < imm[v].size()) {
+                    const uint32_t d = imm[v][idx++];
+                    if (defined(d) && !sums[d].done) st.push_back({d, 0});
+                    continue;
+                }
+                DepSum& s = sums[v];
+                for (uint32_t d : imm[v]) {
+                    if (!defined(d)) {
+                        add_leaf(s, d);
+                        if (!get_orig_sampl_vars().count(d)) s.only_input = false;
+                    } else {
+                        const DepSum& sd = sums[d];
+                        if (!sd.only_input) s.only_input = false;
+                        if (sd.num == 1) add_leaf(s, sd.single);
+                        else if (sd.num == 2) s.num = 2;
+                    }
+                }
+                s.done = true;
+                vector<uint32_t>().swap(imm[v]);
+                st.pop_back();
+            }
+        }
+    }
+    SLOW_DEBUG_DO({
+        DepCache cache;
+        for (uint32_t v = 0; v < num_defs(); v++) {
+            if (!defined(v)) continue;
+            const auto& deps = get_dependent_vars_recursive(v, cache);
+            bool oi = true;
+            for (const auto& d : deps) if (!get_orig_sampl_vars().count(d)) oi = false;
+            release_assert(sums[v].only_input == oi);
+            release_assert(sums[v].num == std::min<size_t>(deps.size(), 2));
+            if (deps.size() == 1) release_assert(sums[v].single == deps[0]);
+        }
+    });
     for (uint32_t orig = 0; orig < num_defs(); orig++) {
         if (get_orig_sampl_vars().count(orig)) continue;
         if (!orig_to_new_var.count(orig)) {
             // Eliminated already from the CNF: either BVE, SCC, or forced
             assert(defs[orig] != nullptr && "if it is not in the CNF, it must be defined");
-            const auto& s = get_dependent_vars_recursive(orig, cache);
-            if (s.empty()) forced_vars_orig.insert(orig);
-            else if (s.size() == 1) scc_vars_orig.insert(orig);
+            const auto& s = sums[orig];
+            if (s.num == 0) forced_vars_orig.insert(orig);
+            else if (s.num == 1) scc_vars_orig.insert(orig);
             else bve_defined_vars_orig.insert(orig);
             continue;
         }
 
         // This var is NOT input and IS in the CNF
         if (!defined(orig)) continue;
-        const auto& s = get_dependent_vars_recursive(orig, cache);
-        bool only_input_deps = true;
-        for(const auto& d: s) {
-            if (!get_orig_sampl_vars().count(d)) {
-                only_input_deps = false;
-                break;
-            }
-        }
-
         const uint32_t new_var = orig_to_new_var.at(orig).var();
         assert(new_var < nVars());
-        if (only_input_deps) {
+        if (sums[orig].only_input) {
             extend_defined_vars.insert({orig,new_var});
         } else {
             backw_synth_defined_vars.insert({orig,new_var});
