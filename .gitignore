@@ -19,3 +19,4 @@ html/*.ts
 presentation*
 /scripts/data/__pycache__
 /qbf_solvers
+/paper-synth
