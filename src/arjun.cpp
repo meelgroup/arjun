@@ -1438,20 +1438,28 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
     uint32_t next_id = 0;
     vector<uint32_t> order;
 
-    function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
-        if (!aig || node_to_id.count(aig.get())) return;
-        uint32_t id = next_id++;
-        node_to_id[aig.get()] = id;
-        id_to_node[id] = aig.get();
-        if (aig->type == AIGT::t_and) {
-            collect(aig->l);
-            collect(aig->r);
-        }
-        order.push_back(id);
-        /* cout << "writing out AIG node id: " << id << " type: " << aig->type << endl; */
+    // Iterative (deep AIGs overflow the stack): ids in preorder, `order` in postorder
+    vector<std::pair<AIG*, uint8_t>> st;
+    auto visit = [&](AIG* a) {
+        if (!a || node_to_id.count(a)) return;
+        const uint32_t id = next_id++;
+        node_to_id[a] = id;
+        id_to_node[id] = a;
+        st.push_back({a, 0});
     };
-
-    for (const auto& aig : defs) collect(aig);
+    for (const auto& aig : defs) {
+        visit(aig.get());
+        while (!st.empty()) {
+            auto& [a, done] = st.back();
+            if (a->type == AIGT::t_and && done < 2) {
+                AIG* c = (done++ == 0) ? a->l.get() : a->r.get();
+                visit(c);
+                continue;
+            }
+            order.push_back(node_to_id[a]);
+            st.pop_back();
+        }
+    }
 
     // 2. Write number of nodes
     uint32_t num_nodes = id_to_node.size();

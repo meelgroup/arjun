@@ -42,21 +42,31 @@ void ArjunInt::write_verilog(std::ostream& out, const vector<aig_lit>& defs, con
     vector<const AIG*> topo_order;
     vector<uint32_t> lid, rid;
 
-    function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
-        if (!aig || nid_to_id.count(aig->nid)) return;
-        uint32_t l = 0, r = 0;
-        if (aig->type == AIGT::t_and) {
-            collect(aig->l);
-            collect(aig->r);
-            l = nid_to_id.find(aig->l->nid)->second;
-            r = nid_to_id.find(aig->r->nid)->second;
+    // Iterative: deep AIGs overflow the stack
+    vector<const AIG*> st;
+    for (const auto& root : defs) {
+        if (!root || nid_to_id.count(root->nid)) continue;
+        st.push_back(root.get());
+        while (!st.empty()) {
+            const AIG* a = st.back();
+            if (nid_to_id.count(a->nid)) { st.pop_back(); continue; }
+            uint32_t l = 0, r = 0;
+            if (a->type == AIGT::t_and) {
+                const auto it_l = nid_to_id.find(a->l->nid);
+                const auto it_r = nid_to_id.find(a->r->nid);
+                if (it_r == nid_to_id.end()) st.push_back(a->r.get());
+                if (it_l == nid_to_id.end()) st.push_back(a->l.get());
+                if (it_l == nid_to_id.end() || it_r == nid_to_id.end()) continue;
+                l = it_l->second;
+                r = it_r->second;
+            }
+            nid_to_id[a->nid] = topo_order.size();
+            topo_order.push_back(a);
+            lid.push_back(l);
+            rid.push_back(r);
+            st.pop_back();
         }
-        nid_to_id[aig->nid] = topo_order.size();
-        topo_order.push_back(aig.get());
-        lid.push_back(l);
-        rid.push_back(r);
-    };
-    for (const auto& aig : defs) collect(aig);
+    }
     const uint32_t num_nodes = topo_order.size();
 
     vector<uint32_t> outputs;
@@ -79,11 +89,15 @@ void ArjunInt::write_verilog(std::ostream& out, const vector<aig_lit>& defs, con
 
     // compound: the inlined node renders as a bare `a & b`, to be
     // parenthesized when composed further
+    // depth caps the nesting of inlined nodes: put_rhs recurses on it
     vector<char> inlined(num_nodes, 0), compound(num_nodes, 0);
+    vector<uint32_t> depth(num_nodes, 0);
     for (uint32_t id = 0; id < num_nodes; id++) {
         const AIG* node = topo_order[id];
         if (node->type != AIGT::t_and) continue;
-        inlined[id] = fanout[id] == 1;
+        depth[id] = 1 + std::max(inlined[lid[id]] ? depth[lid[id]] : 0,
+                                 inlined[rid[id]] ? depth[rid[id]] : 0);
+        inlined[id] = fanout[id] == 1 && depth[id] <= 64;
         if (node->l == node->r) compound[id] = !node->l.neg && inlined[lid[id]] && compound[lid[id]];
         else compound[id] = 1;
     }

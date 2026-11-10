@@ -94,7 +94,21 @@ struct aig_lit {
 class AIG {
 public:
     AIG() : nid(next_nid()) {}
-    ~AIG() = default;
+    // Iterative: the default one recurses once per node of a chain that dies
+    // with it, and overflowed the stack on AR-fixpoint-2's interpolants
+    ~AIG() {
+        static thread_local std::vector<aig_node_ptr> pending;
+        static thread_local bool draining = false;
+        if (l.node && l.node.use_count() == 1) pending.push_back(std::move(l.node));
+        if (r.node && r.node.use_count() == 1) pending.push_back(std::move(r.node));
+        if (draining) return;
+        draining = true;
+        while (!pending.empty()) {
+            aig_node_ptr n = std::move(pending.back());
+            pending.pop_back();
+        }
+        draining = false;
+    }
     AIG(const AIG&) = delete;
     AIG& operator=(const AIG&) = delete;
 
@@ -125,45 +139,46 @@ public:
     // aig = AIG to evaluate (signed edge; carries its own complement bit)
     // defs = known definitions of variables (each def is a signed edge)
     static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_lit& a, const std::vector<aig_lit>& defs, std::map<aig_lit, CMSat::lbool>& cache) {
-        std::function<CMSat::lbool(const aig_lit&)> sub_eval = [&](const aig_lit& aig) -> CMSat::lbool {
-            if (cache.count(aig)) return cache.at(aig);
+        // Iterative, through the defs too: deep AIGs overflowed the stack
+        std::vector<const aig_lit*> st{&a};
+        while (!st.empty()) {
+            const aig_lit& aig = *st.back();
+            if (cache.count(aig)) { st.pop_back(); continue; }
             assert(aig->invariants());
+            CMSat::lbool ret;
             if (aig->type == AIGT::t_lit) {
-                CMSat::lbool ret;
                 if (defs[aig->var] != nullptr) {
-                    ret = sub_eval(defs.at(aig->var));
+                    const aig_lit& d = defs[aig->var];
+                    const auto it = cache.find(d);
+                    if (it == cache.end()) { st.push_back(&d); continue; }
+                    ret = it->second;
                 } else {
                     assert(aig->var < vals.size());
                     ret = vals[aig->var];
                 }
-                if (ret == CMSat::l_Undef) {
-                    cache[aig] = CMSat::l_Undef;
-                    return CMSat::l_Undef;
+                if (ret != CMSat::l_Undef) ret = ret ^ aig.neg;
+            } else if (aig->type == AIGT::t_const) {
+                ret = CMSat::boolToLBool(!aig.neg);
+            } else if (aig->type == AIGT::t_and) {
+                const auto it_l = cache.find(aig->l);
+                const auto it_r = cache.find(aig->r);
+                if (it_l == cache.end() || it_r == cache.end()) {
+                    if (it_r == cache.end()) st.push_back(&aig->r);
+                    if (it_l == cache.end()) st.push_back(&aig->l);
+                    continue;
                 }
-                ret = ret ^ aig.neg;
-                cache[aig] = ret;
-                return ret;
-            }
-
-            if (aig->type == AIGT::t_const) {
-                const CMSat::lbool ret = CMSat::boolToLBool(!aig.neg);
-                cache[aig] = ret;
-                return ret;
-            }
-
-            if (aig->type == AIGT::t_and) {
-                const auto lv = sub_eval(aig->l);
-                const auto rv = sub_eval(aig->r);
-                CMSat::lbool ret;
+                const auto lv = it_l->second;
+                const auto rv = it_r->second;
                 if (lv == CMSat::l_False || rv == CMSat::l_False) ret = CMSat::l_False ^ aig.neg;
                 else if (lv == CMSat::l_Undef || rv == CMSat::l_Undef) ret = CMSat::l_Undef;
                 else ret = (lv && rv) ^ aig.neg;
-                cache[aig] = ret;
-                return ret;
+            } else {
+                assert(false && "Unknown AIG type"); std::abort();
             }
-            assert(false && "Unknown AIG type"); std::abort();
-        };
-        return sub_eval(a);
+            cache[aig] = ret;
+            st.pop_back();
+        }
+        return cache.at(a);
     }
 
     static aig_lit new_lit(CMSat::Lit l) {
@@ -392,24 +407,31 @@ public:
         if (!aig) return aig_lit(nullptr);
 
         // Clones nodes, not signed edges. Sign is carried on the returned edge.
-        std::function<aig_node_ptr(const AIG*)> clone_node =
-            [&](const AIG* src) -> aig_node_ptr {
-                auto it = cache.find(src);
-                if (it != cache.end()) return it->second;
-
-                auto cloned = std::make_shared<AIG>();
-                cloned->type = src->type;
-                cloned->var = src->var;
-                cache[src] = cloned;
-
-                if (src->type == AIGT::t_and) {
-                    cloned->l = aig_lit(clone_node(src->l.get()), src->l.neg);
-                    cloned->r = aig_lit(clone_node(src->r.get()), src->r.neg);
-                }
-                return cloned;
-            };
-
-        return aig_lit(clone_node(aig.get()), aig.neg);
+        // Iterative, in the preorder of the recursive one (same nids): deep
+        // AIGs overflowed the stack.
+        struct Frame { const AIG* src; AIG* dst; uint8_t stage; };
+        std::vector<Frame> st;
+        auto get = [&](const AIG* src) -> aig_node_ptr {
+            auto it = cache.find(src);
+            if (it != cache.end()) return it->second;
+            auto cloned = std::make_shared<AIG>();
+            cloned->type = src->type;
+            cloned->var = src->var;
+            cache[src] = cloned;
+            if (src->type == AIGT::t_and) st.push_back({src, cloned.get(), 0});
+            return cloned;
+        };
+        aig_node_ptr root = get(aig.get());
+        while (!st.empty()) {
+            Frame& f = st.back();
+            if (f.stage == 2) { st.pop_back(); continue; }
+            const bool left = f.stage++ == 0;
+            const aig_lit& se = left ? f.src->l : f.src->r;
+            AIG* dst = f.dst;
+            aig_node_ptr c = get(se.get());
+            (left ? dst->l : dst->r) = aig_lit(std::move(c), se.neg);
+        }
+        return aig_lit(root, aig.neg);
     }
 
     // Apply `func` to each AIG edge (as aig_lit). De-dup is by signed-edge:
@@ -462,17 +484,36 @@ public:
             return aig.neg ? negate_result(it->second) : it->second;
         }
 
-        ResultType result;
-        if (aig->type == AIGT::t_and) {
-            ResultType left_result = transform<ResultType>(aig->l, std::forward<Visitor>(visitor), cache);
-            ResultType right_result = transform<ResultType>(aig->r, std::forward<Visitor>(visitor), cache);
-            result = visitor(aig->type, aig->var, &left_result, &right_result);
-        } else {
-            result = visitor(aig->type, aig->var, nullptr, nullptr);
+        // Iterative, visiting in the recursive order (left subtree, right
+        // subtree, node): deep AIGs overflowed the stack.
+        auto res_of = [&](const aig_lit& e) -> ResultType {
+            const ResultType& r = cache.find(aig_lit(e.node, false))->second;
+            return e.neg ? negate_result(r) : r;
+        };
+        std::vector<std::pair<const aig_node_ptr*, uint8_t>> st;
+        st.push_back({&aig.node, 0});
+        while (!st.empty()) {
+            const aig_node_ptr& n = *st.back().first;
+            uint8_t& stage = st.back().second;
+            if (n->type == AIGT::t_and && stage < 2) {
+                const aig_lit& c = (stage++ == 0) ? n->l : n->r;
+                if (!cache.count(aig_lit(c.node, false))) st.push_back({&c.node, 0});
+                continue;
+            }
+            st.pop_back();
+            if (cache.count(aig_lit(n, false))) continue;
+            ResultType result;
+            if (n->type == AIGT::t_and) {
+                ResultType left_result = res_of(n->l);
+                ResultType right_result = res_of(n->r);
+                result = visitor(n->type, n->var, &left_result, &right_result);
+            } else {
+                result = visitor(n->type, n->var, nullptr, nullptr);
+            }
+            cache[aig_lit(n, false)] = result;
         }
-
-        cache[pos_key] = result;
-        return aig.neg ? negate_result(result) : result;
+        const ResultType& r = cache.find(pos_key)->second;
+        return aig.neg ? negate_result(r) : r;
     }
 
     // Tseitin-encode `aig` into `solver` (one helper per AND, cached so shared
