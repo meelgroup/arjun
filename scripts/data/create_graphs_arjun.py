@@ -621,6 +621,54 @@ def print_def_steps_table(table_todo, fname_like):
     con.close()
 
 
+STEP_LABEL = {"backbone": "backbone (cadiback)", "puura": "puura (rest)"}
+
+
+def print_time_share_table(table_todo, fname_like):
+    """--synth: where the time goes. A file's total is arjun_time, or the time it
+    was killed at; a killed step logs no time, so that goes to 'killed in <stage>'."""
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    ts_cols = ", ".join(f"t_{s.replace('-', '_')}" for s in DEF_STEPS)
+    for dir, ver in table_todo:
+        for title, cond in (("solved", f" AND {SOLVE_TIME_EXPR} IS NOT NULL"), ("all", "")):
+            cur.execute(
+                f"SELECT COALESCE(arjun_time, timeout_t_nonnull), arjun_time IS NOT NULL,"
+                f" last_stage, t_aig_rw, {ts_cols} FROM {TABLE}"
+                f" WHERE dirname=? AND {VER_EXPR}=? AND solver='arjun' AND verdict IS NULL"
+                f"{cond}{fname_like}", (dir, ver))
+            rows = [r for r in cur.fetchall() if r[0]]
+            if not rows or all(v is None for r in rows for v in r[4:]):
+                continue
+            ran, tsum, frac, dom, tmax = (defaultdict(int), defaultdict(float),
+                                          defaultdict(float), defaultdict(int), defaultdict(float))
+            order = [STEP_LABEL.get(s, s) for s in DEF_STEPS] + ["aig-rw", "other"]
+            for total, solved, stage, aig_rw, *ts in rows:
+                per = {STEP_LABEL.get(s, s): t for s, t in zip(DEF_STEPS, ts) if t is not None}
+                if aig_rw is not None:
+                    per["aig-rw"] = aig_rw
+                rest = max(total - sum(per.values()), 0.0)
+                key = "other" if solved else f"killed in {stage or 'startup'}"
+                if key not in order:
+                    order.append(key)
+                per[key] = rest
+                for k, t in per.items():
+                    ran[k] += 1
+                    tsum[k] += t
+                    frac[k] += t / total
+                    dom[k] += t > 0.5 * total
+                    tmax[k] = max(tmax[k], t)
+            grand = sum(r[0] for r in rows)
+            str_rows = [[k, str(ran[k]), f"{tsum[k]:.0f}", f"{100.0 * tsum[k] / grand:.1f}",
+                         f"{100.0 * frac[k] / len(rows):.1f}", str(dom[k]), f"{tmax[k]:.1f}"]
+                        for k in order if ran[k]]
+            print(f"\n{BLUE}Time share per step, {title} files ({len(rows)}, "
+                  f"{grand:.0f} s): {dir} [{ver[:10]}]{RESET}")
+            _print_table(["step", "ran", "T", "% of T", "avg % per file", ">50% in", "max T"],
+                         str_rows)
+    con.close()
+
+
 def print_cover_runs_table(table_todo, fname_like):
     """--2qbf only: per covering run, what it decided and what giving up cost.
     'gaveup T on solved' is time lost on files the run did not decide but the
@@ -1086,6 +1134,7 @@ def main():
     print_instance_stats_table(table_todo, fname_like)
     print_solved_by_table(table_todo, fname_like)
     print_def_steps_table(table_todo, fname_like)
+    print_time_share_table(table_todo, fname_like)
     print_cover_runs_table(table_todo, fname_like)
     print_cegr_runs_table(table_todo, fname_like)
     print_slower_tables(matched_dirs, fname_like, verbose=args.verbose)
