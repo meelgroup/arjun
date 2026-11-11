@@ -323,18 +323,7 @@ bool Unate::process_test_var(const uint32_t test) {
         // value; inputs share Y/Y', non-inputs are pinned equal by their
         // indicator, so one value per candidate is unambiguous.
         if (ret == l_True) {
-            const auto& m = s->get_model();
-            const size_t total = eq_input_vars_list.size() + eq_noninput_vars_list.size();
-            input_vals[flip].assign(total, l_Undef);
-            for (size_t i = 0; i < eq_input_vars_list.size(); i++) {
-                const uint32_t v = eq_input_vars_list[i];
-                if (v < m.size()) input_vals[flip][i] = m[v];
-            }
-            const size_t n_inp = eq_input_vars_list.size();
-            for (size_t i = 0; i < eq_noninput_vars_list.size(); i++) {
-                const uint32_t v = eq_noninput_vars_list[i];
-                if (v < m.size()) input_vals[flip][n_inp + i] = m[v];
-            }
+            project_model(input_vals[flip]);
             model_valid[flip] = true;
         }
         assumps.pop_back();
@@ -347,6 +336,20 @@ bool Unate::process_test_var(const uint32_t test) {
     already_tested.insert(test);
     s->add_clause({Lit(var_to_indic.at(test), false)});
     return found_def;
+}
+
+void Unate::project_model(vector<lbool>& out) const {
+    const auto& m = s->get_model();
+    const size_t n_inp = eq_input_vars_list.size();
+    out.assign(n_inp + eq_noninput_vars_list.size(), l_Undef);
+    for (size_t i = 0; i < n_inp; i++) {
+        const uint32_t v = eq_input_vars_list[i];
+        if (v < m.size()) out[i] = m[v];
+    }
+    for (size_t i = 0; i < eq_noninput_vars_list.size(); i++) {
+        const uint32_t v = eq_noninput_vars_list[i];
+        if (v < m.size()) out[n_inp + i] = m[v];
+    }
 }
 
 void Unate::log_pass_summary(const uint32_t to_define_size_before) {
@@ -370,7 +373,8 @@ void Unate::log_pass_summary(const uint32_t to_define_size_before) {
             << " skip_v_eq=" << cs.cands_skipped_v_eq
             << " skip_undef=" << cs.cands_skipped_undef
             << " skip_budget=" << cs.cands_skipped_budget
-            << " skip_cycle=" << cs.cands_skipped_cycle << "]"
+            << " skip_cycle=" << cs.cands_skipped_cycle
+            << " skip_model=" << cs.cands_skipped_model << "]"
             << " p1[U=" << cs.p1_unsat << " S=" << cs.p1_sat << " T=" << cs.p1_undef << "]"
             << " p2[U=" << cs.p2_unsat << " S=" << cs.p2_sat << " T=" << cs.p2_undef << "]"
             << " avg_win_depth=" << setprecision(1) << fixed << safe_div(cs.winning_depth_sum, cs.hits)
@@ -440,6 +444,8 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
         }
     }
 
+    eq_probe_models[0].clear();
+    eq_probe_models[1].clear();
     bool found_def = false;
     uint32_t cand_count = 0;
     uint32_t cand_depth = 0; // 1-based position of the winner
@@ -465,6 +471,16 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
         }
         if (v1 == v2) {
             eq_stats.cands_skipped_v_eq++;
+            continue;
+        }
+        // Probes of this test differ only in the L=v assumption, and no clause is
+        // added until a hit, so a stored SAT model with L=v refutes L
+        const auto refuted = [&](const int p, const lbool v) {
+            for (const auto& m : eq_probe_models[p]) if (m[pos] == v) return true;
+            return false;
+        };
+        if (refuted(0, v1) || refuted(1, v2)) {
+            eq_stats.cands_skipped_model++;
             continue;
         }
 
@@ -516,8 +532,10 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
         auto r1 = s->solve(&assumps);
         assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
         if (r1 == l_False) eq_stats.p1_unsat++;
-        else if (r1 == l_True) eq_stats.p1_sat++;
-        else eq_stats.p1_undef++;
+        else if (r1 == l_True) {
+            eq_stats.p1_sat++;
+            project_model(eq_probe_models[0].emplace_back());
+        } else eq_stats.p1_undef++;
         if (r1 != l_False) continue;
         if (out_of_budget()) break;
 
@@ -530,8 +548,10 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
         auto r2 = s->solve(&assumps);
         assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
         if (r2 == l_False) eq_stats.p2_unsat++;
-        else if (r2 == l_True) eq_stats.p2_sat++;
-        else eq_stats.p2_undef++;
+        else if (r2 == l_True) {
+            eq_stats.p2_sat++;
+            project_model(eq_probe_models[1].emplace_back());
+        } else eq_stats.p2_undef++;
         if (r2 != l_False) continue;
 
         // Under L=v1 → test=0, under L=v2 → test=1, and v1≠v2.

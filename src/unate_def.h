@@ -78,6 +78,8 @@ struct UnateDefEqStats {
     // Non-input candidates skipped because committing test = L would close
     // a dependency cycle (test ∈ deps_recursive(L_orig)).
     uint64_t cands_skipped_cycle = 0;
+    // A model of an earlier SAT probe of the same test satisfies this one too
+    uint64_t cands_skipped_model = 0;
 
     // Time spent inside the equiv block (post-flips), seconds.
     double time_in_eq = 0.0;
@@ -110,6 +112,8 @@ class Unate {
         std::vector<CMSat::Lit> assumps;
         std::vector<CMSat::lbool> input_vals[2];
         bool model_valid[2] = {false, false};
+        std::vector<std::vector<CMSat::lbool>> eq_probe_models[2];
+        void project_model(std::vector<CMSat::lbool>& out) const;
         uint32_t new_units = 0;
         uint32_t tested_num = 0;
         double my_time = 0.0;
