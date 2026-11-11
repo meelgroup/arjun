@@ -90,6 +90,7 @@ target_link_libraries(arjun
     sbva
   PRIVATE
     cadical
+    cadiback
 )
 
 set_target_properties(arjun PROPERTIES
