@@ -23,6 +23,7 @@
  */
 
 #include "interpolant.h"
+#include <unordered_set>
 #include "constants.h"
 #include "time_mem.h"
 #include "aig_to_cnf.h"
@@ -68,7 +69,16 @@ uint32_t Interpolant::build_effective_clauses(vector<vector<Lit>>& out_cls) cons
 
     out_cls.clear();
     out_cls.reserve(all_cls.size());
-    std::set<vector<Lit>> seen;
+    // Dedup by index into out_cls: a std::set of the clauses was 37% of the
+    // rebuilds on AR-fixpoint-4
+    auto cl_hash = [&](uint32_t i) {
+        uint64_t h = 14695981039346656037ULL;
+        for (const auto& l : out_cls[i]) h = (h ^ l.toInt()) * 1099511628211ULL;
+        return (size_t)h;
+    };
+    auto cl_eq = [&](uint32_t a, uint32_t b) { return out_cls[a] == out_cls[b]; };
+    std::unordered_set<uint32_t, decltype(cl_hash), decltype(cl_eq)> seen(
+        all_cls.size() * 2, cl_hash, cl_eq);
     vector<Lit> nc;
     for (const auto& c : all_cls) {
         nc.clear();
@@ -79,7 +89,8 @@ uint32_t Interpolant::build_effective_clauses(vector<vector<Lit>>& out_cls) cons
         for (size_t i = 0; i + 1 < nc.size(); i++)
             if (nc[i].var() == nc[i+1].var()) { taut = true; break; } // v and ¬v adjacent
         if (taut) continue;
-        if (seen.insert(nc).second) out_cls.push_back(nc);
+        out_cls.push_back(nc);
+        if (!seen.insert(out_cls.size() - 1).second) out_cls.pop_back();
     }
     return num_merged;
 }
