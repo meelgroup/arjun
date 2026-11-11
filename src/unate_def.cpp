@@ -473,17 +473,6 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
             eq_stats.cands_skipped_v_eq++;
             continue;
         }
-        // Probes of this test differ only in the L=v assumption, and no clause is
-        // added until a hit, so a stored SAT model with L=v refutes L
-        const auto refuted = [&](const int p, const lbool v) {
-            for (const auto& m : eq_probe_models[p]) if (m[pos] == v) return true;
-            return false;
-        };
-        if (refuted(0, v1) || refuted(1, v2)) {
-            eq_stats.cands_skipped_model++;
-            continue;
-        }
-
         // Dep-graph safety for non-input L: set_def(test, L) makes test
         // backward_defined, which Cegr requires to bottom out at orig
         // sampling vars. Accept non-input L only when (i) L is defined,
@@ -514,7 +503,19 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
             }
         }
 
+        // Counted in cand_count: the cap then covers the same candidates as
+        // without this skip, else it reaches deeper and makes more SAT calls
         cand_count++;
+        // Probes of this test differ only in the L=v assumption, and no clause is
+        // added until a hit, so a stored SAT model with L=v refutes L
+        const auto refuted = [&](const int p, const lbool v) {
+            for (const auto& m : eq_probe_models[p]) if (m[pos] == v) return true;
+            return false;
+        };
+        if (refuted(0, v1) || refuted(1, v2)) {
+            eq_stats.cands_skipped_model++;
+            continue;
+        }
         eq_stats.cands_examined++;
 
         // l_eq_v1/v2 are Y-side lits; for inputs also the Y' lit (shared),
