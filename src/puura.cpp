@@ -31,6 +31,7 @@
 #include <string>
 
 #include <sbva/sbva.h>
+#include <cadiback.h>
 #include "time_mem.h"
 #include "puura.h"
 #include "arjun.h"
@@ -154,6 +155,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_varelim_tie_min_occ(simp_conf.bve_tie_min_occ);
     solver->set_backbone_ccnr_mems_limitM(simp_conf.backbone_ccnr_mems_limitM);
 #endif
+    // CMS runs cadiback, whose CaDiCaL takes its options from here
+    CadiBack::set_cadical_option("lucky", simp_conf.backbone_lucky);
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
         solver->set_occ_based_lit_rem_time_limitM(100);

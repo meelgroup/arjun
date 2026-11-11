@@ -1500,6 +1500,7 @@ struct SimpConf {
     int bve_sched_only_touched = 0;
     int bve_tie_min_occ = 0;
     int64_t backbone_ccnr_mems_limitM = 300;
+    int backbone_lucky = 1;
 };
 
 struct VarTypes {
