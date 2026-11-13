@@ -1489,6 +1489,10 @@ struct SimpConf {
     int bve_too_large_resolvent2 = 4; // 2nd pass simplification
     int do_subs_with_resolvent_clauses = 1;
     bool do_backbone_puura = true;
+    // Keep sampling vars that occur in no clause in the CNF instead of taking
+    // them out into the multiplier: one may be equivalent to an input var that
+    // was replaced by it (ganak --compile keeps every model of the input).
+    bool keep_empty_sampl = false;
     int64_t backbone_max_confl = -1;
     int weaken_limit = 8000;
     int distill_rem_level = 2;

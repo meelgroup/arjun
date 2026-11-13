@@ -96,6 +96,9 @@ std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) const {
 
 bool Puura::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<SATSolver>& solver) {
     if (!cnf.get_weighted()) return true;
+    // With need_aig the defs describe the models of the input: a zero weight
+    // must not remove any (ganak --compile, whose circuit is weight-independent)
+    if (cnf.get_need_aig()) return true;
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (cnf.get_lit_weight(Lit(i, false))->is_zero()) {
             solver->add_clause({Lit(i, true)});
@@ -249,8 +252,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     auto new_sampl_vars = cnf.get_sampl_vars();
     vector<uint32_t> new_empty_sampl_vars;
 
+    auto prot = cnf.get_no_touch_cur();
+    if (simp_conf.keep_empty_sampl) prot.insert(new_sampl_vars.begin(), new_sampl_vars.end());
     ArjunNS::clean_sampl_get_empties_prot(solver.get(), new_sampl_vars,
-            new_empty_sampl_vars, cnf.get_no_touch_cur());
+            new_empty_sampl_vars, prot);
 
     // Set up dont_elim
     if (!cnf.get_weighted()) {

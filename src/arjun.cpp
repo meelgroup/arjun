@@ -1768,7 +1768,7 @@ DLL_PUBLIC void SimplifiedCNF::fix_weights(unique_ptr<CMSat::SATSolver>& solver,
 }
 
 DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
-    assert(!need_aig && "not tested with AIGs");
+    // With need_aig, defs stay in the ORIG number space: only the map changes.
     assert(sampl_vars.size() <= opt_sampl_vars.size());
     // NOTE: we do not need to update defs, because defs is ORIG to ORIG
 
