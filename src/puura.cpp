@@ -55,7 +55,8 @@ Puura::~Puura() = default;
 
 void Puura::backbone(SimplifiedCNF& cnf, int64_t max_confl) {
     double my_time = cpuTime();
-    if (cnf.get_weighted()) {
+    // with need_aig a zero weight must not remove models (see set_zero_weight_lits)
+    if (cnf.get_weighted() && !cnf.get_need_aig()) {
         for(const auto& v: cnf.get_opt_sampl_vars()) {
             Lit l(v, false);
             if (cnf.get_lit_weight(l)->is_zero()) cnf.add_clause({~l});
