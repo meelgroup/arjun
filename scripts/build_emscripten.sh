@@ -1,28 +1,19 @@
 #!/usr/bin/env bash
+# Builds arjun for wasm in its own build-wasm/ (the native build/ stays) and
+# installs it into $EMINSTALL. Run from anywhere, after source ~/emscripten.sh.
 set -euo pipefail
-
-SOLVERS_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-
-rm -rf .cmake
-rm -rf lib*
-rm -rf Test*
-rm -rf tests*
-rm -rf include
-rm -rf tests
-rm -rf CM*
-rm -rf cmake*
-rm -rf arjun
-rm -rf Makefile
-rm -rf rjun-src
-rm -rf deps
-rm -rf _deps
-emcmake cmake -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=${EMINSTALL}" -DEXTRA_SYNTH=OFF \
-    -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
-    -Dcadiback_DIR="${SOLVERS_DIR}/cadiback/build" \
-    -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
-    -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
-    ..
-emmake make -j$(nproc)
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+SAT_DIR="$(cd "$REPO/.." && pwd)"
+mkdir -p "$REPO/build-wasm"
+cd "$REPO/build-wasm"
+emcmake cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_INSTALL_PREFIX="${EMINSTALL}" -DEXTRA_SYNTH=OFF \
+    -Dcadical_DIR="${SAT_DIR}/cadical/build-wasm" \
+    -Dcadiback_DIR="${SAT_DIR}/cadiback/build-wasm" \
+    -Dcryptominisat5_DIR="${SAT_DIR}/cryptominisat/build-wasm" \
+    -Dsbva_DIR="${SAT_DIR}/sbva/build-wasm" \
+    "$REPO"
+emmake make -j"$(nproc)"
 emmake make install
-cp arjun.wasm "${SOLVERS_DIR}/arjun/html"
-cp "${EMINSTALL}/bin/arjun.js" "${SOLVERS_DIR}/arjun/html"
+cp arjun.wasm "$REPO/html"
+cp "${EMINSTALL}/bin/arjun.js" "$REPO/html"

@@ -20,3 +20,4 @@ presentation*
 /scripts/data/__pycache__
 /qbf_solvers
 /paper-synth
+build-wasm/
