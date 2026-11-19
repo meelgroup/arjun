@@ -156,6 +156,7 @@ inline double safe_div(double a, double b) noexcept {
 
 template<typename T, typename  T2> void sort_unknown(T& unknown, const std::vector<T2>& incidence)
 {
+    if (unknown.empty()) return;
     assert(!incidence.empty() && "Incidence is filled at fill_solver time");
     std::sort(unknown.begin(), unknown.end(), [&](uint32_t a, const uint32_t b) -> bool {
         if (incidence[a] != incidence[b]) {
