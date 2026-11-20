@@ -34,8 +34,9 @@ using std::vector;
 using NoY = CoverComponent::Conf::NoY;
 
 CoverDrop::CoverDrop(const Config& _conf, SimplifiedCNF& _cnf, const vector<uint32_t>& xs,
-        const Arjun::ElimToFileConf& etof_conf) :
-        conf(_conf), cnf(_cnf), problem(_cnf.nVars(), xs) {
+        const Arjun::ElimToFileConf& etof_conf, const std::set<uint32_t>& _gate_def) :
+        conf(_conf), cnf(_cnf), problem(_cnf.nVars(), xs), gate_def(_cnf.nVars(), 0), seen(_cnf.nVars(), 0) {
+    for (const auto& v : _gate_def) gate_def[v] = 1;
     cconf.max_ticks = etof_conf.cover_drop_mticks * 1e6;
     cconf.no_y = etof_conf.cover_drop_max_cubes ? NoY::keep : NoY::stop;
     cconf.max_cubes = etof_conf.cover_drop_max_cubes;
@@ -54,7 +55,8 @@ CoverDrop::CoverDrop(const Config& _conf, SimplifiedCNF& _cnf, const vector<uint
 // - replaced (NoY::keep): the minimized X-cubes with no Y_i, as clauses,
 //   which together are exactly ∃Y_i C_i. Not if there are over max_cubes of
 //   them, nor if C_i has a defined var and they do not make it much smaller
-// - kept: it has a weighted Y (its weight would be lost), or the ticks ran out
+// - kept: it has a weighted Y (its weight would be lost), the ticks ran out,
+//   or nearly all its Y are defined by gates
 // Each component gets at most a quarter of max_ticks.
 int64_t CoverDrop::run() {
     assert(used_ticks == 0);
@@ -96,7 +98,8 @@ int64_t CoverDrop::run() {
         Covered covered;
         if (has_weight) {
           // its Y weights are part of the count, so it must stay: ret stays l_Undef, which keeps it
-        } else if (cconf.max_ticks && used_ticks >= cconf.max_ticks) drop_stats.out_of_budget++;
+        } else if (mostly_gate_defined(comp_cls)) drop_stats.gate_def++;
+        else if (cconf.max_ticks && used_ticks >= cconf.max_ticks) drop_stats.out_of_budget++;
         else covered = cover_for_drop(comp_cls, has_def, psi, drop_stats);
 
         // keep the component, drop it (every X has a Y), or replace it by the cubes ruling out the Xs that have none
@@ -117,6 +120,19 @@ int64_t CoverDrop::run() {
     const int64_t removed = rewrite_cnf_with_cubes(cnf, gone, std::move(cubes));
     if (conf.verb) drop_stats.print(components.size(), removed, std::count(gone.begin(), gone.end(), 1), used_ticks, start);
     return removed;
+}
+
+bool CoverDrop::mostly_gate_defined(const Cls& comp_cls) {
+    vector<uint32_t> ys;
+    for (const auto& cl : comp_cls) for (const auto& l : cl) {
+        const uint32_t v = l.var();
+        if (problem.is_x[v] || seen[v]) continue;
+        seen[v] = 1;
+        ys.push_back(v);
+    }
+    uint32_t def = 0;
+    for (const auto& v : ys) { def += gate_def[v]; seen[v] = 0; }
+    return !ys.empty() && 100ULL * def >= (uint64_t)gate_def_skip_pct * ys.size();
 }
 
 // Covers the component with the part of psi it reaches. With a defined var
@@ -200,7 +216,8 @@ void CoverDrop::DropStats::print(const size_t num_comps, const int64_t removed, 
         << " dropped: " << dropped << " replaced: " << replaced << " by cls: " << cube_cls
         << " avg sz: " << std::setprecision(1) << std::fixed << (cube_cls ? (double)cube_lits / cube_cls : 0)
         << " no-Y: " << no_y << " gave up: " << gave_up << " (ticks: " << up_ticks << " cubes: " << up_cubes
-        << ") no budget: " << out_of_budget << " weighted: " << weighted << " kept defined: " << kept_def
+        << ") no budget: " << out_of_budget << " weighted: " << weighted << " gate defined: " << gate_def
+        << " kept defined: " << kept_def
         << " cls removed: " << removed << " vars gone: " << vars_gone
         << " Mticks: " << std::setprecision(1) << std::fixed << used_ticks / 1e6
         << " (done: " << done_ticks / 1e6 << " max done: " << max_done_ticks / 1e6

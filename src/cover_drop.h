@@ -38,8 +38,9 @@ namespace ArjunInt {
 class CoverDrop {
 public:
     // cover_drop_max_cubes 0: only remove
+    // gate_def: the vars gates define from the opt sampling set
     CoverDrop(const Config& _conf, ArjunNS::SimplifiedCNF& _cnf, const std::vector<uint32_t>& xs,
-            const ArjunNS::Arjun::ElimToFileConf& etof_conf);
+            const ArjunNS::Arjun::ElimToFileConf& etof_conf, const std::set<uint32_t>& gate_def);
     // Returns the clauses removed, net
     int64_t run();
 
@@ -48,9 +49,13 @@ private:
     // only if it has this many clauses, and the cubes are 1/ratio of them at most
     static constexpr uint32_t def_replace_min_cls = 1000;
     static constexpr uint32_t def_replace_ratio = 50;
+    // A component with at least this % of its Y defined by gates is not tried:
+    // each Y-model covers few Xs, so covering enumerates (fault trees: 200K
+    // rounds, 0 cubes), and the counter branches well on those gates anyway
+    static constexpr uint32_t gate_def_skip_pct = 95;
 
     struct DropStats {
-        uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0, kept_def = 0;
+        uint32_t tried = 0, dropped = 0, replaced = 0, no_y = 0, gave_up = 0, weighted = 0, kept_def = 0, gate_def = 0;
         uint64_t cube_cls = 0, cube_lits = 0;
         uint32_t up_ticks = 0, up_cubes = 0, out_of_budget = 0;
         uint64_t done_ticks = 0, max_done_ticks = 0, up_ticks_used = 0, confl = 0;
@@ -80,12 +85,15 @@ private:
     enum class Action { keep, keep_def, drop, replace };
     Covered cover_for_drop(Cls& comp_cls, bool has_def, PsiReach& psi, DropStats& drop_stats);
     Action choose_action(const Covered& covered, bool has_def, size_t num_cls) const;
+    bool mostly_gate_defined(const Cls& comp_cls);
 
     const Config& conf;
     ArjunNS::SimplifiedCNF& cnf;
     const CoverProblem problem;
     CoverComponent::Conf cconf;
     uint64_t used_ticks = 0;
+    std::vector<char> gate_def;
+    std::vector<char> seen;
 };
 
 }

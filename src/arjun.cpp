@@ -166,7 +166,16 @@ DLL_PUBLIC int64_t Arjun::standalone_cover_drop(SimplifiedCNF& cnf, const ElimTo
         for (const auto& v : cnf.get_opt_sampl_vars())
             if (!sampl.count(v) && cnf.weight_set(v)) univ.push_back(v);
     }
-    CoverDrop cover(arjdata->conf, cnf, univ, etof_conf);
+    std::set<uint32_t> gate_def;
+    if (cnf.get_opt_sampl_vars_set()) {
+        const double my_time = cpuTime();
+        const InterpConf iconf;
+        Extend extend(arjdata->conf, iconf);
+        gate_def = extend.gate_defined(cnf);
+        verb_print2(1, "[cover-drop] gate defined vars: " << gate_def.size() << " of " << cnf.nVars()
+                << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
+    }
+    CoverDrop cover(arjdata->conf, cnf, univ, etof_conf, gate_def);
     return cover.run();
 }
 

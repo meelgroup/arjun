@@ -38,9 +38,12 @@ public:
     void extend_round(ArjunNS::SimplifiedCNF& cnf);
     void extend_synth(ArjunNS::SimplifiedCNF& cnf);
     bool check_extend(const ArjunNS::SimplifiedCNF& cnf);
+    // The opt sampling vars and all vars gates define from them. No SAT search
+    std::set<uint32_t> gate_defined(const ArjunNS::SimplifiedCNF& cnf);
 
 private:
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    void close_under_gates(std::set<uint32_t>& opt_sampl, std::vector<CMSat::OrGate>& all_gates);
     void get_incidence();
     std::vector<uint32_t> incidence;
 

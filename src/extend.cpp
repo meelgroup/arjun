@@ -204,17 +204,21 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
 }
 
-void Extend::extend_round(SimplifiedCNF& cnf) {
-    assert(cnf.get_opt_sampl_vars_set() == true);
-    double start_round_time = cpuTime();
-    const uint32_t orig_size = cnf.get_opt_sampl_vars().size();
+set<uint32_t> Extend::gate_defined(const SimplifiedCNF& cnf) {
     fill_solver(cnf);
     solver->set_verbosity(0);
     set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
+    vector<OrGate> all_gates;
+    close_under_gates(opt_sampl, all_gates);
+    return opt_sampl;
+}
 
+// Adds to opt_sampl every var a gate (OR, ITE, XOR or irregular) defines
+// from it, until nothing changes. all_gates gets the gates found
+void Extend::close_under_gates(set<uint32_t>& opt_sampl, vector<OrGate>& all_gates) {
     // we don't care about literal polarities, we treat all gates
     // as if they were OR gates
-    auto all_gates = solver->get_recovered_or_gates();
+    all_gates = solver->get_recovered_or_gates();
     auto ites = solver->get_recovered_ite_gates();
     for(const auto& g: ites) {
         if (g.rhs.var() >= orig_num_vars) continue;
@@ -266,6 +270,17 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             changed = true;
         }
     }
+}
+
+void Extend::extend_round(SimplifiedCNF& cnf) {
+    assert(cnf.get_opt_sampl_vars_set() == true);
+    double start_round_time = cpuTime();
+    const uint32_t orig_size = cnf.get_opt_sampl_vars().size();
+    fill_solver(cnf);
+    solver->set_verbosity(0);
+    set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
+    vector<OrGate> all_gates;
+    close_under_gates(opt_sampl, all_gates);
     verb_print(1, "[extend-gates] Gates added to opt indep: " << opt_sampl.size()-orig_size
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     map<uint32_t, vector<uint32_t>> var_to_gate_ind;
