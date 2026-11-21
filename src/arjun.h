@@ -1475,6 +1475,8 @@ struct SimpConf {
     bool oracle_vivify_get_learnts = true;
     bool oracle_sparsify = true;
     double oracle_mult = 1.0;
+    // elim_to_file's second Puura pass re-runs the oracle on a CNF the first one already did
+    double oracle_mult_pass2 = 1.0;
     int iter1 = 2;
     int iter2 = 2;
     int bve_grow_iter1 = 0;
