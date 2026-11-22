@@ -183,7 +183,7 @@ void add_arjun_options() {
     myopt("--coverminimsat", cover_conf.sat_minim, "Covering shortens a refinement by SAT calls for a model of the same input whose existentials satisfy more clauses");
     myopt("--coverticks", cover_ticks, "A covering run gives up after this many million ticks of SAT solver work. 0 = no limit, negative = no such run. The 1st runs are short, the long one is cover(ticks=N) of --cstrategy");
     myopt("--maxsat", mconf.maxsat_better_ctx, "Use maxsat to find better counterexamples during Cegr");
-    myopt("--synthpuura", do_puura,"Run Puura, the CNF simplification, for synthesis and 2QBF");
+    myopt("--synthpuura", do_puura,"Rounds of Puura, the CNF simplification, for synthesis and 2QBF. 0 = off");
     myopt("--extend", etof_conf.do_extend_indep,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict,"Minimize conflict size when repairing");
     myopt("--unatedef", do_unate_def,"Perform definition-aware unate analysis");
@@ -599,7 +599,8 @@ void try_bce_cover(const ArjunNS::SimplifiedCNF& cnf) {
 }
 
 void simplify_for_synth_2qbf(ArjunNS::SimplifiedCNF& cnf, const bool need_funs) {
-    cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+    // a 2nd round runs on a renumbered CNF, its defs go through a non-identity mapping
+    for (int i = 0; i < do_puura; i++) cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
     verb_print(1, "[2qbf-puura] cls: " << cnf.get_clauses().size() << " T: " << (cpuTime() - start_time));
     if (qbf2) {
         const auto cex = cnf.get_2qbf_def_cex();

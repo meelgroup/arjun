@@ -603,9 +603,9 @@ if __name__ == "__main__":
         solver += "--bruteforcesynthminimmax %d " % random.choice([0, 8, 40, 9999])
         solver += "--distillremlevel %d " % random.choice([0, 1, 2])
 
+        solver += " --synthpuura %d" % random.choice([0, 1, 2])
         opts = [
-            " --synthpuura"
-            , " --extend"
+            " --extend"
             , " --backward"
             , " --minimconfl"
             , " --filtersamples"
