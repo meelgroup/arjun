@@ -2335,7 +2335,8 @@ DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(c
     auto& ag_stack = dc.ag_stack;
 
     // Per-frame epoch stamp: merge_stamp[u] == frame.epoch means u is already in
-    // that frame's `merged`. Fresh epoch per frame avoids ancestor-frame collisions.
+    // that frame's `merged`. A child frame overwrites its ancestors' stamps, so it
+    // restores them from `undo` when popped, before merging into its parent.
     auto& merge_stamp = dc.merge_stamp;
     auto& epoch_counter = dc.epoch_counter;
 
@@ -2343,6 +2344,7 @@ DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(c
         uint32_t v;
         vector<uint32_t> imm;
         vector<uint32_t> merged;
+        vector<uint64_t> undo; // old stamp of merged[i]
         size_t idx;
         uint64_t epoch;
     };
@@ -2352,6 +2354,7 @@ DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(c
     auto add_unique = [&](Frame& f, uint32_t u) {
         if (u >= merge_stamp.size()) merge_stamp.resize(u + 1, 0);
         if (merge_stamp[u] != f.epoch) {
+            f.undo.push_back(merge_stamp[u]);
             merge_stamp[u] = f.epoch;
             f.merged.push_back(u);
         }
@@ -2388,6 +2391,7 @@ DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(c
         }
 
         uint32_t v = top.v;
+        for (size_t i = top.merged.size(); i-- > 0;) merge_stamp[top.merged[i]] = top.undo[i];
         vector<uint32_t> result = std::move(top.merged);
         stack.pop_back();
         auto [it, _] = cache.emplace(v, std::move(result));
