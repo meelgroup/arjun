@@ -129,6 +129,7 @@
           cmakeFlags = [
             "-Dcadical_DIR=${cadical}/lib"
             "-Dcadical_SRC_DIR=${cadical}/include"
+            "-Dcadiback_DIR=${cadiback}"
             "-Dcryptominisat5_DIR=${cryptominisat5}/lib/cmake/cryptominisat5"
             "-Dsbva_DIR=${sbva}/lib/cmake/sbva"
             "-Dtreedecomp_DIR=${treedecomp}/lib/cmake/treedecomp"
