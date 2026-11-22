@@ -307,6 +307,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     simp_conf2.iter1 = 1;
     simp_conf2.iter2 = 1;
     simp_conf2.bve_too_large_resolvent = simp_conf.bve_too_large_resolvent2;
+    simp_conf2.oracle_mult = simp_conf.oracle_mult * simp_conf.oracle_mult_pass2;
     cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
     if (etof_conf.num_sbva_steps > 0)
         standalone_sbva(cnf, etof_conf.num_sbva_steps,
@@ -397,7 +398,8 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
             else overall = AIG::new_or(overall, current);
         }
         if (overall == nullptr) overall = scnf.aig_mng.new_const(false);
-        if (sign ^ orig_target.sign()) overall = AIG::new_not(overall);
+        // orig_def is over orig lits already, orig_target's sign included
+        if (sign) overall = AIG::new_not(overall);
 
         scnf.defs[orig_target.var()] = overall;
         if (verb >= 5)
@@ -466,7 +468,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
                 assert(scnf.defs[orig_replaced.var()] == nullptr);
                 assert(!orig_sampl_vars.count(orig_replaced.var()) &&
                     "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
-                if (orig_replaced.sign()) scnf.defs[orig_replaced.var()] = AIG::new_not(aig);
+                if (orig_replaced.sign() ^ orig_replacing.sign()) scnf.defs[orig_replaced.var()] = AIG::new_not(aig);
                 else scnf.defs[orig_replaced.var()] = aig;
             }
         }
@@ -2333,7 +2335,8 @@ DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(c
     auto& ag_stack = dc.ag_stack;
 
     // Per-frame epoch stamp: merge_stamp[u] == frame.epoch means u is already in
-    // that frame's `merged`. Fresh epoch per frame avoids ancestor-frame collisions.
+    // that frame's `merged`. A child frame overwrites its ancestors' stamps, so it
+    // restores them from `undo` when popped, before merging into its parent.
     auto& merge_stamp = dc.merge_stamp;
     auto& epoch_counter = dc.epoch_counter;
 
@@ -2341,6 +2344,7 @@ DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(c
         uint32_t v;
         vector<uint32_t> imm;
         vector<uint32_t> merged;
+        vector<uint64_t> undo; // old stamp of merged[i]
         size_t idx;
         uint64_t epoch;
     };
@@ -2350,6 +2354,7 @@ DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(c
     auto add_unique = [&](Frame& f, uint32_t u) {
         if (u >= merge_stamp.size()) merge_stamp.resize(u + 1, 0);
         if (merge_stamp[u] != f.epoch) {
+            f.undo.push_back(merge_stamp[u]);
             merge_stamp[u] = f.epoch;
             f.merged.push_back(u);
         }
@@ -2386,6 +2391,7 @@ DLL_PUBLIC const vector<uint32_t>& SimplifiedCNF::get_dependent_vars_recursive(c
         }
 
         uint32_t v = top.v;
+        for (size_t i = top.merged.size(); i-- > 0;) merge_stamp[top.merged[i]] = top.undo[i];
         vector<uint32_t> result = std::move(top.merged);
         stack.pop_back();
         auto [it, _] = cache.emplace(v, std::move(result));
