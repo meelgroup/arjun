@@ -90,7 +90,9 @@ only_dirs = [
     # "out-synth-2539107-4", # improved cover
     # "out-synth-2669714-2", # cleanup of cover
     # "out-synth-2791167-", # improved cover
-    "out-synth-2791167-2",
+    # "out-synth-2791167-2",
+    # "out-synth-2827296-0", # fixed interplation for AR-fixedpoint
+    # "out-synth-2827846-", # unate_def eq probe skips refuted candidates; 1: --extendorder 0, 2: --unatedefeq 0
 
     # "out-2qbf-2544900-", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
     # "out-2qbf-2544900-9", # 2QBF: arjun/bloqqer/no preprocessing + cadet/caqe/depqbf/rareqs, and arjun --2qbf
@@ -100,8 +102,9 @@ only_dirs = [
     # "out-2qbf-2669713-5",
     # "out-2qbf-2669713-3", # after cover cleanup
     # "out-2qbf-2680942",
-    # "out-2qbf-2717062",
-    # "out-2qbf-2791631-0",
+    "out-2qbf-2717062-3", # unknown
+    "out-2qbf-2791631-0", # after squash
+    "out-2qbf-2862431-0", # faster interpolation, extend order, BCE copy before unate_def
 
     # "out-synth-1367674-0", # before unate-eq
 ]
