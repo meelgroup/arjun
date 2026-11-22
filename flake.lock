@@ -8,11 +8,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794139686,
-        "narHash": "sha256-6Cv3Q9dVwlieXelVZnxpcu+Ud1Zm0jUfJMJ3mwWaWrg=",
+        "lastModified": 1795379333,
+        "narHash": "sha256-3caoEfSSpz2F+EyZb0bYqZkpTPXXRHM8G3Lyr4F6wQc=",
         "owner": "meelgroup",
         "repo": "cadiback",
-        "rev": "802e1f6d34b6e613828e591a8359298cd99e6429",
+        "rev": "7e1c56460359021e5ae52dc39c344d677ac17a65",
         "type": "github"
       },
       "original": {
@@ -30,11 +30,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789247225,
-        "narHash": "sha256-Ff8iH6CqMPdcqOSN6gjVqbJ1qKuHlwqrl/vW/nCtGPU=",
+        "lastModified": 1794644193,
+        "narHash": "sha256-chrxgtyToeKoWL+MfKkeyyjuHufSbrJivHSiLinOs0U=",
         "owner": "meelgroup",
         "repo": "cadical",
-        "rev": "818c9562f114b315a9246ced943b66b60b38e8fb",
+        "rev": "dd795586eed2285de5ee9dafa84ddeb85654a722",
         "type": "github"
       },
       "original": {
@@ -59,11 +59,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794140006,
-        "narHash": "sha256-E8FaUz4FEnB1+qfFRzatZgQ9BEosKWncYxUK40wmKXs=",
+        "lastModified": 1795379360,
+        "narHash": "sha256-bwzhsk81iecPvdLki8LUGdr2ycLEQQNA+gaQ0LAxve4=",
         "owner": "msoos",
         "repo": "cryptominisat",
-        "rev": "97c6efeae45d93c45d2ebc3e4e83c2014c79513d",
+        "rev": "857f5ea37e7b9a83557b2b2322d246669765baf5",
         "type": "github"
       },
       "original": {
@@ -131,11 +131,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789247225,
-        "narHash": "sha256-Y6+UvQ4H0epBPuO2nuGSy6dak24yRQ+XsnxNxJGKu4Q=",
+        "lastModified": 1795378257,
+        "narHash": "sha256-ynmh8HnYgVmuCX+uOESTx5NFXCrTW+7lFJW98AjpQ6g=",
         "owner": "meelgroup",
         "repo": "sbva",
-        "rev": "bf157b1fea71c155251d2991b5fe0de37c57efba",
+        "rev": "306d037a4f4d787312f99d2a139b66be741344d5",
         "type": "github"
       },
       "original": {
