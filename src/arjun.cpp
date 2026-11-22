@@ -398,7 +398,8 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
             else overall = AIG::new_or(overall, current);
         }
         if (overall == nullptr) overall = scnf.aig_mng.new_const(false);
-        if (sign ^ orig_target.sign()) overall = AIG::new_not(overall);
+        // orig_def is over orig lits already, orig_target's sign included
+        if (sign) overall = AIG::new_not(overall);
 
         scnf.defs[orig_target.var()] = overall;
         if (verb >= 5)
@@ -467,7 +468,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
                 assert(scnf.defs[orig_replaced.var()] == nullptr);
                 assert(!orig_sampl_vars.count(orig_replaced.var()) &&
                     "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
-                if (orig_replaced.sign()) scnf.defs[orig_replaced.var()] = AIG::new_not(aig);
+                if (orig_replaced.sign() ^ orig_replacing.sign()) scnf.defs[orig_replaced.var()] = AIG::new_not(aig);
                 else scnf.defs[orig_replaced.var()] = aig;
             }
         }
